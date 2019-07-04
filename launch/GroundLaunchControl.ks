@@ -1,27 +1,19 @@
 // Ground launch controller.
-// Control launch sequence from ground handoff to liftoff.
-
-// auto config launch delay
 
 @lazyglobal off.
 
 parameter engineStart is -1.
+parameter targetOrbit is 0.
 
 local liftoffTime is -1.
 // Initialise launch parameters
-local launchDelay is 10.
-
-// Configure state variables
-local countdown is max(launchDelay, 1 - engineStart).
+local launchDelay is max(10, engineStart + 2).
 
 // Set launch site for range safety
 local launchSite to LAS_ShipPos().
 
 local mainEngines is LAS_GetStageEngines().
 local mainEnginesLF is list().  // Liquid fuelled for pre-start.
-
-local launchTowers is list().
-local launchClamps is list().
 
 local startStagger is 0.
 local autoStartTime is 0.
@@ -74,19 +66,11 @@ local padFuelling is engineStart <= 0.5 or mainEnginesLF:empty().   // If not pr
 
     local stageWetMass is list().
     local stageDryMass is list().
-    local stageThrustVac is list().
-    local stageIspVac is list().
-    local stageIspSL is list().
-    local stageEngCount is list().
     
     from {local s is 0.} until s = Stage:Number step {set s to s+1.} do
     {
         stageWetMass:Add(0).
         stageDryMass:Add(0).
-        stageThrustVac:Add(0).
-        stageIspVac:Add(0).
-        stageIspSL:Add(0).
-        stageEngCount:Add(0).
     }
         
     for shipPart in Ship:Parts
@@ -105,10 +89,6 @@ local padFuelling is engineStart <= 0.5 or mainEnginesLF:empty().   // If not pr
         }
         else
         {
-            if shipPart:Name:Contains("Tower")
-                launchTowers:Add(shipPart).
-            else
-                launchClamps:Add(shipPart).
             if shipPart:HasModule("RefuelingPump")
                 set padFuelling to true.
         }
@@ -120,26 +100,25 @@ local padFuelling is engineStart <= 0.5 or mainEnginesLF:empty().   // If not pr
         set stageDryMass[s] to stageDryMass[s] + stageWetMass[s - 1].
     }
 
-    local allEngines is list().
-    list engines in allEngines.
-    
-    for eng in allEngines
-    {
-        if eng:Stage >= 0 and not eng:Title:Contains("Separation") and not eng:Tag:Contains("ullage")
-        {
-            set stageThrustVac[eng:Stage] to stageThrustVac[eng:Stage] + eng:PossibleThrustAt(0).
-            set stageIspVac[eng:Stage] to stageIspVac[eng:Stage] + eng:VacuumIsp.
-            set stageIspSL[eng:Stage] to stageIspSL[eng:Stage] + eng:SeaLevelIsp.
-            set stageEngCount[eng:Stage] to stageEngCount[eng:Stage] + 1.
-        }
-    }
-	
 	set launchMass to stageWetMass[Stage:Number-1].
     
     from {local s is Stage:Number - 1.} until s < 0 step {set s to s-1.} do
     {
+        local massFlow is 0.
+        local vacThrust is 0.
+        local slThrust is 0.
+        
+        local stageEngines is LAS_GetStageEngines(s).
+        for eng in stageEngines
+        {
+            set massFlow to massFlow + eng:PossibleThrustAt(0) / eng:VacuumIsp.
+            set vacThrust to vacThrust + eng:PossibleThrustAt(0).
+            set slThrust to slThrust + eng:PossibleThrustAt(1).
+        }
+        set massFlow to max(massFlow, 1e-6).
+
         log "  Stage " + s + ", drymass=" + round(stageDryMass[s] * 1000, 1) + ", wetmass=" + round(stageWetMass[s] * 1000, 1) +
-            ", ThrustVac=" + round(stageThrustVac[s], 1) + ", IspVac=" + round(stageIspVac[s] / max(stageEngCount[s], 1), 1) + ", IspSL=" + round(stageIspSL[s] / max(stageEngCount[s], 1), 1) to logPath.
+            ", ThrustVac=" + round(vacThrust, 1) + ", IspVac=" + round(vacThrust / massFlow, 1) + ", IspSL=" + round(slThrust / massFlow, 1) to logPath.
     }
 }
 
@@ -162,6 +141,23 @@ if mainEngines:length > 0
 
 if not padFuelling
     print "  No launch pad fuel feed, launching on full thrust.".
+    
+// Ascent time is estimated as 5 minutes
+local leadAngle is 360 * (5 * 60) / Ship:Body:RotationPeriod.
+local lock lanDiff to (Ship:Orbit:LAN + leadAngle) - TargetOrbit:LAN.
+    
+if TargetOrbit:IsType("Orbit")
+{
+    local waitDiff is lanDiff.
+    print "landiff=" + waitDiff.
+    if waitDiff > 0.1
+        set waitDiff to waitDiff - 360.
+    print "landiff=" + waitDiff.
+        
+    local waitTime is LAS_FormatTime(max(-waitDiff, 0) * Ship:Body:RotationPeriod / 360).
+        
+    print "Launch window opening in approximately " + waitTime.
+}
 
 print "Awaiting Launch command:".
 
@@ -182,6 +178,71 @@ until cmd = "l"
 
 if cmd = "l"
 {
+print "Go for Launch!".
+
+if TargetOrbit:IsType("Orbit")
+{
+    local waitGui is GUI(200).
+    local mainBox is waitGui:AddVBox().
+
+    local guiHeading is mainBox:AddLabel("Awaiting launch window").
+
+    // Launch window planning, simply matches ascending nodes.
+    local lock lanDiff to (Ship:Orbit:LAN + leadAngle) - TargetOrbit:LAN.
+    local waitDiff is lanDiff.
+    if waitDiff > 0.08
+        set waitDiff to waitDiff - 360.
+    local waitTime is max(-waitDiff, 0) * Ship:Body:RotationPeriod / 360.
+
+    local guiTime is mainBox:AddLabel("T-" + Time(waitTime):Clock).
+    waitGui:Show().
+    
+    if waitTime > 60
+        kUniverse:Timewarp:WarpTo(Time:Seconds + waitTime - 30).
+        
+    // Wait until we're within 0.1 degrees.
+    until lanDiff < 0.1 and lanDiff > -0.05 and waitTime <= launchDelay
+    {
+        local t is 1.
+        if waitTime > 3600
+        {
+            set t to mod(waitTime, 1800).
+            if t < 10
+                set t to t + 1800.
+        }
+        else if waitTime > 120
+        {
+            set t to mod(waitTime, 60).
+            if t < 1
+                set t to t + 60.
+        }
+        else if waitTime < 30
+        {
+            if kUniverse:Timewarp:Rate > 1
+                kUniverse:Timewarp:CancelWarp().
+        }
+        
+        wait t.
+        
+        if t > 0
+        {
+            set waitTime to waitTime - t.
+            set guiTime:Text to "T-" + Time(waitTime):Clock.
+        }
+            
+        set waitDiff to lanDiff.
+        if waitDiff > 0.1
+            set waitDiff to waitDiff - 360.
+        set waitTime to max(-waitDiff, 0) * Ship:Body:RotationPeriod / 360.
+    }
+    kUniverse:Timewarp:CancelWarp().
+    
+    waitGui:Hide().
+    
+    set launchDelay to round(max(launchDelay, waitTime), 0).
+}
+
+local countdown is launchDelay.
 set liftoffTime to Time:Seconds + launchDelay.
 
 local function GLCAbort
@@ -257,7 +318,7 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
     print "Ignition sequence start.".
 
     // Throttle up to maximum
-    set Ship:Control:MainThrottle to 1.
+    set Ship:Control:PilotMainThrottle to 1.
     
     // Ignite all engines
     for eng in mainEnginesLF
@@ -308,36 +369,38 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
     {
         GLCAbort("Main engines failed to reach commanded thrust.").
     }
+    
+    for eng in mainEnginesLF
+    {
+        if eng:Name = "ROE-RD108"
+        {
+            // Reduce roll torque calculation
+            print "Increasing roll torque factor for " + eng:Name.
+            set SteeringManager:RollTorqueFactor to 8.
+            break.
+        }
+    }
 }
     
 // Wait for countdown
 wait until countdown = 0 or not padFuelling.
 
-// Release towers slightly before everything else
-if launchTowers:Length > 0 and launchClamps:Length > 0
-{
-    for lt in LaunchTowers
-    {
-        if lt:HasModule("LaunchClamp")
-            lt:GetModule("LaunchClamp"):DoEvent("release clamp").
-    }
-
-    wait 0.1.
-}
+local liftoffHeading is Ship:Facing.
+lock Steering to liftoffHeading.
 
 // Stage any boosters and launch clamps
 if mainEngines:length() > mainEnginesLF:length()
     print "Booster Ignition".
 
-set Ship:Control:MainThrottle to 1.
+set Ship:Control:PilotMainThrottle to 1.
 stage.
 
-wait 0.05.
+wait 0.1.
 
-until Ship:VerticalSpeed >= 5
+until Ship:VerticalSpeed >= 5 and Ship:Status = "Flying"
 {
     // Check for vertical movement
-    if Ship:VerticalSpeed < 0
+    if Ship:VerticalSpeed < -0.5
     {
         GLCAbort("Failed to achieve liftoff.").
     }

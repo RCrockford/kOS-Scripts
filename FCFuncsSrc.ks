@@ -28,20 +28,28 @@ global function LAS_EngineIsPressureFed
     return false.
 }
 
+local function EngIsUllage
+{
+    parameter eng.
+    
+    return eng:Title:Contains("Separation") or eng:Title:Contains("Spin") or eng:Tag:Contains("ullage").
+}
+
 global function LAS_GetStageEngines
 {
     parameter stageNum is Stage:Number.
+    parameter ullage is false.
     
     local allEngines is list().
     list engines in allEngines.
     
     if Ship:Status = "PreLaunch"
-        set stageNum to stageNum - 1.
+        set stageNum to min(stageNum, Stage:Number - 1).
     
     local stageEngines is list().
     for eng in allEngines
     {
-        if eng:Stage = stageNum
+        if eng:Stage = stageNum and EngIsUllage(eng) = ullage
         {
             stageEngines:Add(eng).
         }

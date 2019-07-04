@@ -20,7 +20,7 @@ if Ship:Status = "Landed" or Ship:Status = "Splashed"
     
     // Assume we're sat on the lander legs, turn on all stage engines and steer straight up
     lock Steering to Heading(launchAzimuth, 90).
-    set Ship:Control:MainThrottle to 1.
+    set Ship:Control:PilotMainThrottle to 1.
 
     local stageEngines is LAS_GetStageEngines().
     for eng in stageEngines
@@ -51,8 +51,8 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
     // Trigger flight control
     if Ship:Body:Atm:Exists
     {
-        set pitchOverSpeed to LAS_GetPartParam(Ship:RootPart, "spd=", 4).
-        set pitchOverAngle to LAS_GetPartParam(Ship:RootPart, "ang=", 100).
+        set pitchOverSpeed to LAS_GetPartParam(Ship:RootPart, "spd=", 100).
+        set pitchOverAngle to LAS_GetPartParam(Ship:RootPart, "ang=", 4).
 
         runpath("../launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth).
     }

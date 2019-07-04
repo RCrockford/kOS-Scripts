@@ -3,7 +3,14 @@
 // List of paths without volume.
 parameter fileList.
 
-switch to 0.
+// Clear volume
+local delFiles is Core:Volume:Root:List().
+for f in delFiles:Keys
+{
+    Core:Volume:Delete(f).
+}
+
+//switch to 0.
 
 //for f in fileList
 //{

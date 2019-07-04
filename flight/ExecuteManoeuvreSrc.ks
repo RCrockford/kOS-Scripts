@@ -2,100 +2,186 @@
 
 @lazyglobal off.
 
-parameter preRotate is true.
+parameter burnParam.
 parameter rcsBurn is false.
+parameter spinKick is false.
+parameter tangent is 0.
+parameter normal is 0.
+parameter binormal is 0.
+parameter burnStart is 0.
 
 // Wait for unpack
 wait until Ship:Unpacked.
 
-if not Addons:Principia:HasManoeuvre
+if not HasNode
 {
-    print "No planned manoeuvres found.".
+    lock tVec to Ship:Prograde:Vector.
+    lock bVec to vcrs(tVec, ship:up:vector):Normalized.
+    lock nVec to vcrs(tVec, bVec):Normalized.
+    lock dV to tangent * tVec + normal * nVec + binormal * bVec.
+    set burnStart to time:Seconds + burnStart.
+    lock burnEta to burnStart - time:Seconds.
 }
 else
 {
-    runpathonce("FCFunctions").
+    lock dV to NextNode:DeltaV.
+    lock burnEta to NextNode:eta.
+}
+runoncepath("FCFuncs").
 
-    local manoeuvre is Addons:Principia:NextManoeuvre.
-    
-    print "Executing manoeuvre in " + round(manoeuvre:eta, 1) + " seconds, deltaV: " + round(manoeuvre:deltaV:Mag, 1) + " m/s, duration: " + round(manoeuvre:duration,2) + " s.".
-    
-    // Pre-rotate to burn alignment.
-    if  preRotate
-    {
-        print "Rotating to manoeuvre heading".
-    
-        rcs on.
-        lock steering to manoeuvre:deltaV:Normalized.
-        
-        wait until vdot(manoeuvre:deltaV:Normalized, Ship:Facing:ForeVector) > 0.999 and Ship:AngularVel < 0.001
-        rcs off.
-    }
-    
-    if manoeuvre:eta > 65 and Addons:Available("KAC")
-    {
-        // Add a KAC alarm.
-        Addons:KAC:AddAlarm("Raw", manoeuvre:eta - 60 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
-    }
-    
-    wait until manoeuvre:eta < 30.
+local duration is burnParam.
+local burnStage is stage:Number.
+local activeEngines is list().
+local massRatio is 1.
 
-    print "Manoeuvre in " + round(manoeuvre:eta, 1) + " seconds, RCS on.".
-    
-    local ignitionTime is 0.
-    local activeEngines is list().
-    
-    if not rcsBurn
-    {
-        // Prep engines
-        runpath("flight/EngineManagement").
+local lock shipCtrl to Ship:Control.
 
-        set ignitionTime to EM_GetIgnitionTime().
-        set activeEngines to EM_GetManoeuvreEngines().
-    }
+if not rcsBurn
+{
+    if spinKick
+        set burnStage to burnStage - 1.
 
-    rcs on.
-    lock steering to manoeuvre:deltaV:Normalized.
-    
-    wait until manoeuvre:eta <= ignitionTime.
-    
-    local approxAccel is 0.
-    
-    // If we have engines, prep them to ignite.
-    if not activeEngines:empty
+    runpath("flight/EngineManagement", burnStage).
+    set activeEngines to EM_GetManoeuvreEngines().
+    if activeEngines:Length = 0
     {
-        local currentThrust is EM_IgniteManoeuvreEngines().
-        set approxAccel to currentThrust / Ship:Mass.
+        print "No active engines!".
     }
     else
     {
-        // Otherwise assume this is an RCS burn
-        set Ship:Control:Fore to 1.
+        local massFlow is 0.
+        local burnThrust is 0.
+        for eng in activeEngines
+        {
+            local possThrust is eng:PossibleThrustAt(0).
+            set massFlow to massFlow + possThrust / (Constant:g0 * eng:VacuumIsp).
+            set burnThrust to burnThrust + possThrust.
+        }
+        set massRatio to constant:e ^ (dV:Mag * massFlow / burnThrust).
         
-        local deltaVreq is manoeuvre:deltaV:Mag.
-        local t is Time:seconds.
-        wait 0.1.
-
-        set approxAccel to (deltaVreq - manoeuvre:deltaV:Mag) / (Time:Seconds - t).
+        local shipMass is 0.
+        for shipPart in Ship:Parts
+        {
+            if shipPart:IsType("Decoupler")
+            {
+                if shipPart:Stage < burnStage
+                {
+                    set shipMass to shipMass + shipPart:Mass.
+                }
+            }
+            else if shipPart:DecoupledIn < burnStage
+            {
+                set shipMass to shipMass + shipPart:Mass.
+            }
+        }
+        
+        local finalMass is shipMass / massRatio.
+        set duration to (shipMass - finalMass) / massFlow.
     }
-    
-    print "Starting burn.".
-    
-    until manoeuvre:deltaV:Mag < approxAccel * 0.05.
-    {
-        print "dV=" +  manoeuvre:deltaV + ", t=" +  round(manoeuvre:duration,2).
-    
-        if manoeuvre:duration > 1
-            wait 1.
-    }
-    
-    // Cutoff engines
-    set Ship:Control:MainThrottle to 0.
-    for eng in activeEngines
-    {
-        eng:Shutdown().
-    }
-
-    set Ship:Control:Neutralize to true.
-    rcs off.
 }
+
+print "Executing manoeuvre in " + round(burnEta, 1) + " seconds.".
+print "  DeltaV: " + round(dV:Mag, 1) + " m/s.".
+print "  Duration: " + round(duration,1) + " s.".
+if rcsBurn
+{
+    print "  RCS burn.".
+    set spinKick to false.
+}
+if spinKick
+{
+    print "  Inertial burn.".
+}
+    
+if burnEta > 120 and Addons:Available("KAC")
+{
+    // Add a KAC alarm.
+    AddAlarm("Raw", burnEta - 90 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+}
+
+print "Waiting for manoeuvre".
+
+wait until burnEta < 60.
+
+print "Aligning ship.".
+
+local ignitionTime is 0.
+if not rcsBurn
+{
+    set ignitionTime to EM_GetIgnitionDelay().
+}
+
+rcs on.
+lock steering to dV:Normalized.
+
+if spinKick
+{
+    // spin up
+    set shipCtrl:Roll to -1.
+    until burnEta <= ignitionTime
+    {
+        local rollRate is vdot(Ship:Facing:Vector, Ship:AngularVel).
+        if abs(rollRate) > burnParam * 1.25
+        {
+            set shipCtrl:Roll to 0.1.
+        }
+        else if abs(rollRate) > burnParam and abs(rollRate) < burnParam * 1.2
+        {
+            set shipCtrl:Roll to -0.1.
+        }
+
+        wait 0.
+    }
+    
+    set shipCtrl:Roll to -0.1.
+}
+else
+{
+    wait until burnEta <= ignitionTime.
+}
+
+// If we have engines, prep them to ignite.
+if not activeEngines:empty
+{
+    EM_IgniteManoeuvreEngines().
+    
+    print "Starting engine burn.".
+
+    // If this is a spun kick stage, then decouple it.
+    if spinKick and Stage:Ready
+    {
+        unlock steering.
+        set shipCtrl:Neutralize to true.
+        rcs off.
+        stage.
+    }
+}
+else
+{
+    // Otherwise assume this is an RCS burn
+    print "Starting RCS burn.".
+    set shipCtrl:Fore to 1.
+}
+
+if rcsBurn
+{
+    wait duration.
+}
+else
+{
+    local finalMass is ship:Mass / massRatio.
+    wait until Ship:Mass <= finalMass.
+}
+
+// Cutoff engines
+set shipCtrlMainThrottle to 0.
+for eng in activeEngines
+{
+    eng:Shutdown().
+}
+if not activeEngines:empty
+    print "MECO".
+
+unlock steering.
+set shipCtrl:Neutralize to true.
+rcs off.

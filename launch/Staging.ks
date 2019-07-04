@@ -12,6 +12,8 @@ local ShutdownEngines is list().
 local StagingFunction is CheckStageType@.
 
 local LAS_IsParachuting is false.
+local nextStageHasRCS is false.
+local engineSpooling is true.
 
 local function StageFlameout
 {
@@ -19,19 +21,28 @@ local function StageFlameout
 
     local allFlamedOut is true.
     local anyFlamedOut is false.
+    local allSpooled is true.
 
     for eng in stageEngines
     {
         // If any engine is producing less than 10% nominal thrust, consider it burned out.
-        if not eng:Flameout() and eng:Thrust >= eng:PossibleThrust * 0.1
+        if not eng:Flameout() and (engineSpooling or eng:Thrust >= eng:PossibleThrust * 0.1)
         {
             set allFlamedOut to false.
+            if eng:Thrust < eng:PossibleThrust * 0.1
+                set allSpooled to false.
         }
         else
         {
             set anyFlamedOut to true.
         }
+        
+        if engineSpooling
+            print eng:Title + " Thrust= " + round(eng:Thrust, 2) + " kN".
     }
+    
+    if allSpooled
+        set engineSpooling to false.
 
     if anyEngine
         return anyFlamedOut.
@@ -321,16 +332,17 @@ local function CheckStageType
     if Stage:Number > 0
     {
         set NextStageEngines to LAS_GetStageEngines(Stage:Number - 1).
+        set NextStageUllage to LAS_GetStageEngines(Stage:Number - 1, true).
         set NextStageParts to LAS_GetStageParts(Stage:Number - 1).
     }
     else
     {
         set NextStageEngines to list().
+        set NextStageUllage to list().
     }
 
     set ShutdownEngines to list().
     set NextStageDecouplers to list().
-    set NextStageUllage to list().
     set NextStageChutes to list().
 
     for p in NextStageParts
@@ -339,18 +351,9 @@ local function CheckStageType
             NextStageDecouplers:add(p).
         if p:HasModule("RealChuteModule")
             NextStageChutes:add(p).
+        if p:HasModule("ModuleRCS")
+            set nextStageHasRCS to true.
     }
-
-    local nonUllageEngines is list().
-    for eng in NextStageEngines
-    {
-        if eng:Title:Contains("Separation") or eng:Title:Contains("Spin") or eng:Tag:Contains("ullage")
-            NextStageUllage:add(eng).
-        else
-            nonUllageEngines:add(eng).
-    }
-    
-    set NextStageEngines to nonUllageEngines.
 
     local enginesNeedStartup is false.
     for eng in NextStageEngines
@@ -414,13 +417,19 @@ local function CheckStageType
 global function LAS_CheckStaging
 {
     if not Stage:Ready
-        return.
+        return false.
 
     if StagingFunction()
     {
+        if nextStageHasRCS
+            rcs on.
+    
         stage.
 
         set StagingFunction to CheckStageType@.
+        set engineSpooling to true.
+        
+        return true.
     }
     else
     {
@@ -438,9 +447,12 @@ global function LAS_CheckStaging
             }
         }
     }
+    
+    return false.
 }
 
 global function LAS_FinalStage
 {
 	return StagingFunction = FinalStage@.
 }
+

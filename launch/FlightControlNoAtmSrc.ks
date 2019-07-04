@@ -50,7 +50,7 @@ local function checkAscent
             if LAS_GuidanceCutOff()
             {
                 print "Main engine cutoff".
-                set Ship:Control:MainThrottle to 0.
+                set Ship:Control:PilotMainThrottle to 0.
                 
                 local mainEngines is LAS_GetStageEngines().
                 for eng in mainEngines

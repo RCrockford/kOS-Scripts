@@ -9,7 +9,7 @@ if Ship:Status="Landed"or Ship:Status="Splashed"
 print"Lifting off".
 ladders off.
 lock Steering to Heading(_2,90).
-set Ship:Control:MainThrottle to 1.
+set Ship:Control:PilotMainThrottle to 1.
 local _3 is LAS_GetStageEngines().
 for eng in _3
 {
@@ -32,8 +32,8 @@ global LAS_TargetAp is _0.
 runpath("../launch/OrbitalGuidance").
 if Ship:Body:Atm:Exists
 {
-set pitchOverSpeed to LAS_GetPartParam(Ship:RootPart,"spd=",4).
-set pitchOverAngle to LAS_GetPartParam(Ship:RootPart,"ang=",100).
+set pitchOverSpeed to LAS_GetPartParam(Ship:RootPart,"spd=",100).
+set pitchOverAngle to LAS_GetPartParam(Ship:RootPart,"ang=",4).
 runpath("../launch/FlightControlPitchOver",pitchOverSpeed,pitchOverAngle,_2).
 }
 else

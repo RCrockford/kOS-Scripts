@@ -3,13 +3,17 @@ runoncepath("/FCFuncs").
 global function LAS_GetStageParts
 {
 parameter _p0 is Stage:Number.
+parameter _p1 is"".
 local _0 is Ship:Parts.
 local _1 is list().
 for p in _0
 {
 if p:Stage=_p0
 {
+if _p1:Length=0 or p:HasModule(_p1)
+{
 _1:Add(p).
+}
 }
 }
 return _1.
@@ -85,4 +89,18 @@ set _11 to _11+res:Amount*res:Density*1000.
 }
 }
 return min(_8,_11/_7).
+}
+global function LAS_FormatTime
+{
+parameter t.
+local fmt is"".
+if t>(30*3600)
+set fmt to round(t/(24*3600),1):ToString()+" days.".
+else if t>(90*60)
+set fmt to round(t/3600,1):ToString()+" hours.".
+else if t>90
+set fmt to round(t/60,1):ToString()+" minutes.".
+else
+set fmt to round(t,0):ToString()+" seconds.".
+return fmt.
 }

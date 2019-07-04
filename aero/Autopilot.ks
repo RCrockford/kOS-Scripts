@@ -95,13 +95,18 @@ local targetHeading is round(shipHeading, 0).
 local targetClimbRate is 0.
 local rotateSpeed is 80.
 local landingSpeed is 80.
+local controlSense is 1.
+local climbKP is 0.5.
+local climbKI is 0.1.
+local climbKD is 0.8.
 
 local pitchPid is PIDloop(0.02, 0.001, 0.02, -1, 1).
 local rollPid is PIDloop(0.005, 0.00005, 0.001, -1, 1).
 local yawPid is PIDloop(0.1, 0.005, 0.03, -1, 1).
-local bankPid is PIDloop(3, 0.0, 5, -45, 45).
 local throtPid is PIDloop(0.1, 0.001, 0.05, 0, 1).
-local climbSpeedPID is pidloop(0.25, 0.01, 0.2).
+local bankPid is PIDloop(3, 0.0, 5, -45, 45).
+local climbRatePid is pidloop(0.5, 0.01, 0.1, -40, 40).
+local climbSpeedPid is pidloop(0.25, 0.01, 0.2).
 local wheelPid is PIDLoop(0.15, 0, 0.1, -1, 1).
 
 local flightGui is Gui(300).
@@ -148,6 +153,10 @@ createGuiControls("hdg", "Heading", targetHeading, { parameter s. set targetHead
 createGuiControls("spd", "Airspeed", targetSpeed, { parameter s. set targetSpeed to s:ToNumber(targetSpeed). }, "").
 createGuiControls("fl", "Flight Level", targetFlightLevel, { parameter s. set targetFlightLevel to s:ToNumber(targetFlightLevel). }, "").
 createGuiControls("cr", "Climb Rate", targetClimbRate, { parameter s. set targetClimbRate to s:ToNumber(targetClimbRate). }, "").
+createGuiControls("sns1", "Ctrl Sensitivity", controlSense, { parameter s. set controlSense to s:ToNumber(controlSense). }, "").
+createGuiControls("sns2", "Climb kP", climbSense, { parameter s. set climbKP to s:ToNumber(climbKP). }, "").
+createGuiControls("sns3", "Climb kI", climbSense, { parameter s. set climbKI to s:ToNumber(climbKI). }, "").
+createGuiControls("sns4", "Climb kD", climbSense, { parameter s. set climbKD to s:ToNumber(climbKD). }, "").
 
 set guiButtons["cr"]:Pressed to false.
 
@@ -206,7 +215,8 @@ until exitButton:TakePress
 {
 	if flightState <> fs_Landed
 	{
-		local reqClimbRate is 0.
+		local reqClimbRate is -1e8.
+        local reqPitch is shipPitch.
 		local reqHeading is shipHeading.
 		local reqControl is true.
 		local reqSpeed is 0.
@@ -216,10 +226,10 @@ until exitButton:TakePress
 			if Ship:GroundSpeed >= rotateSpeed or Ship:Status = "Flying"
 			{
 				// 10 degree rotation
-				set reqClimbRate to 10.
+				set reqPitch to 10.
 			}
 
-			if reqClimbRate > 0 and Ship:Status = "Flying" and stallSpeed = 0
+			if reqPitch > 0 and Ship:Status = "Flying" and stallSpeed = 0
 			{
 				set stallSpeed to Ship:AirSpeed.
 				print "Stall speed set to " + round(stallSpeed, 1).
@@ -241,7 +251,7 @@ until exitButton:TakePress
 				set guiButtons["lnd"]:Enabled to true.
 			}
             
-            if reqClimbRate = 0 and abs(angle_off(groundHeading, shipHeading)) > 5
+            if reqPitch = 0 and abs(angle_off(groundHeading, shipHeading)) > 5
             {
                 print "Veering off course too far, check wheel steering. Takeoff aborted.".
             
@@ -408,7 +418,7 @@ until exitButton:TakePress
 			{
 				set reqClimbRate to getClimbRateToTarget().
 			}
-
+            
 			if Alt:Radar < 10
 			{
 				// Flare
@@ -421,6 +431,18 @@ until exitButton:TakePress
 				print "Braking".
 				set flightState to fs_LandBrake.
 			}
+            else if abs(angle_off(shipHeading, reqHeading)) >= 10
+            {
+                print "Aborting landing".
+                // do a go around, full throttle, 10 degree pitch up, neutral steering.
+                set Ship:Control:PilotMainThrottle to 1.
+                set reqSpeed to 0.
+                set reqClimbRate to -1e8.
+                set reqPitch to 10.
+                set reqHeading to shipHeading.
+                set groundHeading to shipHeading.
+				set flightState to fs_Takeoff.
+            }
 		}
 		else if flightState = fs_LandBrake
 		{
@@ -457,54 +479,37 @@ until exitButton:TakePress
             if reqClimbRate > 0
                 set reqClimbRate to max(min(reqClimbRate, Ship:Airspeed - stallSpeed), 0).
                 
-            local deltaT is max(time:seconds - lastUpdate, 0).
-            set lastUpdate to time:seconds.
-
             local ctrlDamp is 120 / max(Ship:AirSpeed, 80).
 
-            if flightState = fs_Takeoff
+            if reqClimbRate > -1e6
             {
-                // Actually just commanded pitch
-                if reqClimbRate > 0
-                {
-                    set pitchPid:kP to 0.04.
-                    set pitchPid:kI to 0.002.
-                    set pitchPid:kD to 0.04.
-                    
-                    set pitchPid:SetPoint to reqClimbRate.
-                    set ship:control:pitch to pitchPid:update(time:seconds, shipPitch).
-                }
-            }
-            else
-            {
-                // cap climb rate delta to 20 m/s^2 (around 2g).
-                set deltaT to deltaT * 20.
-                set reqClimbRate to max(prevReqClimb - deltaT, min(reqClimbRate, prevReqClimb + deltaT)).
-                
-                // Prevent over pitching
-                if (shipPitch > 40)
-                    set reqClimbRate to min(reqClimbRate, Ship:verticalspeed - deltaT).
-                if (shipPitch < 40)
-                    set reqClimbRate to max(reqClimbRate, Ship:verticalspeed + deltaT).
-                
-                set prevReqClimb to reqClimbRate.
-                
                 print "reqClimbRate=" + round(reqClimbRate, 1) + " / " + round(ship:verticalspeed, 1) + "   " at (0,0).
                 
-                set pitchPid:kP to 0.02 * ctrlDamp.
-                set pitchPid:kI to 0.0001 * ctrlDamp.
-                set pitchPid:kD to 0.01 * ctrlDamp.
+                set climbRatePid:kP to climbKP * ctrlDamp.
+                set climbRatePid:kI to climbKI * ctrlDamp.
+                set climbRatePid:kD to climbKD.
                 
-                set pitchPid:SetPoint to reqClimbRate.
-                set ship:control:pitch to pitchPid:update(time:seconds, Ship:verticalspeed).
+                set climbRatePid:SetPoint to reqClimbRate.
+                set reqPitch to climbRatePid:Update(time:seconds, Ship:verticalspeed).
             }
+            
+            set ctrlDamp to ctrlDamp * max(0.1, min(controlSense, 10)).
+
+            set pitchPid:kP to 0.06 * ctrlDamp.
+            set pitchPid:kI to 0.002 * ctrlDamp.
+            set pitchPid:kD to 0.04 * ctrlDamp.
+            
+            set pitchPid:SetPoint to reqPitch.
+            set ship:control:pitch to pitchPid:update(time:seconds, ShipPitch).
+
+            print "reqPitch=" + round(reqPitch, 2) + " / " + round(ShipPitch, 2) + "   " at (0,1).
 
 			local reqBank is 0.
 			if abs(reqClimbRate - ship:verticalspeed) < 50 and alt:radar > 10
 			{
 				set bankPid:SetPoint to -angle_off(reqHeading, shipHeading).
                 // Avoid twitchiness when turning close to 180 degrees.
-                if bankPid:SetPoint < -178
+                if bankPid:SetPoint < -175
                     set bankPid:SetPoint to 180.
 				set reqBank to bankPid:Update(time:seconds, 0).
 			}
@@ -547,7 +552,7 @@ until exitButton:TakePress
 		{
 			local wheelError is angle_off(groundHeading, shipHeading).
 
-			set wheelPid:kP to 0.015 / max(1, Ship:GroundSpeed / 10).
+			set wheelPid:kP to 0.018 / max(1, Ship:GroundSpeed / 10).
 			set wheelPid:kD to wheelPid:kP * 2 / 3.
 
 			set Ship:Control:WheelSteer to wheelPid:update(time:seconds, wheelError).

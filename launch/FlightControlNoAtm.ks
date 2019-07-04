@@ -24,7 +24,7 @@ if vdot(_11,_10)<=vdot(_11,Ship:Velocity:Surface:Normalized)
 {
 _9=_7.
 lock Steering to _10.
-print"Orbital _10 mode active".
+print"Orbital guidance mode active".
 }
 }
 }
@@ -35,7 +35,7 @@ lock Steering to _10.
 if LAS_GuidanceCutOff()
 {
 print"Main engine cutoff".
-set Ship:Control:MainThrottle to 0.
+set Ship:Control:PilotMainThrottle to 0.
 local _12 is LAS_GetStageEngines().
 for eng in _12
 {

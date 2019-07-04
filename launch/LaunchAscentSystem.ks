@@ -4,6 +4,7 @@
 @lazyglobal off.
 
 parameter engineStart is -1.    // Engine start time relative to T+0, -1 to autoconfigure.
+parameter targetOrbit is 0.
 
 // Wait for unpack
 wait until Ship:Unpacked.
@@ -12,12 +13,12 @@ wait until Ship:Unpacked.
 if Ship:Status = "PreLaunch"
 {
     // Open terminal
-    Core:Part:GetModule("kOSProcessor"):DoEvent("Open Terminal").
+    Core:DoEvent("Open Terminal").
     
     switch to 0.
    
     // Setup functions
-    runpath("0:/launch/LASFunctions").
+    runoncepath("0:/launch/LASFunctions").
     runpath("0:/launch/Staging").
     
     local shipParts is list().
@@ -36,6 +37,7 @@ if Ship:Status = "PreLaunch"
     local pitchOverAngle is 4.
     local launchAzimuth is 90.
     local targetInclination is -1.
+    local targetOrbitable is 0.
 
     if guidance
     {
@@ -43,10 +45,10 @@ if Ship:Status = "PreLaunch"
         
         runpath("0:/launch/OrbitalGuidance").
         
-        set pitchOverSpeed to LAS_GetPartParam(Ship:RootPart, "spd=", pitchOverSpeed).
-        set pitchOverAngle to LAS_GetPartParam(Ship:RootPart, "ang=", pitchOverAngle).
-        set launchAzimuth to LAS_GetPartParam(Ship:RootPart, "az=", launchAzimuth).
-        set targetInclination to LAS_GetPartParam(Ship:RootPart, "inc=", targetInclination).
+        set pitchOverSpeed to LAS_GetPartParam(Core:Part, "spd=", pitchOverSpeed).
+        set pitchOverAngle to LAS_GetPartParam(Core:Part, "ang=", pitchOverAngle).
+        set launchAzimuth to LAS_GetPartParam(Core:Part, "az=", launchAzimuth).
+        set targetInclination to LAS_GetPartParam(Core:Part, "inc=", targetInclination).
     }
     else
     {
@@ -79,25 +81,65 @@ if Ship:Status = "PreLaunch"
         set newControl:Enabled to guidance.
         return newControl.
     }
-
+    
     local speedLabel is createLabel("Speed").
     local speedText is createControl(pitchOverSpeed:ToString, { parameter str. set pitchOverSpeed to str:ToNumber(pitchOverSpeed). }).
     local angleLabel is createLabel("Angle").
     local angleText is createControl(pitchOverAngle:ToString, { parameter str. set pitchOverAngle to str:ToNumber(pitchOverAngle). }).
     local azimuthLabel is createLabel("Azimuth").
     local azimuthText is createControl(launchAzimuth:ToString, { parameter str. set launchAzimuth to str:ToNumber(launchAzimuth). }).
+
+    local function setAzimuth
+    {
+        if targetInclination >= 0
+        {
+            local targetPe is LAS_TargetPe * 1000 + Ship:Body:Radius.
+            local a is (LAS_TargetPe + LAS_TargetAp) * 500 + Ship:Body:Radius.
+            local sinInertialAz is max(-1, min(cos(targetInclination)/cos(Ship:Latitude),1)).
+            local vOrbit is sqrt(2 * Ship:Body:Mu / targetPe - Ship:Body:Mu / a).
+            local vEqRot is 2 * Constant:pi * Ship:Body:Radius / Ship:Body:RotationPeriod.
+            // Using the identity sin2 + cos2 = 1 to avoid inverse trig.
+            set launchAzimuth to mod(arctan2(vOrbit * sinInertialAz - vEqRot * cos(Ship:Latitude), vOrbit * sqrt(1 - sinInertialAz^2)) + 360, 360).
+            
+            set azimuthText:text to round(launchAzimuth, 3):ToString.
+        }
+
+        set azimuthText:Enabled to targetInclination < 0.
+    }
+    
     local inclinationLabel is createLabel("Inclination").
-    local inclinationText is createControl(targetInclination:ToString, { parameter str. set targetInclination to str:ToNumber(targetInclination). }).
+    local inclinationText is createControl(targetInclination:ToString, { parameter str. set targetInclination to str:ToNumber(targetInclination). setAzimuth(). }).
     
     if guidance
+    {
+        if targetOrbit:IsType("Orbitable")
+        {
+            set targetOrbitable to targetOrbit.
+            set targetInclination to -1.
+            set inclinationText:Text to "Target (" + targetOrbitable:Name + ")".
+            set inclinationText:Enabled to false.
+        }
+        else if targetOrbit:IsType("Orbit")
+        {
+            set targetInclination to max(Ship:Latitude, min(targetOrbit:Inclination, 180 - Ship:Latitude)).
+            set inclinationText:Text to round(targetInclination, 2):ToString.
+        }
+        
+        setAzimuth().
+
         flightGui:Show().
+    }
     
     // Trigger GLC
-    runpath("0:/launch/GroundLaunchControl", engineStart).
+    runpath("0:/launch/GroundLaunchControl", engineStart, targetOrbit).
 
     // Check if we actually lifted off
     if Ship:Status = "Flying"
     {
+        // Clear tag and boot file So they don't affect ships in flight / orbit.
+        Set Core:Tag to "".
+        Set Core:BootFileName to "".
+    
         // Trigger flight control
         if not guidance
         {
@@ -105,11 +147,12 @@ if Ship:Status = "PreLaunch"
         }
         else
         {
-            set speedText:Enabled to false.
-            set angleText:Enabled to false.
-            set azimuthText:Enabled to false.
-            set inclinationText:Enabled to false.
-            runpath("0:/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination).
+            flightGui:Hide().
+            runpath("0:/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable).
         }
+    }
+    else
+    {
+        print "Ship not flying: " + Ship:Status.
     }
 }

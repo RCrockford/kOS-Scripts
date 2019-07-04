@@ -1,18 +1,20 @@
-@lazyglobal off.
+lazyglobal off.
 
-// Fly minimal AoA until Q < maxQ*0.1 and then engage guidance
+// Fly minimal AoA until Q < 0.1 and then engage guidance
 
 // Set some fairly safe defaults
 parameter pitchOverSpeed is 100.
 parameter pitchOverAngle is 4.
 parameter launchAzimuth is 90.
 parameter targetInclination is -1.
+parameter targetOrbitable is 0.
 
 local pitchOverCosine is cos(pitchOverAngle).
 local maxQ is Ship:Q.
 local maxQset is false.
 
 local lock velocityPitch to 90 - vang(Ship:up:vector, Ship:Velocity:Surface).
+local lock shipPitch to 90 - vang(Ship:up:vector, Ship:facing:forevector).
 
 // Flight phases
 local c_PhaseLiftoff        is 0.
@@ -21,9 +23,13 @@ local c_PhaseAeroFlight     is 2.
 local c_PhaseGuidanceReady  is 3.
 local c_PhaseGuidanceActive is 4.
 local c_PhaseGuidanceSubOrb is 5.
-local c_PhaseMECO           is 6.
+local c_PhaseGuidanceKick   is 6.
+local c_PhaseMECO           is 7.
 
 local flightPhase is c_PhaseLiftoff.
+local flightGuidance is V(0,0,0).
+local guidanceThreshold is 0.995.
+local nextStageIsGuided is true.
 
 local function angle_off
 {
@@ -40,19 +46,17 @@ local function angle_off
 
 local function checkAscent
 {
-    // If we're launching to a particular inclination, check for dogleg.
-    if flightPhase < c_PhaseGuidanceActive and targetInclination >= 0
+    local cutoff is false.
+
+    if flightPhase = c_PhaseGuidanceKick
     {
-        if angle_off(Ship:Orbit:Inclination, targetInclination) < 0.1
+        // unguided kick stage, just check for valid Pe
+        if Ship:Orbit:Periapsis >= (LAS_TargetPe * 1000 - 250) and Ship:Orbit:Apoapsis >= (LAS_TargetAp * 1000)
         {
-            set launchAzimuth to 90 - targetInclination.
-            if launchAzimuth < 0
-                set launchAzimuth to launchAzimuth + 360.
-            lock Steering to Heading(launchAzimuth, velocityPitch).
+            set cutoff to true.
         }
     }
-
-	if flightPhase = c_PhaseGuidanceSubOrb
+	else if flightPhase = c_PhaseGuidanceSubOrb
     {
         lock Steering to Ship:Velocity:Surface.
 	}
@@ -66,15 +70,17 @@ local function checkAscent
         // Make sure dynamic pressure is low enough to start manoeuvres
         if flightPhase = c_PhaseGuidanceReady
         {
-            if guidance:SqrMagnitude > 0.9 and Ship:Q < 0.05
+            if guidance:SqrMagnitude > 0.9 and Ship:Q < 0.1
             {
                 // Check guidance pitch, when guidance is saying pitch down relative to open loop, engage guidance.
-                // Alternatively, if Q is at ~1 kPa, engage guidance.
+                // Alternatively, if Q is at ~3 kPa, engage guidance.
                 local upVec is LAS_ShipPos():Normalized.
-                if vdot(upVec, guidance) <= vdot(upVec, Ship:Velocity:Surface:Normalized) or Ship:Q < 0.01
+                if vdot(upVec, guidance) <= vdot(upVec, Ship:Velocity:Surface:Normalized) or Ship:Q < 0.05
                 {
                     set flightPhase to c_PhaseGuidanceActive.
-                    lock Steering to guidance.
+                    set flightGuidance to guidance.
+                    set guidanceThreshold to 0.995.
+                    lock Steering to flightGuidance.
                     print "Orbital guidance mode active".
                 }
             }
@@ -82,22 +88,34 @@ local function checkAscent
         else
         {
             if guidance:SqrMagnitude > 0.9
-                lock Steering to guidance.
-            
-            if LAS_GuidanceCutOff()
             {
-                print "Main engine cutoff".
-                set Ship:Control:MainThrottle to 0.
-                
-                local mainEngines is LAS_GetStageEngines().
-                for eng in mainEngines
+                // Ignore guidance if it's commanding a large change.
+                if vdot(guidance, flightGuidance) > guidanceThreshold
                 {
-                    if eng:AllowShutdown
-                        eng:Shutdown().
+                    set flightGuidance to guidance.
+                    set guidanceThreshold to 0.995.
                 }
-                
-                set flightPhase to c_PhaseMECO.
+                else
+                {
+                    set guidanceThreshold to guidanceThreshold * 0.995.
+                    if guidanceThreshold < 0.9
+                        set guidanceThreshold to 0.
+                }
             }
+            
+            if not nextStageIsGuided
+            {
+                if LAS_GetStageBurnTime() < 2
+                {
+                    // Turn prograde for kick
+                    lock Steering to Ship:Velocity:Orbit.
+                    set flightPhase to c_PhaseGuidanceKick.
+                    print "Setting up unguided kick".
+                }
+            }
+            
+            if LAS_GuidanceCutOff() and Ship:Orbit:Periapsis >= (LAS_TargetPe * 1000 - 250)
+                set cutoff to true.
         }
     }
     else if Ship:AirSpeed >= pitchOverSpeed
@@ -109,7 +127,7 @@ local function checkAscent
                 print "Beginning pitch over".
                 set flightPhase to c_PhasePitchOver.
             }
-            lock Steering to Heading(launchAzimuth, min(90 - pitchOverAngle + 0.5, velocityPitch)).
+            lock Steering to Heading(launchAzimuth, min(90 - pitchOverAngle, velocityPitch)).
         }
         else
         {
@@ -118,22 +136,39 @@ local function checkAscent
                 print "Minimal AoA flight mode active".
                 set flightPhase to c_PhaseAeroFlight.
             }
-
-            // Don't setup guidance until we're past maxQ
-            if maxQset and Ship:Q < 0.16
+			
+			// Don't setup guidance until we're past maxQ
+            if maxQset and Ship:Q < 0.1
             {
-				if LAS_TargetPe < 100000
+				if LAS_TargetPe < 100
 				{					
 					set flightPhase to c_PhaseGuidanceSubOrb.
                     print "Suborbital guidance mode active".
 				}
 				else
 				{
-					LAS_StartGuidance().
-					set flightPhase to c_PhaseGuidanceReady.
+                    kUniverse:TimeWarp:CancelWarp().
+                
+                    if LAS_StartGuidance(targetInclination, targetOrbitable)
+                        set flightPhase to c_PhaseGuidanceReady.
 				}
             }
         }
+    }
+    
+    if cutoff
+    {
+        print "Main engine cutoff".
+        set Ship:Control:PilotMainThrottle to 0.
+        
+        local mainEngines is LAS_GetStageEngines().
+        for eng in mainEngines
+        {
+            if eng:AllowShutdown
+                eng:Shutdown().
+        }
+        
+        set flightPhase to c_PhaseMECO.
     }
 }
 
@@ -164,7 +199,7 @@ local function checkPayload
 
     if not PL_FairingsJettisoned
     {
-        if Ship:Q < 1e-5
+        if Ship:Q < 0.001
         {
             // Jettison fairings
 			local jettisoned is false.
@@ -185,7 +220,7 @@ local function checkPayload
     }
     else if not PL_PanelsExtended
     {
-        if Ship:Q < 2e-6
+        if Ship:Q < 1e-5
         {
             Panels on.
             set PL_PanelsExtended to true.
@@ -195,8 +230,7 @@ local function checkPayload
 
 lock Steering to Heading(launchAzimuth, 90).
 
-// Turn RCS on so attitude thrusters work.
-rcs on.
+local stageChecked is false.
 
 for shipPart in Ship:Parts
 {
@@ -212,9 +246,14 @@ until flightPhase = c_PhaseMECO
     checkAscent().
     checkPayload().
     
-    LAS_CheckStaging().
-	
-	if LAS_FinalStage()
+    if LAS_CheckStaging()
+    {
+        // Reset torque
+        set SteeringManager:RollTorqueFactor to 1.
+        set stageChecked to false.
+    }
+    
+    if not stageChecked and LAS_FinalStage()
 	{
 		local haveControl is false.
 		local mainEngines is LAS_GetStageEngines().
@@ -229,16 +268,13 @@ until flightPhase = c_PhaseMECO
         
         if not haveControl
         {
-            local stageParts is LAS_GetStageParts().
-            for p in stageParts
+            local stageRCS is LAS_GetStageParts(Stage:Number, "ModuleRCS").
+            for p in stageRCS
             {
-                if p:HasModule("ModuleRCS")
+                if p:GetModule("ModuleRCS"):GetField("Enabled") = "true"
                 {
-                    if p:GetModule("ModuleRCS"):GetField("Enabled") = "true"
-                    {
-                        set haveControl to true.
-                        break.
-                    }
+                    set haveControl to true.
+                    break.
                 }
             }
         }
@@ -246,20 +282,26 @@ until flightPhase = c_PhaseMECO
 		if not haveControl
 		{
 			print "No attitude control, aborting guidance.".
-			set Ship:Control:PilotMainThrottle to 1.
-			break.
+            if flightPhase = c_PhaseGuidanceActive
+                set flightPhase to c_PhaseGuidanceKick.
+            else
+                break.
 		}
+        
+        set stageChecked to true.
 	}
     
     wait 0.
 }
 
 // Release control
-unlock steering.
+unlock Steering.
 set Ship:Control:Neutralize to true.
+
+ClearGUIs().
 
 if flightPhase = c_PhaseMECO
 {
-	runpath("0:/flight/InstallFlightPack.ks").
+	runpath("0:/flight/InstallManoeuvre.ks").
 	switch to 1.
 }

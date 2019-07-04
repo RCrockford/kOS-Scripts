@@ -7,6 +7,7 @@ runoncepath("/FCFuncs").
 global function LAS_GetStageParts
 {
     parameter stageNum is Stage:Number.
+    parameter moduleFilter is "".
 
     local allParts is Ship:Parts.
     
@@ -15,7 +16,10 @@ global function LAS_GetStageParts
     {
         if p:Stage = stageNum
         {
-            stageParts:Add(p).
+            if moduleFilter:Length = 0 or p:HasModule(moduleFilter)
+            {
+                stageParts:Add(p).
+            }
         }
     }
     
@@ -113,4 +117,21 @@ global function LAS_GetStageBurnTime
     }
     
     return min(maxBurnTime, fuelMass / massFlow).
+}
+
+global function LAS_FormatTime
+{
+    parameter t.
+
+    local fmt is "".
+    if t > (30 * 3600)
+        set fmt to round(t / (24 * 3600), 1):ToString() + " days.".
+    else if t > (90 * 60)
+        set fmt to round(t / 3600, 1):ToString() + " hours.".
+    else if t > 90
+        set fmt to round(t / 60, 1):ToString() + " minutes.".
+    else
+        set fmt to round(t, 0):ToString() + " seconds.".
+        
+    return fmt.
 }

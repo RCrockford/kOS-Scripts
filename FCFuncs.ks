@@ -18,17 +18,23 @@ return true.
 }
 return false.
 }
+local function _f0
+{
+parameter _p0.
+return _p0:Title:Contains("Separation")or _p0:Title:Contains("Spin")or _p0:Tag:Contains("ullage").
+}
 global function LAS_GetStageEngines
 {
 parameter _p0 is Stage:Number.
+parameter _p1 is false.
 local _1 is list().
 list engines in _1.
 if Ship:Status="PreLaunch"
-set _p0 to _p0-1.
+set _p0 to min(_p0,Stage:Number-1).
 local _2 is list().
 for eng in _1
 {
-if eng:Stage=_p0
+if eng:Stage=_p0 and _f0(eng)=_p1
 {
 _2:Add(eng).
 }
