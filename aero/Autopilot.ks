@@ -37,7 +37,9 @@ local function angle_off
 local flightTarget is 0.
 local function getHeadingToTarget
 {
-    local dir is vxcl(Ship:Up:Vector, flightTarget + Ship:Body:Position).
+	parameter target is flightTarget.
+
+    local dir is vxcl(Ship:Up:Vector, target + Ship:Body:Position).
     local ang is vang(dir, Ship:North:Vector).
     if vdot(dir, vcrs(Ship:North:Vector, Ship:Up:Vector)) > 0
         set ang to 360 - ang.
@@ -45,7 +47,9 @@ local function getHeadingToTarget
 }
 local function getDistanceToTarget
 {
-	return (flightTarget + Ship:Body:Position):Mag.
+	parameter target is flightTarget.
+	
+	return (target + Ship:Body:Position):Mag.
 }
 local function getClimbRateToTarget
 {
@@ -96,22 +100,22 @@ local targetClimbRate is 0.
 local rotateSpeed is 80.
 local landingSpeed is 80.
 local controlSense is 1.
-local climbKP is 0.5.
+local climbKP is 1.
 local climbKI is 0.1.
-local climbKD is 0.8.
+local climbKD is 0.25.
 
 local pitchPid is PIDloop(0.02, 0.001, 0.02, -1, 1).
 local rollPid is PIDloop(0.005, 0.00005, 0.001, -1, 1).
 local yawPid is PIDloop(0.1, 0.005, 0.03, -1, 1).
-local throtPid is PIDloop(0.1, 0.001, 0.05, 0, 1).
+local throtPid is PIDloop(0.1, 0.002, 0.05, 0, 1).
 local bankPid is PIDloop(3, 0.0, 5, -45, 45).
 local climbRatePid is pidloop(0.5, 0.01, 0.1, -40, 40).
 local climbSpeedPid is pidloop(0.25, 0.01, 0.2).
 local wheelPid is PIDLoop(0.15, 0, 0.1, -1, 1).
 
 local flightGui is Gui(300).
-set flightGui:X to 100.
-set flightGui:Y to flightGui:Y + 50.
+set flightGui:X to 200.
+set flightGui:Y to flightGui:Y + 60.
 
 local mainBox is flightGui:AddHBox().
 local labelBox is mainBox:AddVBox().
@@ -149,14 +153,32 @@ local function createGuiControls
     guiButtons:add(tagStr, ctrl).
 }
 
+local function createGuiInfo
+{
+    parameter tagStr.
+    parameter lblStr.
+    parameter value.
+    
+    local ctrl is labelBox:AddLabel(lblStr).
+    set ctrl:Style:Height to 25.
+    guiElements:add(ctrl).
+
+    set ctrl to controlBox:AddTextField(value:ToString).
+    set ctrl:Style:Height to 25.
+    set ctrl:Enabled to false.
+    guiElements:add(ctrl).
+
+    guiButtons:add(tagStr, ctrl).
+}
+
 createGuiControls("hdg", "Heading", targetHeading, { parameter s. set targetHeading to s:ToNumber(targetHeading). }, "").
 createGuiControls("spd", "Airspeed", targetSpeed, { parameter s. set targetSpeed to s:ToNumber(targetSpeed). }, "").
 createGuiControls("fl", "Flight Level", targetFlightLevel, { parameter s. set targetFlightLevel to s:ToNumber(targetFlightLevel). }, "").
 createGuiControls("cr", "Climb Rate", targetClimbRate, { parameter s. set targetClimbRate to s:ToNumber(targetClimbRate). }, "").
 createGuiControls("sns1", "Ctrl Sensitivity", controlSense, { parameter s. set controlSense to s:ToNumber(controlSense). }, "").
-createGuiControls("sns2", "Climb kP", climbSense, { parameter s. set climbKP to s:ToNumber(climbKP). }, "").
-createGuiControls("sns3", "Climb kI", climbSense, { parameter s. set climbKI to s:ToNumber(climbKI). }, "").
-createGuiControls("sns4", "Climb kD", climbSense, { parameter s. set climbKD to s:ToNumber(climbKD). }, "").
+createGuiControls("sns2", "Climb kP", climbKP, { parameter s. set climbKP to s:ToNumber(climbKP). }, "").
+createGuiControls("sns3", "Climb kI", climbKI, { parameter s. set climbKI to s:ToNumber(climbKI). }, "").
+createGuiControls("sns4", "Climb kD", climbKD, { parameter s. set climbKD to s:ToNumber(climbKD). }, "").
 
 set guiButtons["cr"]:Pressed to false.
 
@@ -166,6 +188,9 @@ set guiButtons["cr"]:OnToggle to { parameter val. if val set guiButtons["fl"]:Pr
 
 createGuiControls("to", "Rotate Speed", rotateSpeed, { parameter s. set rotateSpeed to s:ToNumber(rotateSpeed). }, "TO").
 createGuiControls("lnd", "Landing Speed", landingSpeed, { parameter s. set landingSpeed to s:ToNumber(landingSpeed). }, "Land").
+
+createGuiInfo("rwh", "Runway Heading", "0.0°").
+createGuiInfo("rwd", "Runway Distance", "0.0 km").
 
 local exitButton is flightGui:AddButton("Exit").
 
@@ -190,6 +215,7 @@ local flightState is fs_Flight.
 
 local runwayEnd1 is V(0,0,0).
 local runwayEnd2 is V(0,0,0).
+local runwayCentre is V(0,0,0).
 local runwayHeading is -1.
 
 local landingTarget is V(0,0,0).
@@ -203,8 +229,11 @@ if Ship:status = "PreLaunch" or Ship:status = "Landed"
 	set guiButtons["lnd"]:Enabled to false.
 
 	set runwayHeading to round(shipHeading, 1).
-	set runwayEnd1 to -Ship:Body:Position + Heading(shipHeading, 0):Vector * 200.
-	set runwayEnd2 to runwayEnd1 + Heading(shipHeading, 0):Vector * 2200.
+	set runwayEnd1 to -Ship:Body:Position.
+	set runwayEnd2 to runwayEnd1 + Heading(shipHeading, 0):Vector * 2400.
+	set Ship:Type to "Plane".
+	
+	set runwayCentre to (runwayEnd1 + runwayEnd2) * 0.5.
 
 	print "Takeoff from runway " + round(runwayHeading / 10, 0).
 }
@@ -273,7 +302,7 @@ until exitButton:TakePress
 					set reqClimbRate to max(-Ship:Airspeed * 0.25, min(Ship:Airspeed * 0.25, 15 * altError / Ship:Airspeed)).
 
 					// Cap maximum climb rate to avoid reducing speed too much
-					if abs(reqClimbRate) > Ship:Airspeed * 0.2
+					if reqClimbRate > Ship:Airspeed * 0.2
 					{
 						set climbSpeedPid:MinOutput to -reqClimbRate.
 						set climbSpeedPid:MaxOutput to reqClimbRate.
@@ -356,19 +385,23 @@ until exitButton:TakePress
 				if abs(angle_off(groundHeading, shipHeading)) <= 30 and Ship:AirSpeed < reqSpeed * 1.2
 				{
 					set flightState to fs_LandInterApproach.
-					set flightTarget to landingTarget - heading(groundHeading, 0):Vector * 4000 + Ship:Up:Vector * 300.
+					set flightTarget to landingTarget - heading(groundHeading, 0):Vector * 4000 + Ship:Up:Vector * 250.
 					setFlaps(2).
 					print "On approach".
 				}
 				else
 				{
 					set flightState to fs_LandTurn.
+					if Ship:AirSpeed >= reqSpeed * 1.2
+						print "Turning to reduce speed".
+					else
+						print "Turning to correct heading".
 				}
 			}
 		}
 		else if flightState = fs_LandTurn
 		{
-			set reqClimbRate to 0.
+			set reqClimbRate to (1000 - Ship:Altitude) * 0.025.
 			set reqSpeed to 1.5 * landingSpeed.
 
             if getDistanceToTarget() < 2500
@@ -396,8 +429,9 @@ until exitButton:TakePress
 
 			if getDistanceToTarget() < 50
 			{
+				kUniverse:Timewarp:CancelWarp().
 				set flightState to fs_LandFinalApproach.
-				set flightTarget to landingTarget + Ship:Up:Vector * 50.
+				set flightTarget to landingTarget + Ship:Up:Vector * 20.
 				setFlaps(3).
 				gear on.
 				lights on.
@@ -617,14 +651,16 @@ until exitButton:TakePress
 				}
 				wait 0.
 			}
-
-			brakes off.
 		}
+		brakes off.
 
 		print "Beginning takeoff roll.".
 
 		when alt:radar >= 50 then { gear off. lights off. setFlaps(1). }
 	}
+	
+	set guiButtons["rwh"]:Text to round(getHeadingToTarget(runwayCentre), 1) + "°".
+	set guiButtons["rwd"]:Text to round(getDistanceToTarget(runwayCentre) * 0.001, 1) + " km".
  
     // throttle update rate
     wait 0.

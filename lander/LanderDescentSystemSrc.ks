@@ -22,7 +22,7 @@ local function GetCurrentAccel
     for eng in DescentEngines
     {
         if enginesIgnited
-            set currentThrust to currentThrust + eng:Thrust / Ship:Control:PilotMainThrottle.
+            set currentThrust to currentThrust + eng:Thrust / Ship:Control:MainThrottle.
         else
             set currentThrust to currentThrust + eng:PossibleThrust.
     }
@@ -77,7 +77,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
             // If engines aren't lit and we're facing (more or less) in the correct direction, light them.
             if not enginesIgnited and vdot(f, Ship:Facing:ForeVector) > 0.998
             {
-                set Ship:Control:PilotMainThrottle to 1.
+                set Ship:Control:MainThrottle to 1.
 
                 for eng in DescentEngines
                 {
@@ -121,7 +121,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
 
             local acg is fr * LAS_ShipPos():Normalized + min(sqrt(1 - fr * fr), acgz) * vxcl(Ship:SrfRetrograde:ForeVector, LAS_ShipPos():Normalized).
 
-            set Ship:Control:PilotMainThrottle to acg:Mag.
+            set Ship:Control:MainThrottle to acg:Mag.
             set f to acg:Normalized.
         }
         else
@@ -129,12 +129,12 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
             // Otherwise just use the current retrograde direction.
             set f to Ship:SrfRetrograde:ForeVector.
 
-            set Ship:Control:PilotMainThrottle to (acgx + localGrav) / accel.y.
+            set Ship:Control:MainThrottle to (acgx + localGrav) / accel.y.
         }
     }
 
     // Engines off
-    set Ship:Control:PilotMainThrottle to 0.
+    set Ship:Control:MainThrottle to 0.
 
     for eng in DescentEngines
     {

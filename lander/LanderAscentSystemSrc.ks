@@ -20,7 +20,7 @@ if Ship:Status = "Landed" or Ship:Status = "Splashed"
     
     // Assume we're sat on the lander legs, turn on all stage engines and steer straight up
     lock Steering to Heading(launchAzimuth, 90).
-    set Ship:Control:PilotMainThrottle to 1.
+    set Ship:Control:MainThrottle to 1.
 
     local stageEngines is LAS_GetStageEngines().
     for eng in stageEngines

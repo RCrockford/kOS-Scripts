@@ -22,14 +22,16 @@ local c_PhasePitchOver      is 1.
 local c_PhaseAeroFlight     is 2.
 local c_PhaseGuidanceReady  is 3.
 local c_PhaseGuidanceActive is 4.
-local c_PhaseGuidanceSubOrb is 5.
-local c_PhaseGuidanceKick   is 6.
-local c_PhaseMECO           is 7.
+local c_PhaseGuidanceKick   is 5.
+local c_PhaseMECO           is 6.
+local c_PhaseSuborbCoast    is 7.
 
 local flightPhase is c_PhaseLiftoff.
 local flightGuidance is V(0,0,0).
 local guidanceThreshold is 0.995.
 local nextStageIsGuided is true.
+
+local suborbPitchPID is pidloop(1, 0.1, 1, -750, 250).
 
 local function angle_off
 {
@@ -56,11 +58,7 @@ local function checkAscent
             set cutoff to true.
         }
     }
-	else if flightPhase = c_PhaseGuidanceSubOrb
-    {
-        lock Steering to Ship:Velocity:Surface.
-	}
-    else if flightPhase >= c_PhaseGuidanceReady
+	else if flightPhase >= c_PhaseGuidanceReady
     {
         LAS_GuidanceUpdate().
         
@@ -134,31 +132,24 @@ local function checkAscent
             if flightPhase < c_PhaseAeroFlight
             {
                 print "Minimal AoA flight mode active".
+				lock Steering to Heading(launchAzimuth, min(90 - pitchOverAngle, velocityPitch)).
                 set flightPhase to c_PhaseAeroFlight.
             }
 			
 			// Don't setup guidance until we're past maxQ
             if maxQset and Ship:Q < 0.1
             {
-				if LAS_TargetPe < 100
-				{					
-					set flightPhase to c_PhaseGuidanceSubOrb.
-                    print "Suborbital guidance mode active".
-				}
-				else
-				{
-                    kUniverse:TimeWarp:CancelWarp().
-                
-                    if LAS_StartGuidance(targetInclination, targetOrbitable)
-                        set flightPhase to c_PhaseGuidanceReady.
-				}
+				kUniverse:TimeWarp:CancelWarp().
+			
+				if LAS_StartGuidance(targetInclination, targetOrbitable)
+					set flightPhase to c_PhaseGuidanceReady.
             }
         }
     }
     
     if cutoff
     {
-        print "Main engine cutoff".
+        print "Sustainer engine cutoff".
         set Ship:Control:PilotMainThrottle to 0.
         
         local mainEngines is LAS_GetStageEngines().
@@ -231,6 +222,7 @@ local function checkPayload
 lock Steering to Heading(launchAzimuth, 90).
 
 local stageChecked is false.
+local flameoutTimer is MissionTime + 5.
 
 for shipPart in Ship:Parts
 {
@@ -243,7 +235,8 @@ for shipPart in Ship:Parts
 until flightPhase = c_PhaseMECO
 {
     checkMaxQ().
-    checkAscent().
+    if flightPhase < c_PhaseMECO
+        checkAscent().
     checkPayload().
     
     if LAS_CheckStaging()
@@ -251,6 +244,7 @@ until flightPhase = c_PhaseMECO
         // Reset torque
         set SteeringManager:RollTorqueFactor to 1.
         set stageChecked to false.
+        set flameoutTimer to MissionTime + 5.
     }
     
     if not stageChecked and LAS_FinalStage()
@@ -268,10 +262,10 @@ until flightPhase = c_PhaseMECO
         
         if not haveControl
         {
-            local stageRCS is LAS_GetStageParts(Stage:Number, "ModuleRCS").
+            local stageRCS is LAS_GetStageParts(Stage:Number, "ModuleRCSFX").
             for p in stageRCS
             {
-                if p:GetModule("ModuleRCS"):GetField("Enabled") = "true"
+                if p:GetModule("ModuleRCSFX"):GetField("RCS")
                 {
                     set haveControl to true.
                     break.
@@ -290,6 +284,33 @@ until flightPhase = c_PhaseMECO
         
         set stageChecked to true.
 	}
+    
+    if flightPhase < c_PhaseMECO and LAS_TargetPe < 100 and MissionTime > flameoutTimer
+    {
+   		local mainEngines is LAS_GetStageEngines().
+        local flamedOut is true.
+		for eng in mainEngines
+		{
+			if not eng:FlameOut
+            {
+				set flamedOut to false.
+                break.
+            }
+		}
+
+        if flamedOut
+        {
+            set flightPhase to c_PhaseSuborbCoast.
+            print "Sustainer engine burnout".
+            set Ship:Control:PilotMainThrottle to 0.
+            unlock Steering.
+            set Ship:Control:Neutralize to true.
+            rcs off.
+            ClearGUIs().
+        }
+        
+        set flameoutTimer to MissionTime + 0.5.
+    }
     
     wait 0.
 }

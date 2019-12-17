@@ -9,7 +9,7 @@ if Ship:Status="Landed"or Ship:Status="Splashed"
 print"Lifting off".
 ladders off.
 lock Steering to Heading(_2,90).
-set Ship:Control:PilotMainThrottle to 1.
+set Ship:Control:MainThrottle to 1.
 local _3 is LAS_GetStageEngines().
 for eng in _3
 {

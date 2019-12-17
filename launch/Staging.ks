@@ -36,9 +36,6 @@ local function StageFlameout
         {
             set anyFlamedOut to true.
         }
-        
-        if engineSpooling
-            print eng:Title + " Thrust= " + round(eng:Thrust, 2) + " kN".
     }
     
     if allSpooled
@@ -85,6 +82,20 @@ local function IgniteNextStage
     {
         LAS_IgniteEngine(eng).
     }
+}
+
+local function GetBatteryProportion
+{
+	local shipRes is Ship:Resources.
+	for r in ShipRes
+	{
+		if r:Name = "ElectricCharge"
+		{
+			return r:Amount / r:Capacity.
+		}
+	}
+	
+	return 0.
 }
 
 // Simple booster drop, just wait for flameout.
@@ -273,9 +284,12 @@ local function ParachuteDescent
         return false.
     }
 
-    // Do we have decouplers? If so drop boost stage at apoapsis.
-    if DecoupleStage()
-        print "Decoupling boost stage.".
+    // Do we have decouplers? If so drop boost stage at 80 km.
+	if Ship:Altitude <= 80000 or GetBatteryProportion() < 0.05
+	{
+		if DecoupleStage()
+			print "Decoupling return capsule.".
+	}
 
     // Arm chutes as soon as we hit atmosphere.
     if Ship:Q > 1e-8 and not LAS_IsParachuting
@@ -351,7 +365,7 @@ local function CheckStageType
             NextStageDecouplers:add(p).
         if p:HasModule("RealChuteModule")
             NextStageChutes:add(p).
-        if p:HasModule("ModuleRCS")
+        if p:HasModule("ModuleRCSFX")
             set nextStageHasRCS to true.
     }
 

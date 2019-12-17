@@ -9,6 +9,7 @@ parameter tangent is 0.
 parameter normal is 0.
 parameter binormal is 0.
 parameter burnStart is 0.
+parameter minAp is 0.
 
 // Wait for unpack
 wait until Ship:Unpacked.
@@ -33,8 +34,6 @@ local duration is burnParam.
 local burnStage is stage:Number.
 local activeEngines is list().
 local massRatio is 1.
-
-local lock shipCtrl to Ship:Control.
 
 if not rcsBurn
 {
@@ -117,23 +116,23 @@ lock steering to dV:Normalized.
 if spinKick
 {
     // spin up
-    set shipCtrl:Roll to -1.
+    set Ship:Control:Roll to -1.
     until burnEta <= ignitionTime
     {
         local rollRate is vdot(Ship:Facing:Vector, Ship:AngularVel).
         if abs(rollRate) > burnParam * 1.25
         {
-            set shipCtrl:Roll to 0.1.
+            set Ship:Control:Roll to 0.1.
         }
         else if abs(rollRate) > burnParam and abs(rollRate) < burnParam * 1.2
         {
-            set shipCtrl:Roll to -0.1.
+            set Ship:Control:Roll to -0.1.
         }
 
         wait 0.
     }
     
-    set shipCtrl:Roll to -0.1.
+    set Ship:Control:Roll to -0.1.
 }
 else
 {
@@ -151,7 +150,7 @@ if not activeEngines:empty
     if spinKick and Stage:Ready
     {
         unlock steering.
-        set shipCtrl:Neutralize to true.
+        set Ship:Control:Neutralize to true.
         rcs off.
         stage.
     }
@@ -160,7 +159,7 @@ else
 {
     // Otherwise assume this is an RCS burn
     print "Starting RCS burn.".
-    set shipCtrl:Fore to 1.
+    set Ship:Control:Fore to 1.
 }
 
 if rcsBurn
@@ -170,11 +169,11 @@ if rcsBurn
 else
 {
     local finalMass is ship:Mass / massRatio.
-    wait until Ship:Mass <= finalMass.
+    wait until Ship:Mass <= finalMass and Ship:Orbit:Apoapsis >= minAp.
 }
 
 // Cutoff engines
-set shipCtrlMainThrottle to 0.
+set Ship:Control:PilotMainThrottle to 0.
 for eng in activeEngines
 {
     eng:Shutdown().
@@ -183,5 +182,5 @@ if not activeEngines:empty
     print "MECO".
 
 unlock steering.
-set shipCtrl:Neutralize to true.
+set Ship:Control:Neutralize to true.
 rcs off.

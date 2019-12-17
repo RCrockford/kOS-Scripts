@@ -26,6 +26,7 @@ local yawK is 0.                // Yaw steering gain factor
 
 local stageExhaustV is list().
 local stageAccel is list().
+local stageGuided is list().
 local GuidanceLastStage is -1.
 
 local tStart is 0.   // Time since last guidance update
@@ -59,7 +60,14 @@ local debugStages is list().
         
     if targetPe < 100000
     {
-        print "Suborbital flight, no orbital guidance.".
+        print "Suborbital Flight: Ap=" + round(targetAp * 0.001, 1) + " km".
+
+        set targetAp to targetAp + Ship:Body:Radius.
+
+        // Configure target orbital parameters
+        set rT to targetAp.
+        set rvT to 0.
+        set hT to 0.
     }
     else
     {
@@ -78,87 +86,92 @@ local debugStages is list().
         set hT to sqrt(Ship:Body:Mu * LT).
         set omegaT to hT / (targetPe * targetPe).
         set ET to -Ship:Body:Mu / (2 * a).
+	}
         
-        set debugTarget:Text to "rT = " + round((rT - Ship:Body:Radius) / 1000, 1) + " km, rvT = " + round(rvT, 1) + " m/s".
+	set debugTarget:Text to "rT = " + round((rT - Ship:Body:Radius) / 1000, 1) + " km, rvT = " + round(rvT, 1) + " m/s".
 
-        // Size lists
-        from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
-        {
-            stageA:add(0).
-            stageB:add(0).
-            stageT:add(0).
-            stageOmegaT:add(0).
-            stageExhaustV:add(0).
-            stageAccel:add(0).
-            debugStages:Insert(0, mainBox:AddLabel("")).
-        }
+	// Size lists
+	from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
+	{
+		stageA:add(0).
+		stageB:add(0).
+		stageT:add(0).
+		stageOmegaT:add(0).
+		stageExhaustV:add(0).
+		stageAccel:add(0).
+		stageGuided:add(false).
+		debugStages:Insert(0, mainBox:AddLabel("")).
+	}
 
-        // Populate lists
-        from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
-        {
-            local decoupler is Ship:RootPart.
+	// Populate lists
+	from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
+	{
+		local decoupler is Ship:RootPart.
 
-            // Sum mass flow for each engine
-            local massFlow is 0.
-            local stageThrust is 0.
-            local burnTime is -1.
-            local stageEngines is LAS_GetStageEngines(s).
-            for eng in stageEngines
-            {
-                set massFlow to massFlow + eng:PossibleThrustAt(0) / (Constant:g0 * eng:VacuumIsp).
-                set stageThrust to stageThrust + eng:PossibleThrustAt(0).
-                set burnTime to max(burnTime, LAS_GetEngineBurnTime(eng)).
-                
-                set decoupler to eng:Decoupler.
-            }
+		// Sum mass flow for each engine
+		local massFlow is 0.
+		local stageThrust is 0.
+		local burnTime is -1.
+		local stageEngines is LAS_GetStageEngines(s).
+		for eng in stageEngines
+		{
+			set massFlow to massFlow + eng:PossibleThrustAt(0) / (Constant:g0 * eng:VacuumIsp).
+			set stageThrust to stageThrust + eng:PossibleThrustAt(0).
+			set burnTime to max(burnTime, LAS_GetEngineBurnTime(eng)).
             
-            if not decoupler:IsType("Decoupler")
-                set decoupler to Ship:RootPart.
-              
-            local stageWetMass is 0.
-            local stageDryMass is 0.
-            
-            for shipPart in Ship:Parts
-            {
-                if not shipPart:HasModule("LaunchClamp")
-                {            
-                    if shipPart:DecoupledIn < s and shipPart:DecoupledIn >= decoupler:stage
-                    {
-                        set stageWetMass to stageWetMass + shipPart:WetMass.
-                        set stageDryMass to stageDryMass + shipPart:DryMass.
-                    }
-                    else if shipPart:DecoupledIn < decoupler:stage
-                    {
-                        set stageWetMass to stageWetMass + shipPart:WetMass.
-                        set stageDryMass to stageDryMass + shipPart:WetMass.
-                    }
-                }
-            }
-            
-            if stageThrust > 0 and massFlow > 0
-            {
-                local eV is stageThrust / massFlow.
+            set stageGuided[s] to stageGuided[s] or eng:HasGimbal.
+			
+			set decoupler to eng:Decoupler.
+		}
+		
+		if not decoupler:IsType("Decoupler")
+			set decoupler to Ship:RootPart.
+		  
+		local stageWetMass is 0.
+		local stageDryMass is 0.
+		
+		for shipPart in Ship:Parts
+		{
+			if not shipPart:HasModule("LaunchClamp")
+			{            
+				if shipPart:DecoupledIn < s and shipPart:DecoupledIn >= decoupler:stage
+				{
+					set stageWetMass to stageWetMass + shipPart:WetMass.
+					set stageDryMass to stageDryMass + shipPart:DryMass.
+                    
+                    set stageGuided[s] to stageGuided[s] or shipPart:HasModule("ModuleRCSFX").
+				}
+				else if shipPart:DecoupledIn < decoupler:stage
+				{
+					set stageWetMass to stageWetMass + shipPart:WetMass.
+					set stageDryMass to stageDryMass + shipPart:WetMass.
+				}
+			}
+		}
+		
+		if stageThrust > 0 and massFlow > 0
+		{
+			local eV is stageThrust / massFlow.
 
-                if burnTime > 0
-                {
-                    set stageT[s] to burnTime.
-                }
-                else
-                {
-                    // Calc burn time for stage
-                    set stageT[s] to (stageWetMass - stageDryMass) / massFlow.
-                }
-                
-                // Initial effective exhaust velocity and acceleration
-                set stageExhaustV[s] to eV.
-                set stageAccel[s] to stageThrust / max(stageWetMass, 1e-6).
-            }
+			if burnTime > 0
+			{
+				set stageT[s] to burnTime.
+			}
+			else
+			{
+				// Calc burn time for stage
+				set stageT[s] to (stageWetMass - stageDryMass) / massFlow.
+			}
+			
+			// Initial effective exhaust velocity and acceleration
+			set stageExhaustV[s] to eV.
+			set stageAccel[s] to stageThrust / max(stageWetMass, 1e-6).
+		}
 
-            set debugStages[s]:Text to "S" + s + ": T=" + round(stageT[s], 2) + " Ev=" + round(stageExhaustV[s], 1) + " a=" + round(stageAccel[s], 2).
-        }
-        
-        debugGui:Show().
-    }
+		set debugStages[s]:Text to "S" + s + ": Ev=" + round(stageExhaustV[s], 1) + " a=" + round(stageAccel[s], 2) + " T=" + round(stageT[s], 1) + " G=" + stageGuided[s].
+	}
+	
+	debugGui:Show().
 }
 
 //------------------------------------------------------------------------------------------------
@@ -202,7 +215,7 @@ local function UpdateGuidance
     local omega is h / r2.
     local deltaT is MissionTime - tStart.
     
-    // Calculate current peformance
+    // Calculate current performance
     local StageEngines is LAS_GetStageEngines().
     local currentIsp is 0.
     local currentThrust is 0.
@@ -238,9 +251,14 @@ local function UpdateGuidance
     local lastStage is GuidanceLastStage + 1.
 	
 	// Update estimate for T for active stage
-	if s > GuidanceLastStage
+	if s > GuidanceLastStage or hT <= 0
 	{
 		set stageT[s] to LAS_GetStageBurnTime() + deltaT.
+	}
+    
+	if hT <= 0
+	{
+		set s to GuidanceLastStage.
 	}
     
     local b0 is 0.
@@ -324,6 +342,8 @@ local function UpdateGuidance
         local nextStage is s-1.
         until stageExhaustV[nextStage] > 0
             set nextStage to nextStage-1.
+            
+        local nextStageKick is (nextStage = GuidanceLastStage) and not stageGuided[nextStage].
     
         // Inter stage guidance
         set stageA[s] to stageA[s] + stageB[s] * deltaT.
@@ -373,6 +393,9 @@ local function UpdateGuidance
         local deltaA is x * y.
         local deltaB is -x * (1 / exhaustV - 1 / stageExhaustV[nextStage]) + (3 * (omegaS * omegaS) - 2 * Ship:Body:Mu / (rS ^ 3)) * rvS * y.
         
+        if nextStageKick
+            set deltaB to stageB[nextStage] - stageB[s].
+        
         // Next stage flight integrals
         set exhaustV to stageExhaustV[nextStage].
         set accel to stageAccel[nextStage].
@@ -415,8 +438,9 @@ local function UpdateGuidance
         set debugStages[s]:text to "S" + s + ": A=" + round(stageA[s],3) + " B=" + round(stageB[s],3) + " T=" + round(stageT[s],2).
         
         // Update next stage guidance using staging state at start
-        set stageA[nextStage] to deltaA + stageA[s]+ stageB[s] * T.
-        set stageB[nextStage] to deltaB + stageB[s].
+        set stageA[nextStage] to deltaA + stageA[s] + stageB[s] * T.
+        if not nextStageKick
+            set stageB[nextStage] to deltaB + stageB[s].
         
         // Loop to next stage
         set s to nextStage.
@@ -432,90 +456,183 @@ local function UpdateGuidance
     
     if s = GuidanceLastStage
     {
-         // Guidance has diverged, try resetting.
-        if abs(stageA[s]) > 3
-        {
-            set stageA[s] to 0.
-            set stageB[s] to 0.
-            set stageT[s] to LAS_GetStageBurnTime().
-            print "Reset guidance".
-        }
-            
-        // Final stage guidance
-        set stageA[s] to stageA[s] + stageB[s] * deltaT.
         set stageT[s] to stageT[s] - deltaT.
         local T is min(stageT[s], tau - 1).
+		local accelT is accel / (1 - T / tau).
 
-        local accelT is accel / (1 - T / tau).
-        
-        // Heading derivatives
+        // Current flight integrals
         set b0 to -exhaustV * ln(1 - T / tau). // delta V
         set b1 to b0 * tau - exhaustV * T.
         set b2 to b1 * tau - exhaustV * (T * T) * 0.5.
-        
-        calcHeadingDerivs(rT, omegaT, accelT, T).
 
-        // Calculate required delta V
-        local dh is hT - h.
-        local meanRadius is (r + rT) * 0.5.
-        
-        if oTarget:IsType("Orbitable")
-        {
-            // calc delta anom
-            local c0 is b0 * T - b1.
-            local c1 is c0 * tau - exhaustV * (T*T) * 0.5.
-            local c2 is c1 * tau - exhaustV * T^3 / 6.
-            local d3 is h * rv / r^3.
-            local d4 is (hT * rvT / rT^3 - d3) / T.
-            
-            local dA is T * h / (r*r)
-                + (ftheta * c0 + fdtheta * c1 + fddtheta * c2) / meanRadius
-                - d3 * T*T - d4 * T^3 / 3.
-            set deltaAnom to deltaAnom + dA.
-        }
+        if hT <= 0
+		{
+			// Suborbital guidance
+			local accelS is accel / (1 - T / tau).
 
-        local deltaV is dh / meanRadius.
-        set deltaV to deltaV + exhaustV * T * (fdtheta + fddtheta * tau).
-        set deltaV to deltaV + fddtheta * exhaustV * (T*T) * 0.5.
-        set deltaV to deltaV / (ftheta + (fdtheta + fddtheta * tau) * tau).
-        
-        // Calculate new estimate for T
-        if deltaV > 0
+			local c0 is b0 * T - b1.
+			
+			// State at burnout
+			local rS is r + rv * T + c0 * stageA[s].
+			local rvS is rv + b0 * stageA[s] + b1 * stageB[s].
+			local omegaS is max(stageOmegaT[s], omega).
+			
+			calcHeadingDerivs(rS, omegaS, accelT, T).
+			
+			// Angular momentum gain at burnout
+			local hS is h + (r + rS) * 0.5 * (ftheta * b0 + fdtheta * b1 + fddtheta * b2).
+			
+			// Tangental and angular speed at burnout
+			set omegaS to hS / (rS * rS).
+			set stageOmegaT[s] to omegaS.  // feedback to next update
+			
+			// Average acceleration over coast phase
+			local accS is omegaS * omegaS * rS - Ship:Body:mu / (rS*rS).
+			// Assume omegaS has minimal change during coast
+			local accF is omegaS * omegaS * rT - Ship:Body:mu / (rT*rT).
+			local accC is (accS + accF) * 0.5.
+			
+			local T2 is (rvT - rvS) / accC.
+			
+			local rF is rS + rvS * T2 + 0.5 * accC * T2 * T2.
+			local A2 is 1.
+			if rF > rT
+				set A2 to -1.
+			
+			local rS2 is r + rv * T + c0 * A2.
+			local rvS2 is rv + b0 * A2.
+			
+			set T2 to (rvT - rvS2) / accC.
+			local rF2 is rS2 + rvS2 * T2 + 0.5 * accC * T2 * T2.
+			
+			set stageA[s] to A2 + (stageA[s] - A2) * (rT - rF2) / (rF - rF2).
+		}
+        else if not stageGuided[s]
         {
-            set T to tau * (1 - constant:e ^ (-deltaV / exhaustV)).
-            set stageT[s] to (stageT[s] + T) * 0.5.
+            // Final stage spin kick
+			set stageA[s] to stageA[s] + stageB[s] * deltaT.
+
+			// Heading derivatives
+            local fr is stageA[s] + (Ship:Body:Mu / r2 - (omega * omega) * r) / accel.
+       
+            set ftheta to 1 - (fr * fr) * 0.5.
+            set fdtheta to 0.
+            set fddtheta to 0.
+
+			// Calculate required delta V
+			local dh is hT - h.
+			local meanRadius is (r + rT) * 0.5.
+
+			local deltaV is dh / meanRadius.
+			set deltaV to deltaV / ftheta.
+			
+			// Calculate new estimate for T
+			if deltaV > 0
+			{
+				set T to tau * (1 - constant:e ^ (-deltaV / exhaustV)).
+				set stageT[s] to (stageT[s] + T) * 0.5.
+			}
+			
+			// Update A, B with new T estimate
+			set b0 to deltaV.
+			set b1 to b0 * tau - exhaustV * T.
+			local c0 is b0 * T - b1.
+			local c1 is c0 * tau - exhaustV * (T*T) * 0.5.
+			
+			local Mx is rvT - rv.
+			local My is rT - r - rv * T.
+			
+			local det is b0 * c1 - b1 * c0.
+			if (abs(det) > 1e-7)
+			{
+				local newA is (c1 * Mx - b1 * My) / det.
+				set stageA[s] to (stageA[s] + newA) * 0.5.
+			}
+			
+			if Stage:Number > GuidanceLastStage
+			{
+				// prevent T going too low and cutting off guidance updates
+				set stageT[s] to max(stageT[s], 10).
+			}
         }
-        
-        // Update A, B with new T estimate
-        set b0 to deltaV.
-        set b1 to b0 * tau - exhaustV * T.
-        local c0 is b0 * T - b1.
-        local c1 is c0 * tau - exhaustV * (T*T) * 0.5.
-        
-        local Mx is rvT - rv.
-        local My is rT - r - rv * T.
-        
-        local det is b0 * c1 - b1 * c0.
-        if (abs(det) > 1e-7)
-        {
-            local newA is (c1 * Mx - b1 * My) / det.
-            local newB is (b0 * My - c0 * Mx) / det.
-			set stageA[s] to (stageA[s] + newA) * 0.5.
-			set stageB[s] to (stageB[s] + newB) * 0.5.
-        }
-		
-        if abs(stageA[s]) > 3
-        {
-            set stageA[s] to 0.
-            set stageB[s] to 0.
-            set stageT[s] to LAS_GetStageBurnTime().
-            print "Reset guidance".
-        }
-        else if Stage:Number > GuidanceLastStage
-        {
-            // prevent T going too low and cutting off guidance updates
-            set stageT[s] to max(stageT[s], 10).
-        }
+        else
+		{
+			// Guidance has diverged, try resetting.
+			if abs(stageA[s]) > 3
+			{
+				set stageA[s] to 0.
+				set stageB[s] to 0.
+				set stageT[s] to LAS_GetStageBurnTime().
+				print "Reset guidance".
+			}
+				
+			// Final stage guidance
+			set stageA[s] to stageA[s] + stageB[s] * deltaT.
+
+			calcHeadingDerivs(rT, omegaT, accelT, T).
+
+			// Calculate required delta V
+			local dh is hT - h.
+			local meanRadius is (r + rT) * 0.5.
+			
+			if oTarget:IsType("Orbitable")
+			{
+				// calc delta anom
+				local c0 is b0 * T - b1.
+				local c1 is c0 * tau - exhaustV * (T*T) * 0.5.
+				local c2 is c1 * tau - exhaustV * T^3 / 6.
+				local d3 is h * rv / r^3.
+				local d4 is (hT * rvT / rT^3 - d3) / T.
+				
+				local dA is T * h / (r*r)
+					+ (ftheta * c0 + fdtheta * c1 + fddtheta * c2) / meanRadius
+					- d3 * T*T - d4 * T^3 / 3.
+				set deltaAnom to deltaAnom + dA.
+			}
+
+			local deltaV is dh / meanRadius.
+			set deltaV to deltaV + exhaustV * T * (fdtheta + fddtheta * tau).
+			set deltaV to deltaV + fddtheta * exhaustV * (T*T) * 0.5.
+			set deltaV to deltaV / (ftheta + (fdtheta + fddtheta * tau) * tau).
+			
+			// Calculate new estimate for T
+			if deltaV > 0
+			{
+				set T to tau * (1 - constant:e ^ (-deltaV / exhaustV)).
+				set stageT[s] to (stageT[s] + T) * 0.5.
+			}
+			
+			// Update A, B with new T estimate
+			set b0 to deltaV.
+			set b1 to b0 * tau - exhaustV * T.
+			local c0 is b0 * T - b1.
+			local c1 is c0 * tau - exhaustV * (T*T) * 0.5.
+			
+			local Mx is rvT - rv.
+			local My is rT - r - rv * T.
+			
+			local det is b0 * c1 - b1 * c0.
+			if (abs(det) > 1e-7)
+			{
+				local newA is (c1 * Mx - b1 * My) / det.
+				local newB is (b0 * My - c0 * Mx) / det.
+				set stageA[s] to (stageA[s] + newA) * 0.5.
+				set stageB[s] to (stageB[s] + newB) * 0.5.
+			}
+			
+			if abs(stageA[s]) > 3
+			{
+				set stageA[s] to 0.
+				set stageB[s] to 0.
+				set stageT[s] to LAS_GetStageBurnTime().
+				print "Reset guidance".
+			}
+			else if Stage:Number > GuidanceLastStage
+			{
+				// prevent T going too low and cutting off guidance updates
+				set stageT[s] to max(stageT[s], 10).
+			}
+		}
 
         set debugStages[s]:text to "S" + s + ": A=" + round(stageA[s],3) + " B=" + round(stageB[s],3) + " T=" + round(stageT[s],2).
 
@@ -546,6 +663,9 @@ global function LAS_GetGuidanceAim
     local hVec is vcrs(LAS_ShipPos(), Ship:Velocity:Orbit):Normalized.
     local downtrack is vcrs(hVec, rVec).
     local omega is vdot(Ship:Velocity:Orbit, downtrack) / r.
+    
+    if hT <= 0
+        set s to GuidanceLastStage.
     
     // Calculate current peformance
     local StageEngines is LAS_GetStageEngines().
@@ -625,23 +745,36 @@ global function LAS_StartGuidance
         // Update estimate for T for active stage
 		set stageT[Stage:Number] to LAS_GetStageBurnTime().
     
-        local r is LAS_ShipPos():Mag.
-        local h is vcrs(LAS_ShipPos(), Ship:Velocity:Orbit):Mag.
-    
-        local deltaVReq is 1.4 * (hT - h) / (rT + r).   // This gives a fairly reasonable guess at the required deltaV.
-        local deltaV is 0.
-        from {local i is Stage:Number.} until i < 0 step {set i to i - 1.} do
-        {
-            if stageExhaustV[i] > 0
-            {
-                set deltaV to deltaV - stageExhaustV[i] * ln(1 - stageT[i] * stageAccel[i] / stageExhaustV[i]).
-                set GuidanceLastStage to i.
-                if deltaV >= deltaVReq
-                    break.
-            }
-        }
-        
-        print "h=" + round(h, 1) + " dV=" + round(deltaV, 1) + "/" + round(deltaVReq, 1).
+		if hT <= 0
+		{
+			from {local i is Stage:Number.} until i < 0 step {set i to i - 1.} do
+			{
+				if stageExhaustV[i] > 0
+				{
+					set GuidanceLastStage to i.
+				}
+			}
+		}
+		else
+		{
+			local r is LAS_ShipPos():Mag.
+			local h is vcrs(LAS_ShipPos(), Ship:Velocity:Orbit):Mag.
+		
+			local deltaVReq is 1.4 * (hT - h) / (rT + r).   // This gives a fairly reasonable guess at the required deltaV.
+			local deltaV is 0.
+			from {local i is Stage:Number.} until i < 0 step {set i to i - 1.} do
+			{
+				if stageExhaustV[i] > 0
+				{
+					set deltaV to deltaV - stageExhaustV[i] * ln(1 - stageT[i] * stageAccel[i] / stageExhaustV[i]).
+					set GuidanceLastStage to i.
+					if deltaV >= deltaVReq
+						break.
+				}
+			}
+			
+			print "h=" + round(h, 1) + " dV=" + round(deltaV, 1) + "/" + round(deltaVReq, 1).
+		}
     }
     print "Last guidance stage: " + GuidanceLastStage.
 
@@ -702,7 +835,7 @@ global function LAS_GuidanceUpdate
 
 global function LAS_GuidanceCutOff
 {
-    if rT <= 0
+    if rT <= 0 or hT <= 0
         return false.
 
     local prevE is orbitalEnergy.

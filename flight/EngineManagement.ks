@@ -36,7 +36,7 @@ rcs on.
 set Ship:Control:Fore to 1.
 print"Manoeuvre engine ullage".
 wait until LAS_GetFuelStability(_2)>=99.
-set Ship:Control:MainThrottle to 1.
+set Ship:Control:PilotMainThrottle to 1.
 for eng in _2
 {
 eng:Activate().

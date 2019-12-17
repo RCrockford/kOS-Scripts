@@ -10,7 +10,7 @@ local _2 is 0.
 for eng in _0
 {
 if _1
-set _2 to _2+eng:Thrust/Ship:Control:PilotMainThrottle.
+set _2 to _2+eng:Thrust/Ship:Control:MainThrottle.
 else
 set _2 to _2+eng:PossibleThrust.
 }
@@ -47,7 +47,7 @@ else
 {
 if not _1 and vdot(f,Ship:Facing:ForeVector)>0.998
 {
-set Ship:Control:PilotMainThrottle to 1.
+set Ship:Control:MainThrottle to 1.
 for eng in _0
 {
 eng:Activate.
@@ -73,16 +73,16 @@ local _11 is Ship:GroundSpeed/MAX(t-2,0.1).
 local fr is(_10+_8)/_7.y.
 set fr to min(max(fr,0),0.999).
 local acg is fr*LAS_ShipPos():Normalized+min(sqrt(1-fr*fr),_11)*vxcl(Ship:SrfRetrograde:ForeVector,LAS_ShipPos():Normalized).
-set Ship:Control:PilotMainThrottle to acg:Mag.
+set Ship:Control:MainThrottle to acg:Mag.
 set f to acg:Normalized.
 }
 else
 {
 set f to Ship:SrfRetrograde:ForeVector.
-set Ship:Control:PilotMainThrottle to(_10+_8)/_7.y.
+set Ship:Control:MainThrottle to(_10+_8)/_7.y.
 }
 }
-set Ship:Control:PilotMainThrottle to 0.
+set Ship:Control:MainThrottle to 0.
 for eng in _0
 {
 eng:Shutdown.

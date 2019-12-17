@@ -38,6 +38,7 @@ if Ship:Status = "PreLaunch"
     local launchAzimuth is 90.
     local targetInclination is -1.
     local targetOrbitable is 0.
+    local maxApoapsis is -1.
 
     if guidance
     {
@@ -53,6 +54,7 @@ if Ship:Status = "PreLaunch"
     else
     {
         print "No avionics unit detected, assuming unguided.".
+        set maxApoapsis to LAS_GetPartParam(Core:Part, "ap=", maxApoapsis).
     }
 
     local flightGui is Gui(250).
@@ -143,7 +145,7 @@ if Ship:Status = "PreLaunch"
         // Trigger flight control
         if not guidance
         {
-            runpath("0:/launch/FlightControlUnguided").
+            runpath("0:/launch/FlightControlUnguided", maxApoapsis).
         }
         else
         {

@@ -51,7 +51,7 @@ global function EM_IgniteManoeuvreEngines
         
         wait until LAS_GetFuelStability(activeEngines) >= 99.
         
-        set Ship:Control:MainThrottle to 1.
+        set Ship:Control:PilotMainThrottle to 1.
         
         for eng in activeEngines
         {
