@@ -35,8 +35,8 @@ for eng in mainEngines
     }
     else
     {
-        set autoStartTime to max(autoStartTime, 5).
-        set startStagger to max(startStagger, 0.25).
+        set autoStartTime to max(autoStartTime, 4).
+        set startStagger to max(startStagger, 0.2).
     }
     
     print "  " + eng:Title + ", " + engType.
@@ -49,7 +49,7 @@ if engineStart < 0
     set engineStart to autoStartTime + startStagger * min(mainEnginesLF:length - 1, 0).
 }
 
-set startStagger to min(startStagger, engineStart * 0.2).
+set startStagger to min(startStagger, engineStart * 0.1).
 
 print "Ground Launch Controller ready.".
 print "  Engine start at T-" + round(engineStart, 2) + ".".

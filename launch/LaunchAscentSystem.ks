@@ -33,8 +33,8 @@ if Ship:Status = "PreLaunch"
         }
     }
     
-    local pitchOverSpeed is 100.
-    local pitchOverAngle is 4.
+    local pitchOverSpeed is 80.
+    local pitchOverAngle is 5.
     local launchAzimuth is 90.
     local targetInclination is -1.
     local targetOrbitable is 0.

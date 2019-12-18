@@ -7,17 +7,50 @@ local maxQ is Ship:Q.
 
 local function checkMaxQ
 {
-    if maxQ > 0
+	if maxQ > Ship:Q and Ship:Altitude > 5000
+	{
+		print "Max Q: " + round(maxQ * constant:AtmToKPa, 2) + " kPa.".
+		set maxQ to -1.
+	}
+	else
+	{
+		set maxQ to Ship:Q.
+	}
+}
+
+local PL_Fairings is list().
+local PL_FairingsJettisoned is false.
+
+local function checkPayload
+{
+    if not PL_FairingsJettisoned
     {
-        if maxQ > Ship:Q and Ship:Altitude > 5000
+        if Ship:Q < 0.001
         {
-            print "Max Q: " + round(maxQ * constant:AtmToKPa, 2) + " kPa.".
-            set maxQ to -1.
+            // Jettison fairings
+			local jettisoned is false.
+            for f in PL_Fairings
+            {
+                if f:HasEvent("jettison fairing")
+				{
+                    f:DoEvent("jettison fairing").
+					set jettisoned to true.
+				}
+            }
+            
+            if jettisoned
+                print "Fairings jettisoned".
+            
+            set PL_FairingsJettisoned to true.
         }
-        else
-        {
-            set maxQ to Ship:Q.
-        }
+    }
+}
+
+for shipPart in Ship:Parts
+{
+    if shipPart:HasModule("ProceduralFairingDecoupler")
+    {
+        PL_Fairings:Add(shipPart:GetModule("ProceduralFairingDecoupler")).
     }
 }
 
@@ -25,12 +58,14 @@ until False
 {
     if maxQ > 0
         checkMaxQ().
+	else
+		checkPayload().
     
     LAS_CheckStaging().
 	
 	if Ship:Control:PilotMainThrottle > 0 and maxApoapsis > 0 and Ship:Orbit:Apoapsis > maxApoapsis * 1000
 	{
-        print "Main engine cutoff".
+        print "Sustainer engine cutoff".
         set Ship:Control:PilotMainThrottle to 0.
 		
 		local mainEngines is LAS_GetStageEngines().

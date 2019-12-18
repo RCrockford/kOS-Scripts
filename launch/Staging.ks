@@ -63,6 +63,8 @@ local function DecoupleStage
                 modDecouple:DoEvent("decouple").
             else if modDecouple:HasEvent("decouple top node")
                 modDecouple:DoEvent("decouple top node").
+            else if modDecouple:HasEvent("decoupler staging")
+                modDecouple:DoEvent("decoupler staging").
         }
 
         set NextStageDecouplers to list().
@@ -389,12 +391,13 @@ local function CheckStageType
         else
         {
             set StagingFunction to HotStage@.
-            set HotStageWarmup to 0.6.
+            set HotStageWarmup to 0.8.
             // Check if we need to wait for turbopump spool.
             for eng in NextStageEngines
             {
                 if not LAS_EngineIsPressureFed(eng) and not LAS_EngineIsSolidFuel(eng)
-                    set HotStageWarmup to 2.5.
+                    set HotStageWarmup to max(HotStageWarmup, 2.5).
+				set HotStageWarmup to max(LAS_GetPartParam(eng, "s=", 0), HotStageWarmup).
             }
             print "Next stage: Hot Stage (" + HotStageWarmup + ")".
         }
