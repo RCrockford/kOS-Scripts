@@ -60,12 +60,13 @@ if Ship:Status = "PreLaunch"
     
     // Wait until we're within 10 degrees.
     //until (meanAnomaly - interceptMeanAnomaly) < 5 and (meanAnomaly - interceptMeanAnomaly) > -10
-    until abs(targetObt:Longitude - targetLong) < 1
+    until abs(targetObt:Longitude - targetLong) < 0.2
     {
         //set guiTime:text to "MA: " + round(meanAnomaly, 1) + ", Target: " + round(interceptMeanAnomaly, 1).
         set guiTime:text to "Long: " + round(targetObt:Longitude, 1) + ", Target: " + round(targetLong, 1).
         wait 1.
     }
-    
+	
+    kUniverse:Timewarp:CancelWarp().
     waitGui:Hide().
 }

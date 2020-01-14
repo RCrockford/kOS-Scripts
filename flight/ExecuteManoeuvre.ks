@@ -1,153 +1,170 @@
+// Orbital manoeuvres using KSP flight planner
+
 @lazyglobal off.
-parameter _0.
-parameter _1 is false.
-parameter _2 is false.
-parameter _3 is 0.
-parameter _4 is 0.
-parameter _5 is 0.
-parameter _6 is 0.
-parameter _7 is 0.
+
+parameter spinRate.
+parameter rcsBurn is false.
+parameter spinKick is false.
+parameter tangent is 0.
+parameter normal is 0.
+parameter binormal is 0.
+parameter burnStart is 0.
+
+// Wait for unpack
 wait until Ship:Unpacked.
+
 if not HasNode
 {
-lock tVec to Ship:Prograde:Vector.
-lock bVec to vcrs(tVec,ship:up:vector):Normalized.
-lock nVec to vcrs(tVec,bVec):Normalized.
-lock dV to _3*tVec+_4*nVec+_5*bVec.
-set _6 to time:Seconds+_6.
-lock burnEta to _6-time:Seconds.
+    lock tVec to Ship:Prograde:Vector.
+    lock bVec to vcrs(tVec, ship:up:vector):Normalized.
+    lock nVec to vcrs(tVec, bVec):Normalized.
+    lock dV to tangent * tVec + normal * nVec + binormal * bVec.
+    set burnStart to time:Seconds + burnStart.
+    lock burnEta to burnStart - time:Seconds.
 }
 else
 {
-lock dV to NextNode:DeltaV.
-lock burnEta to NextNode:eta.
+    lock dV to NextNode:DeltaV.
+    lock burnEta to NextNode:eta.
 }
-runoncepath("FCFuncs").
-local _8 is _0.
-local _9 is stage:Number.
-local _10 is list().
-local _11 is 1.
-if not _1
+runoncepath("0:/FCFuncs").
+
+local duration is 0.
+local burnStage is stage:Number.
+local activeEngines is list().
+local fuelName is 0.
+local fuelAmount is 0.
+
+if rcsBurn
 {
-if _2
-set _9 to _9-1.
-runpath("flight/EngineManagement",_9).
-set _10 to EM_GetManoeuvreEngines().
-if _10:Length=0
-{
-print"No active engines!".
+	runoncepath("0:/flight/RCSPerf.ks").
+	local RCSPerf is GetRCSForePerf().
+
+	// Calc burn duration
+	local massRatio is constant:e ^ (dV:Mag * RCSPerf:massflow / RCSPerf:thrust).
+	local finalMass is Ship:Mass / massRatio.
+	set duration to (Ship:Mass - finalMass) / RCSPerf:massflow.
 }
 else
 {
-local _12 is 0.
-local _13 is 0.
-for eng in _10
+    if spinKick
+        set burnStage to burnStage - 1.
+
+    runpath("0:/flight/EngineMgmt", burnStage).
+    set activeEngines to EM_GetEngines().
+    if activeEngines:Length = 0
+    {
+        print "No active engines!".
+    }
+    else
+    {
+        local massFlow is 0.
+        local burnThrust is 0.
+        for eng in activeEngines
+        {
+            set massFlow to massFlow + eng:MaxMassFlow.
+            set burnThrust to burnThrust + eng:PossibleThrust.
+        }
+        local massRatio is constant:e ^ (dV:Mag * massFlow / burnThrust).
+		
+		local activeResources is lexicon().
+        
+        local shipMass is 0.
+        for shipPart in Ship:Parts
+        {
+            if shipPart:IsType("Decoupler")
+            {
+                if shipPart:Stage < burnStage
+                {
+                    set shipMass to shipMass + shipPart:Mass.
+                }
+            }
+            else if shipPart:DecoupledIn < burnStage
+            {
+                set shipMass to shipMass + shipPart:Mass.
+				
+				for r in shipPart:resources
+				{
+					if r:Density > 0
+					{
+						if not activeResources:HasKey(r:Name)
+							activeResources:Add(r:Name, r:amount).
+                        else
+                            set activeResources[r:name] to activeResources[r:name] + r:amount.
+					}
+				}
+            }
+        }
+        
+        local finalMass is shipMass / massRatio.
+        set duration to (shipMass - finalMass) / massFlow.
+
+		local startFuelMass is 0.
+        
+        for eng in activeEngines
+        {
+            for k in eng:ConsumedResources:keys
+            {
+                local res is eng:ConsumedResources[k].
+                if res:Density > 0 and activeResources:HasKey[res:name]
+                {
+                    set startFuelMass to startFuelMass + activeResources[res] * res:Density.
+                    if fuelName = 0
+                    {
+                        set fuelName to res:name.
+                        set fuelAmount to activeResources[res].
+                    }
+                }
+            }
+        }
+		
+		if startFuelMass > 0 
+		{
+			local fuelProp is (shipMass - finalMass) / startFuelMass.
+			set fuelProp to min(max(0, fuelProp), 1).			
+			set fuelAmount to fuelAmount * fuelProp.
+		}
+    }
+}
+
+print "Executing manoeuvre in " + round(burnEta, 1) + " seconds.".
+print "  DeltaV: " + round(dV:Mag, 1) + " m/s.".
+print "  Duration: " + round(duration, 1) + " s.".
+if not rcsBurn
+	print "  Fuel Monitor: " + fuelName + " => " + round(fuelAmount, 2).
+if rcsBurn
 {
-local _14 is eng:PossibleThrustAt(0).
-set _12 to _12+_14/(Constant:g0*eng:VacuumIsp).
-set _13 to _13+_14.
+    print "  RCS burn.".
+    set spinKick to false.
 }
-set _11 to constant:e^(dV:Mag*_12/_13).
-local _15 is 0.
-for shipPart in Ship:Parts
+if spinKick
 {
-if shipPart:IsType("Decoupler")
+    print "  Inertial burn.".
+}
+    
+if burnEta > 120 and Addons:Available("KAC")
 {
-if shipPart:Stage<_9
+    // Add a KAC alarm.
+    AddAlarm("Raw", burnEta - 90 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+}
+
+local burnParams is lexicon(
+    "eta", burnEta",
+    "dv", dV,
+    "fuelN", fuelName,
+    "fuelA, fuelAmount,
+    "t", duration,
+    "eng", not activeEngines:empty,
+    "stage", burnStage,
+    "inertial", spinKick,
+    "spin", spinRate
+).
+
+local fileList is list("flight/ExecuteManoeuvreBurn.ks").
+if burnParams:engines
 {
-set _15 to _15+shipPart:Mass.
+    fileList:add("FCFuncs.ks").
+    fileList:add("flight/EngineMgmt.ks").
 }
-}
-else if shipPart:DecoupledIn<_9
-{
-set _15 to _15+shipPart:Mass.
-}
-}
-local _16 is _15/_11.
-set _8 to(_15-_16)/_12.
-}
-}
-print"Executing manoeuvre in "+round(burnEta,1)+" seconds.".
-print" DeltaV: "+round(dV:Mag,1)+" m/s.".
-print" Duration: "+round(_8,1)+" s.".
-if _1
-{
-print" RCS burn.".
-set _2 to false.
-}
-if _2
-{
-print" Inertial burn.".
-}
-if burnEta>120 and Addons:Available("KAC")
-{
-AddAlarm("Raw",burnEta-90+Time:Seconds,Ship:Name+" Manoeuvre",Ship:Name+" is nearing its next manoeuvre").
-}
-print"Waiting for manoeuvre".
-wait until burnEta<60.
-print"Aligning ship.".
-local _17 is 0.
-if not _1
-{
-set _17 to EM_GetIgnitionDelay().
-}
-rcs on.
-lock steering to dV:Normalized.
-if _2
-{
-set Ship:Control:Roll to-1.
-until burnEta<=_17
-{
-local _18 is vdot(Ship:Facing:Vector,Ship:AngularVel).
-if abs(_18)>_0*1.25
-{
-set Ship:Control:Roll to 0.1.
-}
-else if abs(_18)>_0 and abs(_18)<_0*1.2
-{
-set Ship:Control:Roll to-0.1.
-}
-wait 0.
-}
-set Ship:Control:Roll to-0.1.
-}
-else
-{
-wait until burnEta<=_17.
-}
-if not _10:empty
-{
-EM_IgniteManoeuvreEngines().
-print"Starting engine burn.".
-if _2 and Stage:Ready
-{
-unlock steering.
-set Ship:Control:Neutralize to true.
-rcs off.
-stage.
-}
-}
-else
-{
-print"Starting RCS burn.".
-set Ship:Control:Fore to 1.
-}
-if _1
-{
-wait _8.
-}
-else
-{
-local _19 is ship:Mass/_11.
-wait until Ship:Mass<=_19 and Ship:Orbit:Apoapsis>=_7.
-}
-set Ship:Control:PilotMainThrottle to 0.
-for eng in _10
-{
-eng:Shutdown().
-}
-if not _10:empty
-print"MECO".
-unlock steering.
-set Ship:Control:Neutralize to true.
-rcs off.
+
+runpath("0:/flight/SetupBurn", burnParams, fileList).

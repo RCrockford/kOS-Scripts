@@ -4,31 +4,7 @@
 
 global lock LAS_ShipPos to -Ship:Body:Position.
 
-global function LAS_EngineIsSolidFuel
-{
-    parameter eng.
-    
-    return not eng:AllowShutdown.
-}
-
-global function LAS_EngineIsPressureFed
-{
-    parameter eng.
-    
-    if eng:HasModule("ModuleEnginesRF")
-    {
-        local rfModule is eng:GetModule("ModuleEnginesRF").
-        if rfModule:HasField("pressurefed")
-            return rfModule:GetField("pressurefed").
-        // Just in case the field doesn't read correctly.
-        if eng:HasModule("ModuleTagEngineLiquidPF")
-            return true.
-    }
-    
-    return false.
-}
-
-local function EngIsUllage
+global function LAS_EngineIsUllage
 {
     parameter eng.
     
@@ -47,46 +23,32 @@ global function LAS_GetStageEngines
         set stageNum to min(stageNum, Stage:Number - 1).
     
     local stageEngines is list().
-    for eng in allEngines
+    for e in allEngines
     {
-        if eng:Stage = stageNum and EngIsUllage(eng) = ullage
+        if e:Stage = stageNum and LAS_EngineIsUllage(e) = ullage
         {
-            stageEngines:Add(eng).
+            stageEngines:Add(e).
         }
     }
     
     return stageEngines.
 }
 
-global function LAS_GetFuelStability
+
+global function LAS_Avionics
 {
-    parameter activeEngines.
-
-    local fuelState is "(99%)".
-
-    // Wait for fuel to settle.
-    for eng in activeEngines
+    parameter action.
+    
+    set action to action + " avionics".
+    
+    for avionics in Ship:ModulesNamed("ModuleProceduralAvionics")
     {
-        if not LAS_EngineIsSolidFuel(eng) and eng:HasModule("ModuleEnginesRF")
+        if avionics:HasEvent(action)
         {
-            local rfModule is eng:GetModule("ModuleEnginesRF").
-            if rfModule:HasField("propellant")
-            {
-                set fuelState to rfModule:GetField("propellant").
-                break.
-            }
+            avionics:DoEvent(action).
         }
     }
-	
-    if fuelState:Contains("(")
-    {
-        local f is fuelState:Find("(") + 1.
-        set fuelState to fuelState:Substring(f, fuelState:Length - f):Split("%")[0]:ToNumber(-1).
-    }
-    else
-    {
-        set fuelState to 0.
-    }
     
-    return fuelState.
+    if action:contains("shutdown")
+        set core:bootfilename to "".
 }

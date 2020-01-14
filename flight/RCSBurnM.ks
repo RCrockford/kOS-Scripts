@@ -2,5 +2,4 @@ parameter t.
 parameter n.
 parameter b.
 parameter s.
-parameter d.
-runpath("flight/executemanoeuvre",d,true,false,t,n,b,s).
+runpath("0:/flight/executemanoeuvre",0,true,false,t,n,b,s).

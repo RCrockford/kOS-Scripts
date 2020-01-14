@@ -5,40 +5,39 @@ parameter burnStage.
 local ignitionDelay is 0.
 local activeEngines is list().
 
+runoncepath("/FCFuncs").
+
 // Setup active engine list
 local stageEngines is LAS_GetStageEngines(burnStage).
 
-for eng in stageEngines
+for e in stageEngines
 {
-    if not eng:HasModule("ModuleEnginesRF") or eng:GetModule("ModuleEnginesRF"):GetField("ignitions remaining") > 0
+    if e:Ignitions <> 0
     {
-        activeEngines:Add(eng).
+        activeEngines:Add(e).
+            
+        if e:Ullage
+        {
+            // Add half a second for ullage.
+            if e:PressureFed
+                set ignitionDelay to max(ignitionDelay, 1).
+            else
+                set ignitionDelay to max(ignitionDelay, 3).
+        }
     }
 }
 
-for eng in activeEngines
-{
-    if not LAS_EngineIsSolidFuel(eng)
-    {
-        // Add half a second for ullage.
-        if LAS_EngineIsPressureFed(eng)
-            set ignitionDelay to max(ignitionDelay, 1).
-        else
-            set ignitionDelay to max(ignitionDelay, 3).
-    }
-}
-
-global function EM_GetIgnitionDelay
+global function EM_IgDelay
 {
     return ignitionDelay.
 }
 
-global function EM_GetManoeuvreEngines
+global function EM_GetEngines
 {
     return activeEngines.
 }
     
-global function EM_IgniteManoeuvreEngines
+global function EM_Ignition
 {
     // If we have engines, prep them to ignite.
     if not activeEngines:empty
@@ -47,16 +46,13 @@ global function EM_IgniteManoeuvreEngines
         rcs on.
         set Ship:Control:Fore to 1.
         
-        print "Manoeuvre engine ullage".
-        
-        wait until LAS_GetFuelStability(activeEngines) >= 99.
+        for e in activeEngines
+            wait until e:FuelStability >= 0.99.
         
         set Ship:Control:PilotMainThrottle to 1.
         
-        for eng in activeEngines
-        {
-            eng:Activate().
-        }
+        for e in activeEngines
+            e:Activate.
 
         wait 0.
         set Ship:Control:Fore to 0.

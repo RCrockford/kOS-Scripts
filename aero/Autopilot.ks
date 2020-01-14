@@ -61,7 +61,11 @@ local allFlaps is list().
 local hasReheat is false.
 local rocketPlane is false.
 local initialClimb is true.
+local abortMode is false.
 local allChutes is list().
+
+local leftGear is 0.
+local rightGear is 0.
 
 for p in Ship:parts
 {
@@ -94,6 +98,22 @@ for p in Ship:parts
 			set rocketPlane to true.
 		}
 	}
+	
+	if p:HasModule("ModuleWheelBrakes")
+	{
+		if vdot(p:Position, Ship:RootPart:Facing:RightVector) > 1
+		{
+			set rightGear to p.
+		}
+		else if vdot(p:Position, Ship:RootPart:Facing:RightVector) < -1
+		{
+			set leftGear to p.
+		}
+		else
+		{
+			p:GetModule("ModuleWheelBrakes"):SetField("brakes", 0).
+		}
+	}
 }
 
 local function setFlaps
@@ -120,26 +140,29 @@ local function setFlaps
 }
 
 local targetFlightLevel is 50.
-local targetSpeed is 150.
+local targetSpeed is 250.
 local targetHeading is round(shipHeading, 0).
 local targetClimbRate is 0.
-local rotateSpeed is 80.
-local landingSpeed is 80.
+local rotateSpeed is 120.
+local landingSpeed is 90.
 local controlSense is 1.
 local climbKP is 1.
 local climbKI is 0.1.
 local climbKD is 0.25.
 local maxThrottle is 1.
 
-if rocketPlane
+if rocketPlane and not ship:rootpart:tag:contains("noclimb")
 {
 	set targetFlightLevel to 0.
 	set targetClimbRate to 50.
 }
+else
+{
+	set initialClimb to false.
+}
 
 local pitchPid is PIDloop(0.02, 0.001, 0.02, -1, 1).
 local rollPid is PIDloop(0.005, 0.00005, 0.001, -1, 1).
-local yawPid is PIDloop(0.1, 0.005, 0.03, -1, 1).
 local throtPid is PIDloop(0.1, 0.002, 0.05, 0, 1).
 local bankPid is PIDloop(3, 0.0, 5, -45, 45).
 local climbRatePid is pidloop(0.5, 0.01, 0.1, -40, 45).
@@ -154,7 +177,7 @@ local mainBox is flightGui:AddHBox().
 local labelBox is mainBox:AddVBox().
 set labelBox:style:width to 150.
 local controlBox is mainBox:AddVBox().
-set controlBox:style:width to 100.
+set controlBox:style:width to 120.
 local toggleBox is mainBox:AddVBox().
 set toggleBox:style:width to 50.
 
@@ -211,10 +234,10 @@ createGuiControls("hdg", "Heading", targetHeading, { parameter s. set targetHead
 createGuiControls("spd", "Airspeed", targetSpeed, { parameter s. set targetSpeed to s:ToNumber(targetSpeed). }, "").
 createGuiControls("fl", "Flight Level", targetFlightLevel, { parameter s. set targetFlightLevel to s:ToNumber(targetFlightLevel). }, "").
 createGuiControls("cr", "Climb Rate", targetClimbRate, { parameter s. set targetClimbRate to s:ToNumber(targetClimbRate). }, "").
-createGuiControls("sns1", "Ctrl Sensitivity", controlSense, { parameter s. set controlSense to s:ToNumber(controlSense). }, "").
-createGuiControls("sns2", "Climb kP", climbKP, { parameter s. set climbKP to s:ToNumber(climbKP). }, "").
-createGuiControls("sns3", "Climb kI", climbKI, { parameter s. set climbKI to s:ToNumber(climbKI). }, "").
-createGuiControls("sns4", "Climb kD", climbKD, { parameter s. set climbKD to s:ToNumber(climbKD). }, "").
+//createGuiControls("sns1", "Ctrl Sensitivity", controlSense, { parameter s. set controlSense to s:ToNumber(controlSense). }, "").
+//createGuiControls("sns2", "Climb kP", climbKP, { parameter s. set climbKP to s:ToNumber(climbKP). }, "").
+//createGuiControls("sns3", "Climb kI", climbKI, { parameter s. set climbKI to s:ToNumber(climbKI). }, "").
+//createGuiControls("sns4", "Climb kD", climbKD, { parameter s. set climbKD to s:ToNumber(climbKD). }, "").
 
 if rocketPlane
 {
@@ -241,6 +264,8 @@ if hasReheat
 
 createGuiInfo("rwh", "Runway Heading", "0.0°").
 createGuiInfo("rwd", "Runway Distance", "0.0 km").
+createGuiInfo("dbg", "Debug", "").
+local debugName is guiElements[guiElements:Length-2].
 
 local exitButton is flightGui:AddButton("Exit").
 
@@ -261,8 +286,10 @@ local fs_LandFinalApproach is 23.
 local fs_LandBrake is 24.
 local fs_LandManual is 25.
 local fs_LandDitch is 26.
+local fs_LandBrakeHeading is 27.
 
 local flightState is fs_Flight.
+set debugName:Text to "Flight".
 
 local runwayEnd1 is V(0,0,0).
 local runwayEnd2 is V(0,0,0).
@@ -271,11 +298,22 @@ local runwayHeading is -1.
 
 local landingTarget is V(0,0,0).
 
+local function runwayNumber
+{
+	parameter heading.
+	
+	local number is round(heading / 10, 0).
+	if number < 10
+		return "0" + number:ToString.
+	return number:ToString.
+}
+
 if Ship:status = "PreLaunch" or Ship:status = "Landed"
 {
     Core:Part:GetModule("kOSProcessor"):DoEvent("Open Terminal").
 
 	set flightState to fs_Landed.
+	set debugName:Text to "Landed".
 	set guiButtons["to"]:Enabled to true.
 	set guiButtons["lnd"]:Enabled to false.
 
@@ -286,7 +324,7 @@ if Ship:status = "PreLaunch" or Ship:status = "Landed"
 	
 	set runwayCentre to (runwayEnd1 + runwayEnd2) * 0.5.
 
-	print "Takeoff from runway " + round(runwayHeading / 10, 0).
+	print "Takeoff from runway " + runwayNumber(runwayHeading).
 }
 
 FlightGui:Show().
@@ -315,7 +353,7 @@ until exitButton:TakePress
 			{
 				// 10 degree rotation
 				set reqPitch to 10.
-				if rocketPlane
+				if rocketPlane or abortMode
 					set reqPitch to 20.
 			}
 
@@ -324,7 +362,6 @@ until exitButton:TakePress
 				set stallSpeed to Ship:AirSpeed.
 				print "Stall speed set to " + round(stallSpeed, 1).
                 set Ship:Control:WheelSteer to 0.
-                set Ship:Control:Yaw to 0.
 			}
             else if Ship:Status = "Landed"
             {
@@ -332,12 +369,19 @@ until exitButton:TakePress
             }
 
 			set reqHeading to groundHeading.
-			set Ship:Control:PilotMainThrottle to maxThrottle.
+			set Ship:Control:PilotMainThrottle to 1.
+				
+			local minAlt is 250.
+			if initialClimb
+				set minAlt to 10.
+			else if abortMode
+				set minAlt to 500.
 
-			if Alt:Radar > 250 or (rocketPlane and Alt:Radar > 10)
+			if Alt:Radar > minAlt and Ship:VerticalSpeed > 0
 			{
                 setFlaps(0).
 				set flightState to fs_Flight.
+				set debugName:Text to "Flight".
 				set guiButtons["lnd"]:Enabled to true.
 			}
             
@@ -348,8 +392,11 @@ until exitButton:TakePress
                 brakes on.
                 set Ship:Control:PilotMainThrottle to 0.
             
-				set flightState to fs_LandBrake.
-				set guiButtons["to"]:Enabled to true.                
+				set flightState to fs_LandBrakeHeading.
+				set debugName:Text to "Brake".
+				set guiButtons["to"]:Enabled to true.      
+
+				set flightTarget to runwayEnd2.
             }
 		}
 		else if flightState = fs_Flight
@@ -357,7 +404,7 @@ until exitButton:TakePress
 			if guiButtons["fl"]:Pressed or guiButtons["cr"]:Pressed or guiButtons["hdg"]:Pressed
 			{
 				// Altitude control
-				if rocketPlane and initialClimb
+				if initialClimb
 				{
 					set reqPitch to targetClimbRate.
 					if Ship:VerticalSpeed < 0
@@ -388,7 +435,7 @@ until exitButton:TakePress
 					set reqClimbRate to targetClimbRate.
 				}
 
-				if rocketPlane and initialClimb
+				if initialClimb
 				{
 					set reqHeading to shipHeading.
 				}
@@ -430,18 +477,20 @@ until exitButton:TakePress
 						set groundHeading to mod(runwayHeading + 180, 360).
 					}
 
-					print "Landing at runway " + round(groundHeading / 10, 0).
+					print "Landing at runway " + runwayNumber(groundHeading).
 
 					// initial approach marker at 12 km out, 1km alt.
-					set flightTarget to landingTarget - heading(groundHeading, 0):Vector  * 12000 + Ship:Up:Vector * 1000.
+					set flightTarget to landingTarget - heading(groundHeading, 0):Vector * 12000 + Ship:Up:Vector * 1000.
 					if rocketPlane
 						set flightTarget to flightTarget + Ship:Up:Vector * 600.
 					set flightState to fs_LandInitApproach.
+					set debugName:Text to "Initial Approach".
 					set guiButtons["lnd"]:Enabled to false.
 				}
 				else
 				{
 					set flightState to fs_LandManual.
+					set debugName:Text to "Manual Landing".
 					print "Manual landing assistance active".
 					when alt:radar < 200 then { gear on. lights on. }
 				}
@@ -463,12 +512,18 @@ until exitButton:TakePress
 			set reqSpeed to (1.5 + getDistanceToTarget() / 10000) * landingSpeed.
 			local minSpeed is 1.5 * landingSpeed.
 			set reqSpeed to max(minSpeed, min(Ship:Airspeed, reqSpeed)).
+			local minDistance is 200.
+			if rocketPlane or abs(angle_off(groundHeading, shipHeading)) <= 60
+				set minDistance to minDistance + abs(angle_off(groundHeading, shipHeading)) * Ship:Airspeed * 0.25.
 
-			if getDistanceToTarget() < 200 + abs(angle_off(groundHeading, shipHeading)) * 10
+			set guiButtons["dbg"]:Text to round(reqHeading, 1) + "° " + round(getDistanceToTarget() * 0.001, 1) + "/" + round(minDistance * 0.001, 1).
+
+			if getDistanceToTarget() < minDistance
 			{
-				if rocketPlane or (abs(angle_off(groundHeading, shipHeading)) <= 30 and Ship:AirSpeed < reqSpeed * 1.2)
+				if rocketPlane or (abs(angle_off(groundHeading, shipHeading)) <= 60 and Ship:AirSpeed < reqSpeed * 1.2)
 				{
 					set flightState to fs_LandInterApproach.
+					set debugName:Text to "Approach".
 					set flightTarget to landingTarget - heading(groundHeading, 0):Vector * 4000 + Ship:Up:Vector * 250.
 					if rocketPlane
 						set flightTarget to flightTarget + Ship:Up:Vector * 100.
@@ -478,6 +533,7 @@ until exitButton:TakePress
 				else
 				{
 					set flightState to fs_LandTurn.
+					set debugName:Text to "Turn 1".
 					if Ship:AirSpeed >= reqSpeed * 1.2
 						print "Turning to reduce speed".
 					else
@@ -487,6 +543,7 @@ until exitButton:TakePress
 			else if rocketPlane and Alt:Radar < 1000
 			{
 				set flightState to fs_LandDitch.
+				set debugName:Text to "Ditching".
 				set groundHeading to shipHeading.
 				print "Insufficient momentum for landing, ditching aircraft".
 			}
@@ -495,21 +552,27 @@ until exitButton:TakePress
 		{
 			set reqClimbRate to (1000 - Ship:Altitude) * 0.025.
 			set reqSpeed to 1.5 * landingSpeed.
+			local minDistance is 2500 * landingSpeed * landingSpeed / 6400.
 
-            if getDistanceToTarget() < 2500 * landingSpeed * landingSpeed / 6400
-            {
+            if getDistanceToTarget() < minDistance
+            {			
                 set reqHeading to mod(groundHeading + 135, 360).
                 local heading2 is mod(groundHeading + 225, 360).
                 if abs(angle_off(heading2, shipHeading)) < abs(angle_off(reqHeading, shipHeading))
                     set reqHeading to heading2.
+				set guiButtons["dbg"]:Text to round(reqHeading, 1) + "° " + round(getDistanceToTarget() * 0.001, 2) + " / " + round(minDistance * 0.001, 2).
             }
 			else
             {
                 set reqHeading to mod(groundHeading + 180, 360).
+				
+				set debugName:Text to "Turn 2".
+				set guiButtons["dbg"]:Text to round(reqHeading, 1) + "° " + round(getDistanceToTarget() * 0.001, 2) + " / " + round(minDistance * 0.002, 2).
 
-                if getDistanceToTarget() > 5000 * landingSpeed * landingSpeed / 6400.
+                if getDistanceToTarget() > minDistance * 2
                 {
                     set flightState to fs_LandInitApproach.
+					set debugName:Text to "Initial Approach".
                 }
             }
         }
@@ -518,15 +581,18 @@ until exitButton:TakePress
 			set reqClimbRate to getClimbRateToTarget().
 			set reqHeading to getHeadingToTarget().
 			set reqSpeed to min((1 + getDistanceToTarget() / 16000), 1.5) * landingSpeed.
+			
+			set guiButtons["dbg"]:Text to round(reqHeading, 1) + "° " + round(getDistanceToTarget() * 0.001, 2) + "/0.05".
 
 			if getDistanceToTarget() < 50
 			{
 				kUniverse:Timewarp:CancelWarp().
 				set flightState to fs_LandFinalApproach.
-				set flightTarget to landingTarget + Ship:Up:Vector * 20.
+				set debugName:Text to "Final".
+				set flightTarget to landingTarget + Ship:Up:Vector * 10.
 				setFlaps(3).
 				gear on.
-				lights on.
+				when alt:radar < 200 then { lights off. lights on. }
 				print "Final approach".
 			}
 		}
@@ -534,8 +600,10 @@ until exitButton:TakePress
 		{
 			set reqHeading to getHeadingToTarget().
 			set reqSpeed to landingSpeed.
+			
+			set guiButtons["dbg"]:Text to round(reqHeading, 1) + "° ".
 
-			if Alt:radar < 30 or (Alt:Radar < 50 and rocketPlane)
+			if Alt:radar < 30 or (Alt:Radar < 40 and rocketPlane)
 			{
 				set reqClimbRate to -2.
 				set reqHeading to groundHeading.
@@ -543,6 +611,8 @@ until exitButton:TakePress
 			else
 			{
 				set reqClimbRate to getClimbRateToTarget().
+				if not rocketPlane
+					set reqClimbRate to max(reqClimbRate, -6).
 			}
             
 			if Alt:Radar < 10
@@ -553,32 +623,47 @@ until exitButton:TakePress
 
 			if Ship:Status = "Landed"
 			{
-				when Ship:GroundSpeed < 75 then { brakes on. }
+				brakes on.
 				print "Braking".
-				set flightState to fs_LandBrake.
+				set flightState to fs_LandBrakeHeading.
+				set debugName:Text to "Brake".
+				if (landingTarget - runwayEnd1):SqrMagnitude < (landingTarget - runwayEnd2):SqrMagnitude
+					set flightTarget to runwayEnd2.
+				else
+					set landingTarget to runwayEnd1.
 			}
-            else if not rocketPlane and abs(angle_off(shipHeading, reqHeading)) >= 10
-            {
-                print "Aborting landing".
-                // do a go around, full throttle, 10 degree pitch up, neutral steering.
-                set Ship:Control:PilotMainThrottle to 1.	// Always use reheat for go around.
-                set reqSpeed to 0.
-                set reqClimbRate to -1e8.
-                set reqPitch to 10.
-                set reqHeading to shipHeading.
-                set groundHeading to shipHeading.
-				set flightState to fs_Takeoff.
-            }
 		}
-		else if flightState = fs_LandBrake
+		else if flightState = fs_LandBrake or flightState = fs_LandBrakeHeading
 		{
 			set Ship:Control:PilotMainThrottle to 0.
+			if flightState = fs_LandBrakeHeading
+				set groundHeading to getHeadingToTarget().
+				
 			set reqHeading to groundHeading.
-
+            
 			if Ship:GroundSpeed < 1
 			{
                 setFlaps(0).
-				set flightState to fs_Landed.
+				set flightState to fs_Landed.				
+				set debugName:Text to "Landed".
+			}
+            // anti-lock brakes
+            else 
+			{
+				local a is angle_off(shipHeading, reqHeading).
+				if Ship:GroundSpeed < 8
+					set a to 0.
+				local maxBrake is max(100 - Ship:GroundSpeed, 0) * min(max(3 - abs(a), 0), 1).
+					
+				if leftGear:IsType("part") and rightGear:IsType("part")
+				{
+					leftGear:GetModule("ModuleWheelBrakes"):SetField("brakes", maxBrake * min(max(1.5 - a, 0.1), 1.25)).
+					rightGear:GetModule("ModuleWheelBrakes"):SetField("brakes", maxBrake * min(max(1.5 + a, 0.1), 1.25)).
+				}
+				else if abs(a) < 1
+					brakes on.
+				else
+					brakes off.
 			}
 		}
 		else if flightState = fs_LandManual
@@ -591,11 +676,13 @@ until exitButton:TakePress
 				set groundHeading to shipHeading.
 				print "Braking".
 				set flightState to fs_LandBrake.
+				set debugName:Text to "Brake".
 			}
 			else if guiButtons["lnd"]:TakePress
 			{
 				print "Landing assistance cancelled".
 				set flightState to fs_Flight.
+				set debugName:Text to "Flight".
 			}
 		}
 		else if flightState = fs_LandDitch
@@ -609,6 +696,34 @@ until exitButton:TakePress
 				brakes on.
 				print "Braking".
 				set flightState to fs_LandBrake.
+				set debugName:Text to "Brake".
+			}
+		}
+		
+		// Ground collision avoidance
+		if not rocketPlane and flightState >= fs_Flight and flightState <= fs_LandFinalApproach
+		{
+			set abortMode to false.
+			if flightState = fs_LandFinalApproach
+				set abortMode to abs(angle_off(shipHeading, reqHeading)) >= 8 or (Ship:VerticalSpeed < -8 and Ship:VerticalSpeed * -5 > Alt:Radar).
+			else
+				set abortMode to Ship:VerticalSpeed * -10 > Alt:Radar.
+				
+			if abortMode
+			{
+				print "Aborting landing".
+				// do a go around, full throttle, 10 degree pitch up, neutral steering.
+				set Ship:Control:PilotMainThrottle to 1.	// Always use reheat for go around.
+				set reqSpeed to 0.
+				set reqClimbRate to -1e8.
+				set reqPitch to 20.
+				set reqHeading to shipHeading.
+				set groundHeading to shipHeading.
+				set flightState to fs_Takeoff.
+				set guiButtons["hdg"]:Pressed to false.
+				set debugName:Text to "Abort".
+				setFlaps(2).
+				when alt:radar >= 20 and Ship:VerticalSpeed > 0 then { gear off. if currentFlapDeflect > 1 setFlaps(1). }
 			}
 		}
 
@@ -619,14 +734,16 @@ until exitButton:TakePress
                 set reqClimbRate to max(min(reqClimbRate, Ship:Airspeed - stallSpeed), 0).
                 
             local ctrlDamp is 120 / max(Ship:AirSpeed, 80).
+			if Ship:Status = "Landed"
+				set ctrlDamp to ctrlDamp * 1.5.
 
             if reqClimbRate > -1e6
             {
                 print "reqClimbRate=" + round(reqClimbRate, 1) + " / " + round(ship:verticalspeed, 1) + "   " at (0,0).
                 
                 set climbRatePid:kP to climbKP * ctrlDamp.
-                set climbRatePid:kI to climbKI * ctrlDamp.
                 set climbRatePid:kD to climbKD.
+				set climbRatePid:kI to climbKI * ctrlDamp.
                 
                 set climbRatePid:SetPoint to reqClimbRate.
                 set reqPitch to climbRatePid:Update(time:seconds, Ship:verticalspeed).
@@ -635,8 +752,8 @@ until exitButton:TakePress
             set ctrlDamp to ctrlDamp * max(0.1, min(controlSense, 10)).
 
             set pitchPid:kP to 0.06 * ctrlDamp.
-            set pitchPid:kI to 0.002 * ctrlDamp.
             set pitchPid:kD to 0.04 * ctrlDamp.
+			set pitchPid:kI to 0.002 * ctrlDamp.
             
             set pitchPid:SetPoint to reqPitch.
             set ship:control:pitch to pitchPid:update(time:seconds, ShipPitch).
@@ -656,11 +773,11 @@ until exitButton:TakePress
             {
                 bankPid:Reset().
             }
-            
-            set rollPid:kP to 0.005 * ctrlDamp.
-            set rollPid:kI to 0.00005 * ctrlDamp.
-            set rollPid:kD to 0.001 * ctrlDamp.
-
+			
+			set rollPid:kP to 0.005 * ctrlDamp.
+			set rollPid:kI to 0.0001 * ctrlDamp.
+			set rollPid:kD to 0.002 * ctrlDamp.
+			
 			set rollPid:SetPoint to reqBank.
 			set ship:control:roll to rollPid:Update(time:seconds, shipRoll()).
         }
@@ -693,11 +810,12 @@ until exitButton:TakePress
 		{
 			local wheelError is angle_off(groundHeading, shipHeading).
 
-			set wheelPid:kP to 0.018 / max(1, Ship:GroundSpeed / 10).
+			set wheelPid:kP to 0.02 / max(1, Ship:GroundSpeed / 12).
 			set wheelPid:kD to wheelPid:kP * 2 / 3.
 
-			set Ship:Control:WheelSteer to wheelPid:update(time:seconds, wheelError).
-            set Ship:Control:Yaw to yawPid:Update(time:seconds, wheelError).
+			set Ship:Control:WheelSteer to wheelPid:update(time:seconds, -wheelError).
+
+			set guiButtons["dbg"]:Text to round(groundHeading, 1) + "° ".
 		}
         else
         {
@@ -711,6 +829,7 @@ until exitButton:TakePress
             set guiButtons["hdg"]:Pressed to false.
             set guiButtons["spd"]:Pressed to false.
             set flightState to fs_Flight.
+			set debugName:Text to "Flight".
             set Ship:Control:PilotMainThrottle to maxThrottle.
             
             print "Autopilot disengaged.".
@@ -721,6 +840,7 @@ until exitButton:TakePress
 	else if guiButtons["to"]:TakePress
 	{
 		set flightState to fs_Takeoff.
+		set debugName:Text to "Takeoff".
 		set guiButtons["to"]:Enabled to false.
 
 		set groundHeading to round(shipHeading, 1).
@@ -729,6 +849,15 @@ until exitButton:TakePress
 		{
 			print "Engine start.".
 			stage.
+		}
+		
+		local allEngines is list().
+		list engines in allEngines.
+
+		for eng in allEngines
+		{
+			if eng:Stage = stage:Number
+				eng:Activate().
 		}
 
 		set Ship:Control:PilotMainThrottle to maxThrottle.
@@ -739,13 +868,11 @@ until exitButton:TakePress
 		{
 			print "Waiting for engines to spool.".
 
-			local allEngines is list().
-			list engines in allEngines.
-
 			local engineMaxThrust is 0.
 			for eng in allEngines
 			{
-				set engineMaxThrust to engineMaxThrust + eng:PossibleThrust().
+				if eng:Stage = stage:Number
+					set engineMaxThrust to engineMaxThrust + eng:PossibleThrust().
 			}
 
 			local engineThrust is 0.
@@ -754,16 +881,18 @@ until exitButton:TakePress
 				set engineThrust to 0.
 				for eng in allEngines
 				{
-					set engineThrust to engineThrust + eng:Thrust().
+					if eng:Stage = stage:Number
+						set engineThrust to engineThrust + eng:Thrust().
 				}
 				wait 0.
 			}
 		}
+		brakes on.
 		brakes off.
 
 		print "Beginning takeoff roll.".
 
-		when alt:radar >= 20 then { gear off. lights off. if currentFlapDeflect > 1 setFlaps(1). }
+		when alt:radar >= 20 then { gear off. if currentFlapDeflect > 1 setFlaps(1). }
 	}
 	
 	set guiButtons["rwh"]:Text to round(getHeadingToTarget(runwayCentre), 1) + "°".

@@ -14,6 +14,7 @@ if Ship:Status = "PreLaunch"
 {
     // Open terminal
     Core:DoEvent("Open Terminal").
+	set Terminal:Height to max(Terminal:Height, 50).
     
     switch to 0.
    
@@ -33,8 +34,8 @@ if Ship:Status = "PreLaunch"
         }
     }
     
-    local pitchOverSpeed is 80.
-    local pitchOverAngle is 5.
+    local pitchOverSpeed is 50.
+    local pitchOverAngle is 3.
     local launchAzimuth is 90.
     local targetInclination is -1.
     local targetOrbitable is 0.
@@ -44,7 +45,20 @@ if Ship:Status = "PreLaunch"
     {
         print "Avionics unit detected.".
         
-        runpath("0:/launch/OrbitalGuidance").
+        local targetPe is LAS_GetPartParam(Core:Part, "pe=", -1).
+        if targetPe >= 0 and defined LAS_TargetPe
+            set LAS_TargetPe to targetPe.
+        else if targetPe >= 0
+            global LAS_TargetPe is targetPe.
+        
+        local targetAp is LAS_GetPartParam(Core:Part, "ap=", -1).
+        if targetAp >= 0 and defined LAS_TargetAp
+            set LAS_TargetAp to targetAp.
+        else if targetAp >= 0
+            global LAS_TargetAp is targetAp.
+        
+		if defined LAS_TargetSMA or LAS_TargetAp > 100
+			runpath("0:/launch/OrbitalGuidance").
         
         set pitchOverSpeed to LAS_GetPartParam(Core:Part, "spd=", pitchOverSpeed).
         set pitchOverAngle to LAS_GetPartParam(Core:Part, "ang=", pitchOverAngle).
@@ -65,6 +79,7 @@ if Ship:Status = "PreLaunch"
     set labelBox:style:width to 150.
     local controlBox is mainBox:AddVBox().
     set controlBox:style:width to 100.
+	local launchButton is flightGui:AddButton("Launch").
     
     local function createLabel
     {
@@ -96,12 +111,19 @@ if Ship:Status = "PreLaunch"
         if targetInclination >= 0
         {
             local targetPe is LAS_TargetPe * 1000 + Ship:Body:Radius.
-            local a is (LAS_TargetPe + LAS_TargetAp) * 500 + Ship:Body:Radius.
+            local a is 0.
+			if defined LAS_TargetSMA
+				set a to LAS_TargetSMA.
+			else
+				set a to (LAS_TargetPe + LAS_TargetAp) * 500 + Ship:Body:Radius.
             local sinInertialAz is max(-1, min(cos(targetInclination)/cos(Ship:Latitude),1)).
             local vOrbit is sqrt(2 * Ship:Body:Mu / targetPe - Ship:Body:Mu / a).
             local vEqRot is 2 * Constant:pi * Ship:Body:Radius / Ship:Body:RotationPeriod.
             // Using the identity sin2 + cos2 = 1 to avoid inverse trig.
             set launchAzimuth to mod(arctan2(vOrbit * sinInertialAz - vEqRot * cos(Ship:Latitude), vOrbit * sqrt(1 - sinInertialAz^2)) + 360, 360).
+			
+			if defined LAS_TargetInc and LAS_TargetInc < 0
+				set launchAzimuth to mod(360 + 180 - launchAzimuth, 360).
             
             set azimuthText:text to round(launchAzimuth, 3):ToString.
         }
@@ -126,14 +148,29 @@ if Ship:Status = "PreLaunch"
             set targetInclination to max(Ship:Latitude, min(targetOrbit:Inclination, 180 - Ship:Latitude)).
             set inclinationText:Text to round(targetInclination, 2):ToString.
         }
+		else if defined LAS_TargetInc
+		{
+            set targetInclination to max(Ship:Latitude, min(abs(LAS_TargetInc), 180 - Ship:Latitude)).
+            set inclinationText:Text to round(targetInclination, 2):ToString.			
+		}
         
         setAzimuth().
+		
+		// Preset launch, just go straight into countdown.
+		if defined LAS_LaunchTime
+		{
+			set launchButton:Pressed to true.
+			set launchButton:Enabled to false.
+		}
 
         flightGui:Show().
     }
     
     // Trigger GLC
-    runpath("0:/launch/GroundLaunchControl", engineStart, targetOrbit).
+	if guidance
+		runpath("0:/launch/GroundLaunchControl", engineStart, targetOrbit, launchButton).
+	else
+		runpath("0:/launch/GroundLaunchControl", engineStart).
 
     // Check if we actually lifted off
     if Ship:Status = "Flying"

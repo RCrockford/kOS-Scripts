@@ -17,7 +17,7 @@ local engineSpooling is true.
 
 local function StageFlameout
 {
-    parameter anyEngine.
+    parameter s.
 
     local allFlamedOut is true.
     local anyFlamedOut is false.
@@ -25,23 +25,26 @@ local function StageFlameout
 
     for eng in stageEngines
     {
-        // If any engine is producing less than 10% nominal thrust, consider it burned out.
-        if not eng:Flameout() and (engineSpooling or eng:Thrust >= eng:PossibleThrust * 0.1)
-        {
-            set allFlamedOut to false.
-            if eng:Thrust < eng:PossibleThrust * 0.1
-                set allSpooled to false.
-        }
-        else
-        {
-            set anyFlamedOut to true.
-        }
+		if (s < 0) or (eng:DecoupledIn = s)
+		{
+			// If any engine is producing less than 10% nominal thrust, consider it burned out.
+			if not eng:Flameout() and (engineSpooling or eng:Thrust >= eng:PossibleThrust * 0.1)
+			{
+				set allFlamedOut to false.
+				if eng:Thrust < eng:PossibleThrust * 0.1
+					set allSpooled to false.
+			}
+			else
+			{
+				set anyFlamedOut to true.
+			}
+		}
     }
     
     if allSpooled
         set engineSpooling to false.
 
-    if anyEngine
+    if s < 0
         return anyFlamedOut.
     else
         return allFlamedOut.
@@ -103,7 +106,7 @@ local function GetBatteryProportion
 // Simple booster drop, just wait for flameout.
 local function BoosterDrop
 {
-    local drop is StageFlameout(true).
+    local drop is StageFlameout(Stage:Number - 1).
 
     if drop
     {
@@ -167,56 +170,55 @@ local function HotStage
     return false.
 }
 
-// LF engine with ullage motors (part 2).
+// LF engine with ullage motors (part 3).
 local function UllageStageSettle
 {
-    local fuelState is LAS_GetFuelStability(NextStageEngines).
+    local fuelState is 1.
+    for eng in NextStageEngines
+        set fuelState to min(fuelState, eng:FuelStability).
     
-    if fuelState >= 99
+    if fuelState >= 0.99
     {
         // Fire engines (i.e. stage).
-		print "Fuel Stability: " + round(fuelState, 1) + "%".
+		print "Fuel Stability: " + round(fuelState * 100, 1) + "%".
         return true.
     }
     
     // Check ullage motor burn time
-    local burnTime is 0.
-    if LAS_EngineIsSolidFuel(NextStageUllage[0])
-    {
-        local fuelMass is 0.
-        for res in NextStageUllage[0]:Resources
-        {
-            set fuelMass to fuelMass + res:Amount * res:Density * 1000.
-        }
-        
-        set burnTime to fuelMass / NextStageUllage[0]:FuelFlow.
-    }
-    else
-    {
-        // Not sure this will work. Better to add functions to kOS maybe.
-        set burnTime to LAS_GetStageBurnTime(NextStageUllage).
-    }
+    local burnTime is LAS_GetRealEngineBurnTime(NextStageUllage[0]).
     
 	// If less than 0.05 seconds to go, just go for it
 	if burnTime < 0.05
 	{
-		print "Fuel Stability: " + round(fuelState, 1) + "%".
+		print "Fuel Stability: " + round(fuelState * 100, 1) + "%".
 		return true.
 	}
 	
     // Ramp up ignition chance as we get near ullage burnout
 	// Allows stable (95%) igntion at ~0.235s, 75% at ~0.15s, 50% at ~0.07s
-    if sqrt(4 * (burnTime - 0.01)) < (fuelState * 0.01)
+    if sqrt(4 * (burnTime - 0.01)) < fuelState
 	{
-		print "Fuel Stability: " + round(fuelState, 1) + "%".
+		print "Fuel Stability: " + round(fuelState * 0.01, 1) + "%".
 		return true.
 	}
 	
 	return false.
 }
 
+// LF engine with ullage motors (part 2).
+local function UllageStageFire
+{
+    // Fire ullage motors.
+    for eng in NextStageUllage
+    {
+        LAS_IgniteEngine(eng).
+    }
+    
+    set StagingFunction to UllageStageSettle@.
+}
+
 local heightWarn is false.
-local pressureWarn is false.
+local apoWarn is false.
 
 // LF engine with ullage motors (part 1).
 local function UllageStageSeparate
@@ -234,7 +236,7 @@ local function UllageStageSeparate
     else
     {
         // Wait for flame out
-        if not StageFlameout(false)
+        if not StageFlameout(Stage:number - 1)
             return false.
         
         local minHeight is LAS_GetPartParam(NextStageEngines[0], "h=", -1).
@@ -248,31 +250,32 @@ local function UllageStageSeparate
 
             return false.
         }
-
-        local maxPressure is LAS_GetPartParam(NextStageEngines[0], "p=", 10).   // 10 kPa is a default ignition chance of 92.5%, 100% at 5 kPA.
-        if (Ship:Q * constant:AtmToKPa > maxPressure)
-        {
-            if not pressureWarn
-            {
-                print "Presssure too high to stage (" + round(Ship:Q * constant:AtmToKPa, 1) + " kPa), separation at " + maxPressure + " kPa.".
-                set pressureWarn to true.
-            }
         
+        local apoTime is LAS_GetPartParam(NextStageEngines[0], "a=", -1).
+        if apoTime >= 0 and ETA:Apoapsis > apoTime
+        {
+            if not apoWarn
+            {
+                print "Separation in " + round(ETA:Apoapsis - apoTime, 1) + " s.".
+                set apoWarn to true.
+            }
+			
+			// RCS ullage
+			if ETA:Apoapsis - apoTime < 3 and rcs
+				set Ship:Control:Fore to 1.
+
             return false.
         }
     }
+	
+	set Ship:Control:Fore to 0.
+	set Ship:Control:PilotMainThrottle to 1.
     
     // Detach lower stage.
     if DecoupleStage()
         print "Stage " + Stage:Number + " separation.".
-
-    // Fire ullage motors.
-    for eng in NextStageUllage
-    {
-        LAS_IgniteEngine(eng).
-    }
-    
-    set StagingFunction to UllageStageSettle@.
+		
+    set StagingFunction to UllageStageFire@.
 
     return false.
 }
@@ -327,7 +330,7 @@ local function SpinUp
         
     local burnTime is LAS_GetPartParam(NextStageUllage[0], "t=", -1).
     if burnTime > 0
-        return StageFlameout(true) or LAS_GetStageBurnTime(stageEngines) < burnTime.
+        return StageFlameout(-1) or LAS_GetStageBurnTime(stageEngines) < burnTime.
 
     return Alt:Radar >= 30.
 }
@@ -367,14 +370,21 @@ local function CheckStageType
             NextStageDecouplers:add(p).
         if p:HasModule("RealChuteModule")
             NextStageChutes:add(p).
-        if p:HasModule("ModuleRCSFX")
+        if p:IsType("RCS")
             set nextStageHasRCS to true.
     }
 
     local enginesNeedStartup is false.
     for eng in NextStageEngines
     {
-        if not LAS_EngineIsSolidFuel(eng) and not eng:Ignition
+		if eng:Tag:Contains("nostage")
+		{
+            set StagingFunction to FinalStage@.
+            print "Next stage: Final (Forced)".
+			return.
+		}
+	
+        if eng:AllowShutdown and not eng:Ignition
             set enginesNeedStartup to true.
     }
 
@@ -386,7 +396,7 @@ local function CheckStageType
             set StagingFunction to UllageStageSeparate@.
             print "Next stage: Ullage".
             set heightWarn to false.
-            set pressureWarn to false.
+            set apoWarn to false.
         }
         else
         {
@@ -395,7 +405,7 @@ local function CheckStageType
             // Check if we need to wait for turbopump spool.
             for eng in NextStageEngines
             {
-                if not LAS_EngineIsPressureFed(eng) and not LAS_EngineIsSolidFuel(eng)
+                if not eng:PressureFed and eng:AllowShutdown
                     set HotStageWarmup to max(HotStageWarmup, 2.5).
 				set HotStageWarmup to max(LAS_GetPartParam(eng, "s=", 0), HotStageWarmup).
             }
@@ -458,7 +468,7 @@ global function LAS_CheckStaging
                 local burnTime is LAS_GetEngineBurnTime(eng).
                 if burnTime = 0
                 {
-                    print "Shutting down " + eng:Title.
+                    print "Shutting down " + eng:Config.
                     eng:Shutdown().
                 }
             }
@@ -468,8 +478,62 @@ global function LAS_CheckStaging
     return false.
 }
 
+global function LAS_NextStageIsUllage
+{
+	return StagingFunction = UllageStageFire@.
+}
+
 global function LAS_FinalStage
 {
 	return StagingFunction = FinalStage@.
 }
 
+global function LAS_StageReady
+{
+	return StagingFunction <> CheckStageType@.
+}
+
+local PL_FairingsJettisoned is false.
+local PL_PanelsExtended is false.
+
+global function LAS_CheckPayload
+{
+    if not PL_FairingsJettisoned
+    {
+        if Ship:Q < 1e-4
+        {
+            // Jettison fairings
+			local jettisoned is false.
+			for fairing in Ship:ModulesNamed("ProceduralFairingDecoupler")
+            {
+                if fairing:HasEvent("jettison fairing")
+                {
+                    fairing:DoEvent("jettison fairing").
+                    set jettisoned to true.
+                }
+            }
+            
+            if jettisoned
+                print "Fairings jettisoned".
+            
+            set PL_FairingsJettisoned to true.
+        }
+    }
+    else if not PL_PanelsExtended
+    {
+        if Ship:Q < 1e-5
+        {
+            Panels on.
+			
+			for antenna in Ship:ModulesNamed("ModuleDeployableAntenna")
+            {
+                if antenna:HasEvent("extend antenna")
+                {
+                    antenna:DoEvent("extend antenna").
+                }
+            }
+			
+            set PL_PanelsExtended to true.
+        }
+    }
+}

@@ -1,2 +1,1 @@
-parameter duration.
-runpath("flight/executemanoeuvre", duration, true, false).
+runpath("0:/flight/executemanoeuvre", 0, true, false).

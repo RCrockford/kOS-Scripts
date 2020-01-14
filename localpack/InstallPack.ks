@@ -7,7 +7,8 @@ parameter fileList.
 local delFiles is Core:Volume:Root:List().
 for f in delFiles:Keys
 {
-    Core:Volume:Delete(f).
+	if fileList:empty or f:contains(".ks")
+		Core:Volume:Delete(f).
 }
 
 //switch to 0.
