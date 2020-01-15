@@ -23,7 +23,7 @@ runoncepath("/FCFuncs").
 LAS_Avionics("activate").
 
 rcs on.
-lock steering to Ship:Retrograde.
+lock steering to LookDirUp(Retrograde:Vector, Facing:UpVector).
 
 if abs(p:bLatLong) > 180
 {
@@ -98,7 +98,7 @@ print "Parachutes armed.".
 wait until Ship:Q > 1e-5.
 
 rcs on.
-lock steering to Ship:SrfRetrograde.
+lock steering to LookDirUp(SrfRetrograde, Facing:UpVector).
 
 wait until Ship:Q > 1e-3.
 

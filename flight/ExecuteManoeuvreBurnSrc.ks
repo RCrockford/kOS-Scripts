@@ -4,31 +4,31 @@ wait until Ship:Unpacked.
 
 local p is readjson("1:/burn.json").
 
-print "Align in " + round(p:eta - 60, 1) + " seconds.".
+local lock burnStart to burnETA - Time:Seconds.
 
-wait until p:eta < 60.
+print "Align in " + round(burnStart - 60, 0) + " seconds.".
+
+wait until burnStart < 60.
 
 print "Aligning ship".
 
 local ignitionTime is 0.
-local activeEngines is list().
 if p:eng
 {
     runpath("/flight/EngineMgmt", p:stage).
-    set activeEngines to EM_GetEngines().
     set ignitionTime to EM_IgDelay().
 }
 
 LAS_Avionics("activate").
 
 rcs on.
-lock steering to p:dV:Normalized.
+lock steering to LookDirUp(p:dV:Normalized, Facing:UpVector).
 
 if p:inertial
 {
     // spin up
     set Ship:Control:Roll to -1.
-    until p:eta <= ignitionTime
+    until burnStart <= ignitionTime
     {
         local rollRate is vdot(Ship:Facing:Vector, Ship:AngularVel).
         if abs(rollRate) > p:spin * 1.25
@@ -47,13 +47,13 @@ if p:inertial
 }
 else
 {
-    wait until p:eta <= ignitionTime.
+    wait until burnStart <= ignitionTime.
 }
 
 print "Starting burn".
 
-// If we have engines, prep them to ignite.
-if not activeEngines:empty
+// If we have engines, ignite them.
+if p:eng
 {
     local fuelRes is 0.
     local fuelTarget is 0.
@@ -79,7 +79,7 @@ if not activeEngines:empty
         stage.
     }
 
-    wait until fuelRes:Amount <= fuelTarget.
+    wait until fuelRes:Amount <= fuelTarget or not EM_CheckThrust(0.1).
 }
 else
 {
@@ -89,17 +89,4 @@ else
     wait p:t.
 }
 
-// Cutoff engines
-set Ship:Control:PilotMainThrottle to 0.
-for eng in activeEngines
-{
-    eng:Shutdown.
-}
-if not activeEngines:empty
-    print "MECO".
-
-unlock steering.
-set Ship:Control:Neutralize to true.
-rcs off.
-
-LAS_Avionics("shutdown").
+EM_Shutdown().

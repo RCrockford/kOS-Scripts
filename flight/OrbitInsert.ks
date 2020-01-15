@@ -10,14 +10,18 @@ wait until Ship:Unpacked.
 local activeEngines is list().
 list engines in activeEngines.
 
+local ResourcesLex is lexicon().
+for r in Ship:Resources
+    ResourcesLex:Add(r:Name, r:Amount).
+
 local burnTime is 1000.
 for eng in activeEngines
 {
     for k in eng:ConsumedResources:keys
     {
         local r is eng:ConsumedResources[k].
-        if Ship:Resources:HasKey(r:Name)
-            set burnTime to min(burnTime, Ship:Resources[r:Name]:Amount / r:MaxFuelFlow).
+        if ResourcesLex:HasKey(r:Name)
+            set burnTime to min(burnTime, ResourcesLex[r:Name] / r:MaxFuelFlow).
         else
             set burnTime to 0.
     }

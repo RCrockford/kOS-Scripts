@@ -19,7 +19,7 @@ global function GetRCSForePerf
 
         if thrustMul > 0.01
         {
-            set perfStats:thrust to perfStats:thrust + r:AvailableThrust * thrustMul.
+            set perfStats:thrust to perfStats:thrust + r:AvailableThrust * min(thrustMul, 1).
             set perfStats:massflow to perfStats:massflow + r:MaxMassFlow.
         }
 	}

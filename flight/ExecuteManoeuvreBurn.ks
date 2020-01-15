@@ -1,31 +1,30 @@
 @lazyglobal off.
 wait until Ship:Unpacked.
 local p is readjson("1:/burn.json").
-print"Align in "+round(p:eta-60,1)+" seconds.".
-wait until p:eta<60.
+local lock _f0 to burnETA-Time:Seconds.
+print"Align in "+round(_f0-60,0)+" seconds.".
+wait until _f0<60.
 print"Aligning ship".
 local _0 is 0.
-local _1 is list().
 if p:eng
 {
 runpath("/flight/EngineMgmt",p:stage).
-set _1 to EM_GetEngines().
 set _0 to EM_IgDelay().
 }
 LAS_Avionics("activate").
 rcs on.
-lock steering to p:dV:Normalized.
+lock steering to LookDirUp(p:dV:Normalized,Facing:UpVector).
 if p:inertial
 {
 set Ship:Control:Roll to-1.
-until p:eta<=_0
+until _f0<=_0
 {
-local _2 is vdot(Ship:Facing:Vector,Ship:AngularVel).
-if abs(_2)>p:spin*1.25
+local _1 is vdot(Ship:Facing:Vector,Ship:AngularVel).
+if abs(_1)>p:spin*1.25
 {
 set Ship:Control:Roll to 0.1.
 }
-else if abs(_2)>p:spin and abs(_2)<p:spin*1.2
+else if abs(_1)>p:spin and abs(_1)<p:spin*1.2
 {
 set Ship:Control:Roll to-0.1.
 }
@@ -35,19 +34,19 @@ set Ship:Control:Roll to-0.1.
 }
 else
 {
-wait until p:eta<=_0.
+wait until _f0<=_0.
 }
 print"Starting burn".
-if not _1:empty
+if p:eng
 {
+local _2 is 0.
 local _3 is 0.
-local _4 is 0.
 for r in Ship:Resources
 {
 if r:Name=p:fuelN
 {
-set _3 to r.
-set _4 to r:Amount-p:fuelA.
+set _2 to r.
+set _3 to r:Amount-p:fuelA.
 }
 }
 EM_Ignition().
@@ -59,21 +58,11 @@ set Ship:Control:Neutralize to true.
 rcs off.
 stage.
 }
-wait until _3:Amount<=_4.
+wait until _2:Amount<=_3 or not EM_CheckThrust(0.1).
 }
 else
 {
 set Ship:Control:Fore to 1.
 wait p:t.
 }
-set Ship:Control:PilotMainThrottle to 0.
-for eng in _1
-{
-eng:Shutdown.
-}
-if not _1:empty
-print"MECO".
-unlock steering.
-set Ship:Control:Neutralize to true.
-rcs off.
-LAS_Avionics("shutdown").
+EM_Shutdown().

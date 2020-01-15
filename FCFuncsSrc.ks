@@ -39,16 +39,14 @@ global function LAS_Avionics
 {
     parameter action.
     
-    set action to action + " avionics".
-    
-    for avionics in Ship:ModulesNamed("ModuleProceduralAvionics")
+    for a in Ship:ModulesNamed("ModuleProceduralAvionics")
     {
-        if avionics:HasEvent(action)
+        if a:HasEvent(action + " avionics")
         {
-            avionics:DoEvent(action).
+            a:DoEvent(action + " avionics").
         }
     }
     
-    if action:contains("shutdown")
+    if action = "shutdown"
         set core:bootfilename to "".
 }

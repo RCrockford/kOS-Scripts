@@ -16,7 +16,7 @@ wait until abs(Ship:Longitude-p:oLatLong)<0.5.
 runoncepath("/FCFuncs").
 LAS_Avionics("activate").
 rcs on.
-lock steering to Ship:Retrograde.
+lock steering to LookDirUp(Retrograde:Vector,Facing:UpVector).
 if abs(p:bLatLong)>180
 {
 wait until abs(SteeringManager:AngleError)<0.2 and(Ship:AngularVel:SqrMagnitude-(vdot(Ship:Facing:Vector,Ship:AngularVel)^2)<1e-4).
@@ -80,7 +80,7 @@ chutes on.
 print"Parachutes armed.".
 wait until Ship:Q>1e-5.
 rcs on.
-lock steering to Ship:SrfRetrograde.
+lock steering to LookDirUp(SrfRetrograde,Facing:UpVector).
 wait until Ship:Q>1e-3.
 unlock steering.
 set Ship:Control:Neutralize to true.

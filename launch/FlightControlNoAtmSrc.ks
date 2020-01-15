@@ -10,6 +10,8 @@ local pitchOverAngle is 30.
 
 local pitchOverCosine is cos(pitchOverAngle).
 
+local lock velocityPitch to 90 - vang(Ship:up:vector, Ship:Velocity:Surface).
+
 // Flight phases
 local c_PhaseLiftoff        is 0.
 local c_PhasePitchOver      is 1.
@@ -68,20 +70,18 @@ local function checkAscent
         if vdot(Ship:SrfPrograde:ForeVector, LAS_ShipPos():Normalized) > pitchOverCosine
         {
             set flightPhase to c_PhasePitchOver.
-            lock Steering to Heading(launchAzimuth, 90 - (pitchOverAngle + 1)).
         }
         else
         {
-            lock Steering to Ship:Velocity:Surface.
-            LAS_StartGuidance().
-
-            set flightPhase to c_PhaseGuidanceReady.
+            if LAS_StartGuidance(Stage:Number, -1, 0, launchAzimuth)
+                set flightPhase to c_PhaseGuidanceReady.
         }
+        lock Steering to Heading(launchAzimuth, min(90 - pitchOverAngle, velocityPitch)).
     }
     else
     {
         // If we're not going up, thrust vertically until we are.
-        lock Steering to Heading(launchAzimuth, 90).
+        lock Steering to LookDirUp(Ship:Up:Vector, Ship:Facing:TopVector).
     }
 }
 

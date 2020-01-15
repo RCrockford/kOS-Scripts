@@ -149,10 +149,10 @@ if burnEta > 120 and Addons:Available("KAC")
 }
 
 local burnParams is lexicon(
-    "eta", burnEta",
+    "eta", burnEta + Time:Seconds,
     "dv", dV,
     "fuelN", fuelName,
-    "fuelA, fuelAmount,
+    "fuelA", fuelAmount,
     "t", duration,
     "eng", not activeEngines:empty,
     "stage", burnStage,
@@ -161,7 +161,7 @@ local burnParams is lexicon(
 ).
 
 local fileList is list("flight/ExecuteManoeuvreBurn.ks").
-if burnParams:engines
+if burnParams:eng
 {
     fileList:add("FCFuncs.ks").
     fileList:add("flight/EngineMgmt.ks").

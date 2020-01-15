@@ -69,7 +69,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
             {
                 print "Approach mode active".
                 set steeringControl to true.
-                lock steering to f.
+                lock steering to LookDirUp(f, Facing:UpVector).
             }
         }
         else
@@ -149,7 +149,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
     {
         if vdot(Ship:Facing:ForeVector, LAS_ShipPos():Normalized) < 0.8 or Ship:AngularVel > maxAngVel
         {
-            lock steering to LAS_ShipPos():Normalized.
+            lock steering to LookDirUp(Up:Vector, Facing:UpVector).
             // a little hysteresis
             set maxAngVel to 0.8.
         }

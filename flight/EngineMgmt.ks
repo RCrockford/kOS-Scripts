@@ -26,6 +26,11 @@ global function EM_GetEngines
 {
 return _2.
 }
+global function EM_CheckThrust
+{
+parameter p.
+return _2[0]:Thrust>_2[0]:PossibleThrust*p.
+}
 global function EM_Ignition
 {
 if not _2:empty
@@ -34,11 +39,22 @@ rcs on.
 set Ship:Control:Fore to 1.
 for e in _2
 wait until e:FuelStability>=0.99.
-set Ship:Control:PilotMainThrottle to 1.
+set Ship:Control:MainThrottle to 1.
 for e in _2
 e:Activate.
-wait 0.
+wait until EM_CheckThrust(0.8)or _2[0]:Flameout.
 set Ship:Control:Fore to 0.
 }
 return not _2:empty.
+}
+global function EM_Shutdown
+{
+for e in _2
+e:Shutdown.
+if not _2:empty
+print"MECO".
+unlock steering.
+set Ship:Control:Neutralize to true.
+rcs off.
+LAS_Avionics("shutdown").
 }

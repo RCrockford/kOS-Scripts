@@ -40,7 +40,7 @@ if fr>0.3
 {
 print"Approach mode active".
 set _4 to true.
-lock steering to f.
+lock steering to LookDirUp(f,Facing:UpVector).
 }
 }
 else
@@ -92,7 +92,7 @@ until Ship:Velocity:Surface:SqrMagnitude<0.01 and Ship:AngularVel<0.01
 {
 if vdot(Ship:Facing:ForeVector,LAS_ShipPos():Normalized)<0.8 or Ship:AngularVel>_12
 {
-lock steering to LAS_ShipPos():Normalized.
+lock steering to LookDirUp(Up:Vector,Facing:UpVector).
 set _12 to 0.8.
 }
 else

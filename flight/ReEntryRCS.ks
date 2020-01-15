@@ -2,7 +2,7 @@
 wait until Ship:Unpacked.
 local p is readjson("1:/burn.json").
 rcs on.
-lock steering to Ship:Retrograde.
+lock steering to LookDirUp(Retorgrade:Vector,Facing:UpVector).
 wait until abs(SteeringManager:AngleError)<0.2.
 set Ship:Control:Fore to 1.
 local _0 is Ship:mass.
@@ -34,7 +34,7 @@ chutes on.
 print"Chutes armed.".
 wait until Ship:Q>1e-4.
 rcs on.
-lock steering to Ship:SrfRetrograde.
+lock steering to LookDirUp(SrfRetrograde:Vector,Facing:UpVector).
 wait until Ship:Q>0.01.
 unlock steering.
 set Ship:Control:Neutralize to true.

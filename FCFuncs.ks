@@ -26,14 +26,13 @@ return _1.
 global function LAS_Avionics
 {
 parameter _p0.
-set _p0 to _p0+" avionics".
-for avionics in Ship:ModulesNamed("ModuleProceduralAvionics")
+for a in Ship:ModulesNamed("ModuleProceduralAvionics")
 {
-if avionics:HasEvent(_p0)
+if a:HasEvent(_p0+" avionics")
 {
-avionics:DoEvent(_p0).
+a:DoEvent(_p0+" avionics").
 }
 }
-if _p0:contains("shutdown")
+if _p0="shutdown"
 set core:bootfilename to"".
 }

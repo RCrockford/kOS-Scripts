@@ -10,12 +10,14 @@ wait until Eta:Apoapsis - p:t * 0.5 < 60.
 
 print "Aligning ship".
 
-for a in Ship:ModulesNamed("ModuleProceduralAvionics")
+local avionics is Ship:ModulesNamed("ModuleProceduralAvionics").
+
+for a in avionics
     if a:HasEvent("activate avionics")
         a:DoEvent("activate avionics").
 
 rcs on.
-lock steering to Ship:Prograde.
+lock steering to LookDirUp(Prograde:Vector, Facing:UpVector).
 
 wait until Eta:Apoapsis <= p:t * 0.5.
 
@@ -28,7 +30,7 @@ unlock steering.
 set Ship:Control:Neutralize to true.
 rcs off.
 
-for a in Ship:ModulesNamed("ModuleProceduralAvionics")
+for a in avionics
     if a:HasEvent("shutdown avionics")
         a:DoEvent("shutdown avionics").
 
