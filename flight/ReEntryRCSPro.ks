@@ -2,9 +2,9 @@
 wait until Ship:Unpacked.
 local p is readjson("1:/burn.json").
 rcs on.
-lock steering to LookDirUp(Retrograde:Vector,Facing:UpVector).
+lock steering to LookDirUp(Prograde:Vector,Facing:UpVector).
 wait until abs(SteeringManager:AngleError)<0.2.
-set Ship:Control:Fore to 1.
+set Ship:Control:Fore to-1.
 local _0 is Ship:mass.
 until Ship:Obt:Periapsis<=p:pe
 {

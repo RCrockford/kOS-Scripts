@@ -26,11 +26,19 @@ return _1.
 global function LAS_Avionics
 {
 parameter _p0.
+local evt is _p0+" avionics".
 for a in Ship:ModulesNamed("ModuleProceduralAvionics")
 {
-if a:HasEvent(_p0+" avionics")
+if a:HasEvent(evt)
 {
-a:DoEvent(_p0+" avionics").
+a:DoEvent(evt).
+}
+}
+for a in Ship:ModulesNamed("ModuleAvionics")
+{
+if a:HasEvent(evt)
+{
+a:DoEvent(evt).
 }
 }
 if _p0="shutdown"

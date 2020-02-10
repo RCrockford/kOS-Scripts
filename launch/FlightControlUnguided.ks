@@ -57,6 +57,8 @@ until False
 }
 
 print "Auto launch disengaged.".
+    
+LAS_EnableAllEC().
 
 // Release control
 set Ship:Control:Neutralize to true.

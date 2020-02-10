@@ -441,6 +441,32 @@ local function CheckStageType
     }
 }
 
+local function EnableECForStage
+{
+    parameter s.
+    
+    local ECEnabled is 0.
+    
+    until ECEnabled >= 100 or s < -1
+    {
+        for p in Ship:Parts
+        {
+            if p:DecoupledIn = s
+            {
+                for r in p:resources
+                {
+                    if r:Name = "Electric Charge"
+                    {
+                        set r:Enabled to true.
+                        set ECEnabled to ECEnabled + r:Amount.
+                    }
+                }
+            }
+        }
+        set s to s - 1.
+    }
+}
+
 global function LAS_CheckStaging
 {
     if not Stage:Ready
@@ -450,6 +476,8 @@ global function LAS_CheckStaging
     {
         if nextStageHasRCS
             rcs on.
+            
+        EnableECForStage(Stage:Number - 1).
     
         stage.
 
@@ -491,6 +519,20 @@ global function LAS_FinalStage
 global function LAS_StageReady
 {
 	return StagingFunction <> CheckStageType@.
+}
+
+global function LAS_EnableAllEC
+{
+    for p in Ship:Parts
+    {
+        for r in p:resources
+        {
+            if r:Name = "Electric Charge"
+            {
+                set r:Enabled to true.
+            }
+        }
+    }
 }
 
 local PL_FairingsJettisoned is false.

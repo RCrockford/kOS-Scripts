@@ -13,6 +13,7 @@ lock steering to LookDirUp(Prograde:Vector,Facing:UpVector).
 wait until Eta:Apoapsis<=p:t*0.5.
 print"Starting burn".
 set Ship:Control:Fore to 1.
+set Ship:Control:MainThrottle to 1.
 wait until Ship:Obt:Periapsis>=p:pe.
 unlock steering.
 set Ship:Control:Neutralize to true.

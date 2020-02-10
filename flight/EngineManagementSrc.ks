@@ -56,12 +56,12 @@ global function EM_Ignition
         for e in activeEngines
             wait until e:FuelStability >= 0.99.
         
-        set Ship:Control:MainThrottle to 1.
+        set Ship:Control:PilotMainThrottle to 1.
         
         for e in activeEngines
             e:Activate.
 
-        wait until EM_CheckThrust(0.8) or activeEngines[0]:Flameout.
+        wait until EM_CheckThrust(0.5) or activeEngines[0]:Flameout.
         
         set Ship:Control:Fore to 0.
     }
@@ -79,6 +79,7 @@ global function EM_Shutdown
 
     unlock steering.
     set Ship:Control:Neutralize to true.
+    set Ship:Control:PilotMainThrottle to 0.
     rcs off.
 
     LAS_Avionics("shutdown").

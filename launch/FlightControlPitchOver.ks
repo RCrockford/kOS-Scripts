@@ -32,11 +32,8 @@ local c_PhaseSuborbCoast    is 8.
 local flightPhase is c_PhaseLiftoff.
 local flightGuidance is V(0,0,0).
 local guidanceThreshold is 0.995.
-local guidanceApoThreshold is LAS_TargetPe * 250.
+local guidanceMinV is 1000.     // Minimum tangental speed
 local lock nextStageIsGuided to LAS_StageIsGuided(Stage:Number-1).
-local coastMode is false.
-local lastCoastTime is 0.
-local coastTicks is 0.
 
 local suborbPitchPID is pidloop(1, 0.1, 1, -750, 250).
 
@@ -68,8 +65,6 @@ local function checkAscent
 
     local cutoff is false.
 	local guidanceStage is Stage:Number.
-	if coastMode
-		set guidanceStage to max(guidanceStage - 1, 0).
 
 	if flightPhase = c_PhaseDownrangePower
 	{
@@ -100,7 +95,7 @@ local function checkAscent
 				local accel is currentThrust / Ship:Mass.
 				local fr is (Ship:Body:Mu / r2 - (omega * omega) * r) / accel.
 		
-				set fr to min(fr, 0.6).
+				set fr to min(fr, 0.5).
 				set flightGuidance to fr * rVec + sqrt(1 - fr * fr) * downtrack.
 				
 				lock Steering to flightGuidance.
@@ -124,33 +119,14 @@ local function checkAscent
         // Make sure dynamic pressure is low enough to start manoeuvres
         if flightPhase = c_PhaseGuidanceReady
         {
-			if coastMode
-			{
-				set debugStat:Text to "Guidance Ready, coasting".
-				if lastCoastTime <> LAS_GuidanceBurnTime(guidanceStage) and lastCoastTime < LAS_GuidanceBurnTime(guidanceStage)
-				{
-					set coastTicks to coastTicks + 1.
-				}
-				else
-				{
-					set coastTicks to 0.
-				}
-				set lastCoastTime to LAS_GuidanceBurnTime(guidanceStage).
+			local fr is vdot(guidance, Ship:Up:Vector).
+            set debugStat:Text to "Guidance Ready, Q=" + round(Ship:Q * constant:AtmToKPa, 1) + " fr=" + round(fr, 3).
 				
-				if coastTicks > 2
-					set coastMode to false.
-			}
-			else
-			{
-				set debugStat:Text to "Guidance Ready, Q=" + round(Ship:Q * constant:AtmToKPa, 1).
-			}
-				
-            if not coastMode and guidance:SqrMagnitude > 0.9 and Ship:Q < 0.1
+            if guidance:SqrMagnitude > 0.9 and Ship:Q < 0.1
             {
                 // Check guidance pitch, when guidance is saying pitch down relative to open loop, engage guidance.
                 // Alternatively, if Q is at ~3 kPa, engage guidance.
-                local upVec is LAS_ShipPos():Normalized.
-                if vdot(upVec, guidance) <= vdot(upVec, Ship:Velocity:Surface:Normalized) or Ship:Q < 0.05
+                if fr <= vdot(Ship:Up:Vector, Ship:Velocity:Surface:Normalized) or (Ship:Q < 0.05 and fr < 0.6)
                 {
                     set flightPhase to c_PhaseGuidanceActive.
                     set flightGuidance to guidance.
@@ -229,25 +205,13 @@ local function checkAscent
 				lock Steering to Heading(launchAzimuth, min(90 - pitchOverAngle, velocityPitch)).
                 set flightPhase to c_PhaseAeroFlight.
             }
+            
+            local r is LAS_ShipPos():Mag.
+            local h is vcrs(LAS_ShipPos(), Ship:Velocity:Orbit):Mag.
+            local vTheta is h / r.
 			
-			local startGuidance is false.
-			if coastMode
-			{
-				if not LAS_NextStageIsUllage()
-				{
-					set debugStat:Text to "Aero Flight, Q=" + round(Ship:Q * constant:AtmToKPa, 1) + " Waiting for coast".
-				}
-				else
-				{
-					set debugStat:Text to "Aero Flight, Q=" + round(Ship:Q * constant:AtmToKPa, 1) + " Coasting AltT=" + round(guidanceApoThreshold * 0.001, 0).
-					set startGuidance to Ship:Altitude > guidanceApoThreshold.
-				}
-			}
-			else
-			{
-				set debugStat:Text to "Aero Flight, Q=" + round(Ship:Q * constant:AtmToKPa, 1) + " ApoT=" + round(guidanceApoThreshold * 0.001, 0).
-				set startGuidance to Ship:Orbit:Apoapsis > guidanceApoThreshold.
-			}
+            set debugStat:Text to "Aero Flight, Q=" + round(Ship:Q * constant:AtmToKPa, 1) + " vT=" + round(vTheta, 0) + "/" + round(guidanceMinV, 0).
+            local startGuidance is vTheta > guidanceMinV.
 				
 			// Don't setup guidance until we're past maxQ
 			if maxQset and startGuidance and Ship:Q < 0.1
@@ -258,14 +222,13 @@ local function checkAscent
 				{
 					set flightPhase to c_PhaseDownrangePower.
 				}
-				else if LAS_StartGuidance(guidanceStage, targetInclination, targetOrbitable, launchAzimuth) or (coastMode and guidanceApoThreshold >= LAS_TargetPe * 500)
+				else if LAS_StartGuidance(guidanceStage, targetInclination, targetOrbitable, launchAzimuth)
 				{
 					set flightPhase to c_PhaseGuidanceReady.
-					set lastCoastTime to LAS_GuidanceBurnTime(guidanceStage).
 				}
 				else
 				{
-					set guidanceApoThreshold to guidanceApoThreshold + LAS_TargetPe * 40.
+					set guidanceMinV to guidanceMinV + 200.
 				}
 			}
         }
@@ -317,7 +280,7 @@ until flightPhase = c_PhaseSECO
     if maxQSet
         LAS_CheckPayload().
 	
-	if (not coastMode or not LAS_NextStageIsUllage()) and LAS_CheckStaging()
+	if LAS_CheckStaging()
     {
         set stageChecked to false.
         set flameoutTimer to MissionTime + 5.
@@ -397,13 +360,21 @@ until flightPhase = c_PhaseSECO
             unlock Steering.
             set Ship:Control:Neutralize to true.
             rcs off.
-            ClearGUIs().
         }
         
         set flameoutTimer to MissionTime + 0.5.
     }
     
-    wait 0.
+    // Reduce power consumption when coasting
+    if flightPhase = c_PhaseSuborbCoast
+    {
+        set debugStat:Text to "Suborbital coast, D=" + round((Ship:GeoPosition:Position - kscPos:Position):Mag * 0.001, 0) + "km".
+        wait 0.5.
+    }
+    else
+    {
+        wait 0.
+    }
 }
 
 // Release control
@@ -412,6 +383,8 @@ set Ship:Control:Neutralize to true.
 
 if defined LAS_TargetSMA
 	print "Final latitude: " + round(Ship:Latitude, 2).
+    
+LAS_EnableAllEC().
 
 ClearGUIs().
 

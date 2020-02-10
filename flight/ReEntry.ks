@@ -50,8 +50,13 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
     if EM_GetEngines():empty and abs(burnLatLong) > 180
     {
         LAS_Avionics("activate").
+        
         // Cheap version, RCS only, immediate.
-        fileList:Add("flight/ReEntryRCS.ks").
+        runoncepath("0:/flight/rcsperf").
+        if GetRCSForePerf():Thrust < GetRCSAftPerf():Thrust * 0.5
+            fileList:Add("flight/ReEntryRCSPro.ks").
+        else
+            fileList:Add("flight/ReEntryRCS.ks").
     }
     else
     {

@@ -47,38 +47,51 @@ local function GetConnectedResources
     parameter p.
     parameter res.
     parameter seen.
+	parameter eng.
 
-    for r in p:resources
+    if p:FuelCrossfeed or seen:Length = 1	// ignore crossfeed if directly connected
     {
-        if r:Enabled
-        {
-            if res:HasKey(r:name)
-                set res[r:name] to res[r:name] + r:amount.
-            else
-                res:Add(r:name, r:amount).
-        }
-    }
+		for r in p:resources
+		{
+			if r:Enabled
+			{
+				if res:HasKey(r:name)
+					set res[r:name] to res[r:name] + r:amount.
+				else
+					res:Add(r:name, r:amount).
+			}
+		}
+	}	
+	
     seen:Add(p).
-    
-    if p:FuelCrossfeed
-    {
+	
+	// Connected engines
+	if p:IsType("Engine") and p:Name = eng:Name
+	{
+		if res:HasKey("eng")
+			set res["eng"] to res["eng"] + 1.
+		else
+			res:Add("eng", 1).
+	}	
+	
+    // Don't consider crossfeed for solid fuel engines
+	if p:FuelCrossfeed and eng:AllowShutdown
+	{
         if p:HasParent and not seen:contains(p:parent)
         {
-            set res to GetConnectedResources(p:parent, res, seen).
+            set res to GetConnectedResources(p:parent, res, seen, eng).
         }
         for c in p:children
         {
             if not seen:contains(c)
-                set res to GetConnectedResources(c, res, seen).
+                set res to GetConnectedResources(c, res, seen, eng).
         }
     }
     
     return res.
 }
 
-local EngineBurnTime is lexicon().
-local EngineFuelTime is lexicon().
-local EngineIgnitionTime is lexicon().
+local EngineStats is lexicon().
 
 // Auto configure on run
 {
@@ -87,11 +100,13 @@ local EngineIgnitionTime is lexicon().
 
     for eng in allEngines
     {
+        EngineStats:Add(eng, lexicon()).
+    
         local burnTime is LAS_GetPartParam(eng, "t=", -1).
-        set EngineBurnTime[eng] to burnTime.
-        set EngineIgnitionTime[eng] to -1.
+        EngineStats[eng]:Add("burnTime", burnTime).
+        EngineStats[eng]:Add("igniteTime", -1).
 
-        local engRes is GetConnectedResources(eng, lexicon(), uniqueset()).
+        local engRes is GetConnectedResources(eng, lexicon(), uniqueset(), eng).
         
         local fuelTime is 1e6.
         for k in eng:ConsumedResources:keys
@@ -106,7 +121,9 @@ local EngineIgnitionTime is lexicon().
                 set fuelTime to 0.
             }
         }
-        set EngineFuelTime[eng] to fuelTime.
+        
+        EngineStats[eng]:Add("fuelTime", fuelTime).
+        EngineStats[eng]:Add("resShare", engRes["eng"]).
     }
 }
 
@@ -114,13 +131,13 @@ global function LAS_GetEngineBurnTime
 {
     parameter eng.
     
-    if EngineBurnTime:HasKey(eng) and EngineBurnTime[eng] > 0
+    if EngineStats[eng]:burnTime > 0
     {
         // If engine has been ignited, return remaining time to burn.
-        if EngineIgnitionTime[eng] >= 0
-            return max(EngineBurnTime[eng] - (MissionTime - EngineIgnitionTime[eng]), 0).
+        if EngineStats[eng]:IgniteTime >= 0
+            return max(EngineStats[eng]:burnTime - (MissionTime - EngineStats[eng]:IgniteTime), 0).
         else
-            return EngineBurnTime[eng].
+            return EngineStats[eng]:burnTime.
     }
         
     return -1.
@@ -130,10 +147,13 @@ global function LAS_GetRealEngineBurnTime
 {
     parameter eng.
     
+    if eng:Flameout
+        return 0.
+    
     local burnTime is LAS_GetEngineBurnTime(eng).
     if burnTime < 0
     {
-        if eng:Ignition or eng:Flameout
+        if eng:Ignition
         {
             set burnTime to 1e6.
             for k in eng:ConsumedResources:keys
@@ -144,8 +164,9 @@ global function LAS_GetRealEngineBurnTime
         }
         else
         {
-            set burnTime to EngineFuelTime[eng].
+            set burnTime to EngineStats[eng]:fuelTime.
         }
+        set burnTime to burnTime / EngineStats[eng]:resShare.
     }
     
     return burnTime.
@@ -155,7 +176,7 @@ global function LAS_IgniteEngine
 {
     parameter eng.
     
-    set EngineIgnitionTime[eng] to MissionTime.
+    set EngineStats[eng]:IgniteTime to MissionTime.
     eng:Activate().
 }
 
@@ -243,7 +264,9 @@ global function LAS_GetStagePerformance
 		{
 			set massFlow to massFlow + eng:MaxMassFlow.
 			set stageThrust to stageThrust + eng:PossibleThrustAt(0).
-			set burnTime to max(burnTime, LAS_GetRealEngineBurnTime(eng)).
+			
+			local t is LAS_GetRealEngineBurnTime(eng).
+			set burnTime to max(burnTime, t).
 
 			set perf:guided to perf:guided or eng:HasGimbal.
 

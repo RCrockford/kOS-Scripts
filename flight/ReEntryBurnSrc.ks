@@ -76,6 +76,7 @@ if Ship:Obt:Periapsis > p:pe
 
 unlock steering.
 set Ship:Control:Neutralize to true.
+set Ship:Control:PilotMainThrottle to 0.
 rcs off.
 
 wait until Ship:Altitude < Ship:Body:Atm:Height.
@@ -100,7 +101,7 @@ wait until Ship:Q > 1e-5.
 rcs on.
 lock steering to LookDirUp(SrfRetrograde, Facing:UpVector).
 
-wait until Ship:Q > 1e-3.
+wait until Ship:AirSpeed < 1500.
 
 unlock steering.
 set Ship:Control:Neutralize to true.

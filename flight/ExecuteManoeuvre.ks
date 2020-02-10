@@ -160,11 +160,8 @@ local burnParams is lexicon(
     "spin", spinRate
 ).
 
-local fileList is list("flight/ExecuteManoeuvreBurn.ks").
+local fileList is list("flight/ExecuteManoeuvreBurn.ks", "FCFuncs.ks").
 if burnParams:eng
-{
-    fileList:add("FCFuncs.ks").
     fileList:add("flight/EngineMgmt.ks").
-}
 
 runpath("0:/flight/SetupBurn", burnParams, fileList).

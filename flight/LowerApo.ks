@@ -60,11 +60,11 @@ if burnEta > 240 and Addons:Available("KAC")
 }
 
 local burnParams is lexicon(
-    "ap", targetAp",
+    "ap", targetAp,
     "t", duration
 ).
 
 if useEngines
-    runpath("0:/flight/SetupBurn", burnParams, list("flight/LowerApoBurn.ks", "FCFuncs.ks" "flight/EngineMgmt.ks")).
+    runpath("0:/flight/SetupBurn", burnParams, list("flight/LowerApoBurn.ks", "FCFuncs.ks", "flight/EngineMgmt.ks")).
 else
     runpath("0:/flight/SetupBurn", burnParams, list("flight/LowerApoRCS.ks")).

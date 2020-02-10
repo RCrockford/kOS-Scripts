@@ -39,11 +39,19 @@ global function LAS_Avionics
 {
     parameter action.
     
+    local evt is action + " avionics".
     for a in Ship:ModulesNamed("ModuleProceduralAvionics")
     {
-        if a:HasEvent(action + " avionics")
+        if a:HasEvent(evt)
         {
-            a:DoEvent(action + " avionics").
+            a:DoEvent(evt).
+        }
+    }
+    for a in Ship:ModulesNamed("ModuleAvionics")
+    {
+        if a:HasEvent(evt)
+        {
+            a:DoEvent(evt).
         }
     }
     

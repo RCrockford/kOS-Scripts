@@ -1,25 +1,42 @@
 @lazyglobal off.
 wait until Ship:Unpacked.
 local p is readjson("1:/burn.json").
-local lock _f0 to burnETA-Time:Seconds.
-print"Align in "+round(_f0-60,0)+" seconds.".
-wait until _f0<60.
+local dv is V(0,0,0).
+if HasNode
+{
+lock burnETA to NextNode:eta.
+set dV to NextNode:deltaV.
+}
+else
+{
+lock burnETA to p:eta-Time:Seconds.
+set dV to p:dV.
+}
+print"Align in "+round(burnETA-60,0)+" seconds.".
+wait until burnETA<60.
 print"Aligning ship".
+runoncepath("/FCFuncs").
 local _0 is 0.
 if p:eng
 {
 runpath("/flight/EngineMgmt",p:stage).
 set _0 to EM_IgDelay().
 }
+local function _f0
+{
+if HasNode
+set dV to NextNode:deltaV.
+}
 LAS_Avionics("activate").
+_f0().
 rcs on.
-lock steering to LookDirUp(p:dV:Normalized,Facing:UpVector).
+lock steering to LookDirUp(dV:Normalized,Facing:UpVector).
 if p:inertial
 {
 set Ship:Control:Roll to-1.
-until _f0<=_0
+until burnETA<=_0
 {
-local _1 is vdot(Ship:Facing:Vector,Ship:AngularVel).
+local _1 is vdot(Facing:Vector,Ship:AngularVel).
 if abs(_1)>p:spin*1.25
 {
 set Ship:Control:Roll to 0.1.
@@ -34,7 +51,7 @@ set Ship:Control:Roll to-0.1.
 }
 else
 {
-wait until _f0<=_0.
+wait until burnETA<=_0.
 }
 print"Starting burn".
 if p:eng
@@ -58,11 +75,24 @@ set Ship:Control:Neutralize to true.
 rcs off.
 stage.
 }
-wait until _2:Amount<=_3 or not EM_CheckThrust(0.1).
+until _2:Amount<=_3 or not EM_CheckThrust(0.1)
+{
+_f0().
+wait 0.
+}
+EM_Shutdown().
 }
 else
 {
 set Ship:Control:Fore to 1.
-wait p:t.
+local _4 is Time:Seconds+p:t.
+until _4<=Time:Seconds
+{
+_f0().
+wait 0.
 }
-EM_Shutdown().
+unlock steering.
+set Ship:Control:Neutralize to true.
+rcs off.
+LAS_Avionics("shutdown").
+}

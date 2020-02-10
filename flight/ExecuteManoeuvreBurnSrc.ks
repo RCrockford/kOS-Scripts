@@ -4,13 +4,25 @@ wait until Ship:Unpacked.
 
 local p is readjson("1:/burn.json").
 
-local lock burnStart to burnETA - Time:Seconds.
+local dv is V(0,0,0).
+if HasNode
+{
+    lock burnETA to NextNode:eta.
+	set dV to NextNode:deltaV.
+}
+else
+{
+	lock burnETA to p:eta - Time:Seconds.
+	set dV to p:dV.
+}
 
-print "Align in " + round(burnStart - 60, 0) + " seconds.".
+print "Align in " + round(burnETA - 60, 0) + " seconds.".
 
-wait until burnStart < 60.
+wait until burnETA < 60.
 
 print "Aligning ship".
+
+runoncepath("/FCFuncs").
 
 local ignitionTime is 0.
 if p:eng
@@ -19,18 +31,25 @@ if p:eng
     set ignitionTime to EM_IgDelay().
 }
 
+local function CheckHeading
+{
+	if HasNode
+		set dV to NextNode:deltaV.
+}
+
 LAS_Avionics("activate").
+CheckHeading().
 
 rcs on.
-lock steering to LookDirUp(p:dV:Normalized, Facing:UpVector).
+lock steering to LookDirUp(dV:Normalized, Facing:UpVector).
 
 if p:inertial
 {
     // spin up
     set Ship:Control:Roll to -1.
-    until burnStart <= ignitionTime
+    until burnETA <= ignitionTime
     {
-        local rollRate is vdot(Ship:Facing:Vector, Ship:AngularVel).
+        local rollRate is vdot(Facing:Vector, Ship:AngularVel).
         if abs(rollRate) > p:spin * 1.25
         {
             set Ship:Control:Roll to 0.1.
@@ -47,7 +66,7 @@ if p:inertial
 }
 else
 {
-    wait until burnStart <= ignitionTime.
+    wait until burnETA <= ignitionTime.
 }
 
 print "Starting burn".
@@ -79,14 +98,29 @@ if p:eng
         stage.
     }
 
-    wait until fuelRes:Amount <= fuelTarget or not EM_CheckThrust(0.1).
+    until fuelRes:Amount <= fuelTarget or not EM_CheckThrust(0.1)
+	{
+		CheckHeading().
+		wait 0.
+	}
+
+    EM_Shutdown().
 }
 else
 {
     // Otherwise assume this is an RCS burn
     set Ship:Control:Fore to 1.
 
-    wait p:t.
-}
+	local stopTime is Time:Seconds + p:t.
+	until stopTime <= Time:Seconds
+	{
+		CheckHeading().
+		wait 0.
+	}
 
-EM_Shutdown().
+    unlock steering.
+    set Ship:Control:Neutralize to true.
+    rcs off.
+
+    LAS_Avionics("shutdown").
+}

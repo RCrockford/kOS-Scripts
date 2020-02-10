@@ -39,10 +39,10 @@ rcs on.
 set Ship:Control:Fore to 1.
 for e in _2
 wait until e:FuelStability>=0.99.
-set Ship:Control:MainThrottle to 1.
+set Ship:Control:PilotMainThrottle to 1.
 for e in _2
 e:Activate.
-wait until EM_CheckThrust(0.8)or _2[0]:Flameout.
+wait until EM_CheckThrust(0.5)or _2[0]:Flameout.
 set Ship:Control:Fore to 0.
 }
 return not _2:empty.
@@ -55,6 +55,7 @@ if not _2:empty
 print"MECO".
 unlock steering.
 set Ship:Control:Neutralize to true.
+set Ship:Control:PilotMainThrottle to 0.
 rcs off.
 LAS_Avionics("shutdown").
 }

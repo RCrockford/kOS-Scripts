@@ -37,48 +37,41 @@ local function GetPeriapsisLat
 	{
 		local stagePerf is LAS_GetStagePerformance(s).
 
-		if stagePerf:eV > 0
-		{
-			// First stage is aero stage.
-			if firstEngineStage < 0 or (stagePerf:litPrevStage and firstEngineStage = s+1)
-			{
-				set firstEngineStage to s.
-			}
-			else
-			{
-				// Anomaly delta for stage, assuming full burn.
-				local tau is stagePerf:eV / stagePerf:accel.
-				local b0 is -stagePerf:eV * ln(1 - stagePerf:BurnTime / tau).
-				local b1 is b0 * tau - stagePerf:eV * stagePerf:BurnTime.
-				local c0 is b0 * stagePerf:BurnTime - b1.
-				local c1 is c0 * tau - stagePerf:eV * stagePerf:BurnTime^2 * 0.5.
-				local c2 is c1 * tau - stagePerf:eV * stagePerf:BurnTime^3 / 6.
-				local d3 is h * rv / r^3.
-				local d4 is (hT * rvT / rT^3 - d3) / stagePerf:BurnTime.
+		if stagePerf:eV <= 0
+            break.
 
-				local ftheta is 0.98.	// Estimate 2% cosine losses
-				local fdtheta is 0.
-				local fddtheta is 0.
+        // First stage is aero stage.
+        if firstEngineStage < 0 or (stagePerf:litPrevStage and firstEngineStage = s+1)
+        {
+            set firstEngineStage to s.
+        }
+        else
+        {
+            // Anomaly delta for stage, assuming full burn.
+            local tau is stagePerf:eV / stagePerf:accel.
+            local b0 is -stagePerf:eV * ln(1 - stagePerf:BurnTime / tau).
+            local b1 is b0 * tau - stagePerf:eV * stagePerf:BurnTime.
+            local c0 is b0 * stagePerf:BurnTime - b1.
+            local c1 is c0 * tau - stagePerf:eV * stagePerf:BurnTime^2 * 0.5.
+            local c2 is c1 * tau - stagePerf:eV * stagePerf:BurnTime^3 / 6.
+            local d3 is h * rv / r^3.
+            local d4 is (hT * rvT / rT^3 - d3) / stagePerf:BurnTime.
 
-				local dA is stagePerf:BurnTime * h / r^2
-					+ (ftheta * c0 + fdtheta * c1 + fddtheta * c2) / meanRadius
-					- d3 * stagePerf:BurnTime^2 - d4 * stagePerf:BurnTime^3 / 3.
+            local ftheta is 0.98.	// Estimate 2% cosine losses
+            local fdtheta is 0.
+            local fddtheta is 0.
 
-				set guidanceLat to guidanceLat + dA.
-			}
-		}
+            local dA is stagePerf:BurnTime * h / r^2
+                + (ftheta * c0 + fdtheta * c1 + fddtheta * c2) / meanRadius
+                - d3 * stagePerf:BurnTime^2 - d4 * stagePerf:BurnTime^3 / 3.
+
+            set guidanceLat to guidanceLat + dA.
+        }
 	}
 
 	set guidanceLat to guidanceLat * Constant:RadToDeg.
 
-	local periapsisLatitude is 0.
-	if southerlyLaunch
-		set periapsisLatitude to Ship:Latitude - guidanceLat - aeroLat.
-	else
-		set periapsisLatitude to Ship:Latitude + guidanceLat + aeroLat.
-	//print "  Estimated periapsis lat: " + round(periapsisLatitude, 2).
-
-	return periapsisLatitude.
+	return guidanceLat - aeroLat.
 }
 
 local function CalcRequiredSemiMajorAxis
@@ -334,11 +327,14 @@ if Ship:Status = "PreLaunch"
 
 	local nextUpdate is 0.
 	local nextTick is 0.
-	
-	set tweaksBox:AddLabel("Aero V"):style:height to 25.
-	local aeroVTheta is tweaksBox:AddTextField(LAS_GetPartParam(Core:Part, "aero=", 4000):ToString()).
-	set aeroVTheta:style:width to 50.
-	set aeroVTheta:style:height to 25.
+    
+	local targetPe is LAS_TargetPe * 1000 + Ship:Body:Radius.
+    local estPeLat is GetPeriapsisLat(LAS_TargetPe * 1000 + Ship:Body:Radius, Moon:Altitude + Ship:Body:Radius + targetPe, 4000).
+    
+	set tweaksBox:AddLabel("Pe Lat"):style:height to 25.
+	local PeriapsisLat is tweaksBox:AddTextField(LAS_GetPartParam(Core:Part, "pelat=", Ship:Latitude - estPeLat):ToString()).
+	set PeriapsisLat:style:width to 50.
+	set PeriapsisLat:style:height to 25.
 
 	set tweaksBox:AddLabel("Lead Angle"):style:height to 25.
 	local leadAngle is tweaksBox:AddTextField("0").
@@ -359,6 +355,10 @@ if Ship:Status = "PreLaunch"
 	set setKACAlarm to controlBox:AddCheckBox("Set Alarm").
 	set setKACAlarm:style:height to 25.
 
+	controlBox:AddSpacing(10).
+	local debugText is controlBox:AddLabel("").
+	set debugText:style:height to 25.
+
 	planningGui:Show().
 
 	local prevStagePerf is 0.
@@ -366,34 +366,33 @@ if Ship:Status = "PreLaunch"
 	from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
 	{
 		local stagePerf is LAS_GetStagePerformance(s).
+		
+		if stagePerf:eV <= 0
+            break.
 
-		if stagePerf:eV > 0
-		{
-			if stagePerf:litPrevStage and prevStagePerf:IsType("lexicon")
-			{
-				local vacThrust is stagePerf:Accel * stagePerf:WetMass.
+        if stagePerf:litPrevStage and prevStagePerf:IsType("lexicon")
+        {
+            local vacThrust is stagePerf:Accel * stagePerf:WetMass.
 
-				// Model as two separate burns
-				local burn1Accel is vacThrust / prevStagePerf:WetMass.
-				local burn1dV is -stagePerf:eV * ln(1 - prevStagePerf:BurnTime * burn1Accel / stagePerf:eV).
+            // Model as two separate burns
+            local burn1Accel is vacThrust / prevStagePerf:WetMass.
+            local burn1dV is -stagePerf:eV * ln(1 - prevStagePerf:BurnTime * burn1Accel / stagePerf:eV).
 
-				local burn2Accel is vacThrust / (stagePerf:WetMass - stagePerf:MassFlow * prevStagePerf:BurnTime).
-				local burn2dV is -stagePerf:eV * ln(1 - (stagePerf:BurnTime - prevStagePerf:BurnTime) * burn2Accel / stagePerf:eV).
+            local burn2Accel is vacThrust / (stagePerf:WetMass - stagePerf:MassFlow * prevStagePerf:BurnTime).
+            local burn2dV is -stagePerf:eV * ln(1 - (stagePerf:BurnTime - prevStagePerf:BurnTime) * burn2Accel / stagePerf:eV).
 
-				set deltaVBudget to deltaVBudget + burn1dV + burn2dV.
-			}
-			else
-			{
-				local deltaV is -stagePerf:eV * ln(1 - stagePerf:BurnTime * stagePerf:Accel / stagePerf:eV).
-				set deltaVBudget to deltaVBudget + deltaV.
-			}
-		}
+            set deltaVBudget to deltaVBudget + burn1dV + burn2dV.
+        }
+        else
+        {
+            local deltaV is -stagePerf:eV * ln(1 - stagePerf:BurnTime * stagePerf:Accel / stagePerf:eV).
+            set deltaVBudget to deltaVBudget + deltaV.
+        }
 
 		set prevStagePerf to stagePerf.
 	}
 	print "DeltaV budget: " + round(deltaVBudget, 1) + "m/s".
-
-	local targetPe is LAS_TargetPe * 1000 + Ship:Body:Radius.
+    
 	local goForLaunch is -1.
 	local prevWarpRate is 1.
 	
@@ -448,21 +447,28 @@ if Ship:Status = "PreLaunch"
 					{
 						//print i + " Earliest launch in " + LAS_FormatTime(earliestLaunch - Time:Seconds) + " fT=" + LAS_FormatTime(flightTime).
 						set launchTime to CalcLaunchTime(earliestLaunch, flightTime, leadAngle:Text:ToScalar(0)).
+                        
+                        set debugText:Text to LAS_FormatTime(launchTime - Time:Seconds).
 
 						// Moon pos relative to earth centre
 						local MoonPos is PositionAt(Moon, launchTime + flightTime) - Ship:Body:Position.
 
-						local periapsisLatitude is GetPeriapsisLat(targetPe, targetSMA, aeroVTheta:Text:ToScalar(4000)).
+						local periapsisLatitude is PeriapsisLat:Text:ToScalar(Ship:Latitude - estPeLat).
+                        if southerlyLaunch <> (periapsisLatitude < Ship:Latitude)
+                        {
+                            set periapsisLatitude to 2 * Ship:Latitude - periapsisLatitude.
+                            set PeriapsisLat:Text to round(periapsisLatitude, 2):ToString().
+                        }
 
 						set targetSMA to CalcRequiredSemiMajorAxis(targetPe, MoonPos, periapsisLatitude).
 
 						set prevFlightTime to flightTime.
 						set flightTime to CalcFlightTime(targetPe, targetSMA, MoonPos, periapsisLatitude).
-						if flightTime = 0
+						if flightTime = 0 or flightTime > 8 * 24 * 3600
 						{
 							// Unreachable, try jumping forward
 							//print "Moon not reachable from this launch window".
-							set earliestLaunch to launchTime + 3600 * 12.
+							set earliestLaunch to launchTime + 3600 * 6.
 							if i > 0
 								set flightTime to guiData[i-1]:flight.
 							else
@@ -551,9 +557,9 @@ if Ship:Status = "PreLaunch"
 			if autoWarp:pressed
 			{
 				local warpRate is 1.
-				if (goTime - Time:Seconds) > 3600 * 4
-					set warpRate to 10000.
-				else if (goTime - Time:Seconds) > 60 * 35
+				//if (goTime - Time:Seconds) > 3600 * 4
+					//set warpRate to 10000.
+				if (goTime - Time:Seconds) > 60 * 35
 					set warpRate to 1000.
 				else if (goTime - Time:Seconds) > 90
 					set warpRate to 100.
@@ -592,8 +598,13 @@ if Ship:Status = "PreLaunch"
 		{
 			// Moon pos relative to earth centre
 			local MoonPos is PositionAt(Moon, goTime + flightTime) - Ship:Body:Position.
-
-			local periapsisLatitude is GetPeriapsisLat(targetPe, targetSMA, aeroVTheta:Text:ToScalar(4000)).
+            
+            local periapsisLatitude is PeriapsisLat:Text:ToScalar(Ship:Latitude - estPeLat).
+            if southerlyLaunch <> (periapsisLatitude < Ship:Latitude)
+            {
+                set periapsisLatitude to 2 * Ship:Latitude - periapsisLatitude.
+                set PeriapsisLat:Text to round(periapsisLatitude, 2):ToString().
+            }
 
 			set targetSMA to CalcRequiredSemiMajorAxis(targetPe, MoonPos, periapsisLatitude).
 
@@ -604,7 +615,7 @@ if Ship:Status = "PreLaunch"
 			set firstPass to false.
 		}
 		
-		print "  Est periapsis lat is " + round(GetPeriapsisLat(targetPe, targetSMA, aeroVTheta:Text:ToScalar(4000)), 2) + ", Lead Angle=" + leadAngle:Text:ToScalar(0).
+		print "  Est periapsis lat is " + PeriapsisLat:Text + ", Lead Angle=" + leadAngle:Text:ToScalar(0).
 	
 		global LAS_LaunchTime is goTime.
 		global LAS_TargetSMA is targetSMA.

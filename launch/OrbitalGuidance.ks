@@ -86,7 +86,7 @@ local debugStages is list().
 			}
 			else
 			{
-				print "Target Orbit: Pe=" + round(targetPe * 0.001, 1) + " km, hyperbolic, A=" + round(targetAp * 0.001, 1) + " km".
+				print "Target Orbit: Pe=" + round(targetPe * 0.001, 1) + " km, hyperbolic, A=" + round(LAS_TargetSMA * 0.001, 1) + " km".
 			}
 
 			set targetPe to targetPe + Ship:Body:Radius.			
@@ -188,7 +188,8 @@ local function UpdateGuidance
     if stageT[s] < 10
     {
         set debugStat:Text to "T < 10 for s=" + s.
-        kUniverse:TimeWarp:CancelWarp().
+		if kUniverse:TimeWarp:Rate > 1
+			kUniverse:TimeWarp:CancelWarp().
 		set stageChange to true.
         return.
     }
@@ -447,7 +448,7 @@ local function UpdateGuidance
             set stageB[s] to (stageB[s] + newB) * 0.5.
         }
 
-        set debugStages[s]:text to "S" + s + ": A=" + round(stageA[s],3) + " B=" + round(stageB[s],3) + " T=" + round(stageT[s],2).
+        set debugStages[s]:text to "S" + s + ": A=" + round(stageA[s],3) + " B=" + round(stageB[s],3) + " T=" + round(stageT[s],1).
 
         // Update next stage guidance using staging state at start
         set stageA[nextStage] to deltaA + stageA[s] + stageB[s] * T.
@@ -476,6 +477,10 @@ local function UpdateGuidance
         set b0 to -exhaustV * ln(1 - T / tau). // delta V
         set b1 to b0 * tau - exhaustV * T.
         set b2 to b1 * tau - exhaustV * (T * T) * 0.5.
+        
+        local TFull is stageTFull[s].
+        if s = Stage:Number
+            set TFull to LAS_GetStageBurnTime().
 
         if hT <= 0
 		{
@@ -574,10 +579,7 @@ local function UpdateGuidance
 			{
 				set stageA[s] to 0.
 				set stageB[s] to 0.
-				if s <> Stage:Number
-					set stageT[s] to stageTFull[s].
-				else
-					set stageT[s] to LAS_GetStageBurnTime().
+                set stageT[s] to TFull.
 			}
 
 			// Final stage guidance
@@ -639,10 +641,7 @@ local function UpdateGuidance
 			{
 				set stageA[s] to 0.
 				set stageB[s] to 0.
-				if s <> Stage:Number
-					set stageT[s] to stageTFull[s].
-				else
-					set stageT[s] to LAS_GetStageBurnTime().
+                set stageT[s] to TFull.
 			}
 			else if startStage > GuidanceLastStage
 			{
@@ -650,8 +649,9 @@ local function UpdateGuidance
 				set stageT[s] to max(stageT[s], 10).
 			}
 		}
-
-        set debugStages[s]:text to "S" + s + ": A=" + round(stageA[s],3) + " B=" + round(stageB[s],3) + " T=" + round(stageT[s],2).
+		
+		local extraTime is choose " [+" + round(TFull - stageT[s],1) + "]" if TFull >= stageT[s] else " [" + round(TFull - stageT[s],1) + "]".
+        set debugStages[s]:text to "S" + s + ": A=" + round(stageA[s],3) + " B=" + round(stageB[s],3) + " T=" + round(stageT[s],1) + extraTime.
 
 		set tStart to MissionTime.
     }
