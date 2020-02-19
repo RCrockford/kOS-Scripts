@@ -48,7 +48,7 @@ local function getHeadingToTarget
 local function getDistanceToTarget
 {
 	parameter target is flightTarget.
-	
+
 	return (target + Ship:Body:Position):Mag.
 }
 local function getClimbRateToTarget
@@ -59,7 +59,9 @@ local function getClimbRateToTarget
 local currentFlapDeflect is 0.
 local allFlaps is list().
 local hasReheat is false.
+local hasJet is false.
 local rocketPlane is false.
+local RATOEngines is list().
 local initialClimb is true.
 local abortMode is false.
 local allChutes is list().
@@ -81,7 +83,7 @@ for p in Ship:parts
 	{
 		allChutes:add(p).
 	}
-	
+
 	if p:HasModule("ModuleEnginesAJEJet")
 	{
 		local engMod is p:GetModule("ModuleEnginesAJEJet").
@@ -89,6 +91,7 @@ for p in Ship:parts
 		{
 			set hasReheat to true.
 		}
+        set hasJet to true.
 	}
 	else if p:HasModule("ModuleEnginesRF")
 	{
@@ -97,8 +100,9 @@ for p in Ship:parts
 		{
 			set rocketPlane to true.
 		}
+        RATOEngines:Add(p).
 	}
-	
+
 	if p:HasModule("ModuleWheelBrakes")
 	{
 		if vdot(p:Position, Ship:RootPart:Facing:RightVector) > 1
@@ -115,6 +119,9 @@ for p in Ship:parts
 		}
 	}
 }
+
+if hasJet
+    set rocketPlane to false.
 
 local function setFlaps
 {
@@ -139,17 +146,50 @@ local function setFlaps
 		print "Flaps " + currentFlapDeflect.
 }
 
+local function startTaxiEngines
+{
+    local allEngines is list().
+    list engines in allEngines.
+
+    for eng in allEngines
+    {
+        if eng:Ignitions < 0
+            eng:Activate.
+    }
+}
+
+local function stopEngines
+{
+    local allEngines is list().
+    list engines in allEngines.
+
+    for eng in allEngines
+    {
+        eng:Shutdown.
+    }
+}
+
 local targetFlightLevel is 50.
-local targetSpeed is 250.
+local targetSpeed is 0.
 local targetHeading is round(shipHeading, 0).
 local targetClimbRate is 0.
-local rotateSpeed is 120.
-local landingSpeed is 90.
+local rotateSpeed is 100.
+local landingSpeed is 0.
 local controlSense is 1.
 local climbKP is 1.
 local climbKI is 0.1.
 local climbKD is 0.25.
 local maxThrottle is 1.
+
+if Ship:RootPart:Tag:Contains("rot=")
+{
+    local f is Ship:RootPart:Tag:Find("rot=") + 4.
+    set rotateSpeed to Ship:RootPart:Tag:Substring(f, Ship:RootPart:Tag:Length - f):Split(" ")[0]:ToNumber(rotateSpeed).
+}
+
+set rotateSpeed to round(rotateSpeed * 0.2, 0) * 5.
+set landingSpeed to round(rotateSpeed * 0.17, 0) * 5.
+set targetSpeed to rotateSpeed * 2.
 
 if rocketPlane and not ship:rootpart:tag:contains("noclimb")
 {
@@ -163,6 +203,7 @@ else
 
 local pitchPid is PIDloop(0.02, 0.001, 0.02, -1, 1).
 local rollPid is PIDloop(0.005, 0.00005, 0.001, -1, 1).
+local yawPid is PIDloop(0.2, 0.01, 0.1, -1, 1).
 local throtPid is PIDloop(0.1, 0.002, 0.05, 0, 1).
 local bankPid is PIDloop(3, 0.0, 5, -45, 45).
 local climbRatePid is pidloop(0.5, 0.01, 0.1, -40, 45).
@@ -191,7 +232,7 @@ local function createGuiControls
     parameter value.
     parameter dlg.
     parameter btnStr.
-    
+
     local ctrl is labelBox:AddLabel(lblStr).
     set ctrl:Style:Height to 25.
     guiElements:add(ctrl).
@@ -201,9 +242,9 @@ local function createGuiControls
 	if dlg:IsType("UserDelegate")
 		set ctrl:OnConfirm to dlg.
 	else
-		set ctrl:Enabled to false.		
+		set ctrl:Enabled to false.
     guiElements:add(ctrl).
-    
+
     if btnStr:Length > 0
         set ctrl to toggleBox:AddButton(BtnStr).
     else
@@ -217,7 +258,7 @@ local function createGuiInfo
     parameter tagStr.
     parameter lblStr.
     parameter value.
-    
+
     local ctrl is labelBox:AddLabel(lblStr).
     set ctrl:Style:Height to 25.
     guiElements:add(ctrl).
@@ -267,8 +308,6 @@ createGuiInfo("rwd", "Runway Distance", "0.0 km").
 createGuiInfo("dbg", "Debug", "").
 local debugName is guiElements[guiElements:Length-2].
 
-local exitButton is flightGui:AddButton("Exit").
-
 local groundHeading is round(shipHeading, 1).
 local stallSpeed is 0.
 local throttleDamp is 0.
@@ -278,6 +317,8 @@ local lastUpdate is Time:Seconds.
 
 local fs_Landed is 0.
 local fs_Takeoff is 1.
+local fs_Taxi is 2.
+local fs_TaxiTurn is 3.
 local fs_Flight is 10.
 local fs_LandInitApproach is 20.
 local fs_LandTurn is 21.
@@ -298,10 +339,16 @@ local runwayHeading is -1.
 
 local landingTarget is V(0,0,0).
 
+local taxiButton1 is 0.
+local taxiButton2 is 0.
+local taxiHeading is -1.
+
+local buttonBox is flightGui:AddHBox().
+
 local function runwayNumber
 {
 	parameter heading.
-	
+
 	local number is round(heading / 10, 0).
 	if number < 10
 		return "0" + number:ToString.
@@ -319,13 +366,16 @@ if Ship:status = "PreLaunch" or Ship:status = "Landed"
 
 	set runwayHeading to round(shipHeading, 1).
 	set runwayEnd1 to -Ship:Body:Position.
-	set runwayEnd2 to runwayEnd1 + Heading(shipHeading, 0):Vector * 2400.
+	set runwayEnd2 to runwayEnd1 + Heading(shipHeading, 0):Vector * 2180.
 	set Ship:Type to "Plane".
-	
+
 	set runwayCentre to (runwayEnd1 + runwayEnd2) * 0.5.
 
-	print "Takeoff from runway " + runwayNumber(runwayHeading).
+    set taxiButton1 to buttonBox:AddButton("Taxi " + runwayNumber(runwayHeading)).
+    set taxiButton2 to buttonBox:AddButton("Taxi " + runwayNumber(mod(runwayHeading + 180, 360))).
 }
+
+local exitButton is buttonBox:AddButton("Exit").
 
 FlightGui:Show().
 
@@ -352,7 +402,7 @@ until exitButton:TakePress
 			if Ship:GroundSpeed >= rotateSpeed or Ship:Status = "Flying"
 			{
 				// 10 degree rotation
-				set reqPitch to 10.
+				set reqPitch to 12.
 				if rocketPlane or abortMode
 					set reqPitch to 20.
 			}
@@ -362,6 +412,7 @@ until exitButton:TakePress
 				set stallSpeed to Ship:AirSpeed.
 				print "Stall speed set to " + round(stallSpeed, 1).
                 set Ship:Control:WheelSteer to 0.
+                set Ship:Control:Yaw to 0.
 			}
             else if Ship:Status = "Landed"
             {
@@ -370,8 +421,8 @@ until exitButton:TakePress
 
 			set reqHeading to groundHeading.
 			set Ship:Control:PilotMainThrottle to 1.
-				
-			local minAlt is 250.
+
+			local minAlt is 500.
 			if initialClimb
 				set minAlt to 10.
 			else if abortMode
@@ -384,19 +435,15 @@ until exitButton:TakePress
 				set debugName:Text to "Flight".
 				set guiButtons["lnd"]:Enabled to true.
 			}
-            
-            if reqPitch < 10 and abs(angle_off(groundHeading, shipHeading)) > 5
+
+            if reqPitch < 10 and abs(angle_off(groundHeading, shipHeading)) > 5 and Ship:GroundSpeed < 75
             {
                 print "Veering off course too far, check wheel steering. Takeoff aborted.".
-            
+
                 brakes on.
                 set Ship:Control:PilotMainThrottle to 0.
-            
-				set flightState to fs_LandBrakeHeading.
-				set debugName:Text to "Brake".
-				set guiButtons["to"]:Enabled to true.      
 
-				set flightTarget to runwayEnd2.
+				set flightState to fs_LandFinalApproach.
             }
 		}
 		else if flightState = fs_Flight
@@ -555,7 +602,7 @@ until exitButton:TakePress
 			local minDistance is 2500 * landingSpeed * landingSpeed / 6400.
 
             if getDistanceToTarget() < minDistance
-            {			
+            {
                 set reqHeading to mod(groundHeading + 135, 360).
                 local heading2 is mod(groundHeading + 225, 360).
                 if abs(angle_off(heading2, shipHeading)) < abs(angle_off(reqHeading, shipHeading))
@@ -565,7 +612,7 @@ until exitButton:TakePress
 			else
             {
                 set reqHeading to mod(groundHeading + 180, 360).
-				
+
 				set debugName:Text to "Turn 2".
 				set guiButtons["dbg"]:Text to round(reqHeading, 1) + "° " + round(getDistanceToTarget() * 0.001, 2) + " / " + round(minDistance * 0.002, 2).
 
@@ -581,7 +628,7 @@ until exitButton:TakePress
 			set reqClimbRate to getClimbRateToTarget().
 			set reqHeading to getHeadingToTarget().
 			set reqSpeed to min((1 + getDistanceToTarget() / 16000), 1.5) * landingSpeed.
-			
+
 			set guiButtons["dbg"]:Text to round(reqHeading, 1) + "° " + round(getDistanceToTarget() * 0.001, 2) + "/0.05".
 
 			if getDistanceToTarget() < 50
@@ -600,7 +647,7 @@ until exitButton:TakePress
 		{
 			set reqHeading to getHeadingToTarget().
 			set reqSpeed to landingSpeed.
-			
+
 			set guiButtons["dbg"]:Text to round(reqHeading, 1) + "° ".
 
 			if Alt:radar < 30 or (Alt:Radar < 40 and rocketPlane)
@@ -614,7 +661,7 @@ until exitButton:TakePress
 				if not rocketPlane
 					set reqClimbRate to max(reqClimbRate, -6).
 			}
-            
+
 			if Alt:Radar < 10
 			{
 				// Flare
@@ -630,7 +677,8 @@ until exitButton:TakePress
 				if (landingTarget - runwayEnd1):SqrMagnitude < (landingTarget - runwayEnd2):SqrMagnitude
 					set flightTarget to runwayEnd2.
 				else
-					set landingTarget to runwayEnd1.
+					set flightTarget to runwayEnd1.
+                stopEngines().
 			}
 		}
 		else if flightState = fs_LandBrake or flightState = fs_LandBrakeHeading
@@ -638,23 +686,23 @@ until exitButton:TakePress
 			set Ship:Control:PilotMainThrottle to 0.
 			if flightState = fs_LandBrakeHeading
 				set groundHeading to getHeadingToTarget().
-				
+
 			set reqHeading to groundHeading.
-            
+
 			if Ship:GroundSpeed < 1
 			{
                 setFlaps(0).
-				set flightState to fs_Landed.				
+				set flightState to fs_Landed.
 				set debugName:Text to "Landed".
 			}
             // anti-lock brakes
-            else 
+            else
 			{
 				local a is angle_off(shipHeading, reqHeading).
 				if Ship:GroundSpeed < 8
 					set a to 0.
 				local maxBrake is max(100 - Ship:GroundSpeed, 0) * min(max(3 - abs(a), 0), 1).
-					
+
 				if leftGear:IsType("part") and rightGear:IsType("part")
 				{
 					leftGear:GetModule("ModuleWheelBrakes"):SetField("brakes", maxBrake * min(max(1.5 - a, 0.1), 1.25)).
@@ -699,7 +747,52 @@ until exitButton:TakePress
 				set debugName:Text to "Brake".
 			}
 		}
-		
+        else if flightState = fs_Taxi
+        {
+            if getDistanceToTarget() < 5
+            {
+                set flightState to fs_TaxiTurn.
+            }
+
+            set groundHeading to getHeadingToTarget().
+
+            if Ship:GroundSpeed > 16
+                brakes on.
+            else if Ship:GroundSpeed < 15
+                brakes off.
+        }
+        else if flightState = fs_TaxiTurn
+        {
+            local a is angle_off(shipHeading, taxiHeading).
+            if abs(a) < 0.5
+            {
+                brakes on.
+                stopEngines().
+
+                set flightState to fs_Landed.
+                set debugName:Text to "Landed".
+                set guiButtons["to"]:Enabled to true.
+                set taxiButton1:Enabled to true.
+                set taxiButton2:Enabled to true.
+            }
+            else
+            {
+                if abs(a) > 100
+                {
+                    set groundHeading to mod(taxiHeading + 90, 360).
+                }
+                else
+                {
+                    set groundHeading to taxiHeading.
+                }
+
+                if Ship:GroundSpeed > 3
+                    brakes on.
+                else if Ship:GroundSpeed < 2.5
+                    brakes off.
+            }
+        }
+
 		// Ground collision avoidance
 		if not rocketPlane and flightState >= fs_Flight and flightState <= fs_LandFinalApproach
 		{
@@ -708,7 +801,7 @@ until exitButton:TakePress
 				set abortMode to abs(angle_off(shipHeading, reqHeading)) >= 8 or (Ship:VerticalSpeed < -8 and Ship:VerticalSpeed * -5 > Alt:Radar).
 			else
 				set abortMode to Ship:VerticalSpeed * -10 > Alt:Radar.
-				
+
 			if abortMode
 			{
 				print "Aborting landing".
@@ -727,12 +820,27 @@ until exitButton:TakePress
 			}
 		}
 
+        if not RATOEngines:Empty and Stage:Number > 0 and Stage:Ready
+        {
+            local flamedOut is true.
+            for e in RATOEngines
+            {
+                if not e:Flameout
+                    set flamedOut to false.
+            }
+            if flamedOut
+            {
+                set RATOEngines to list().
+                stage.
+            }
+        }
+
 		if reqControl
 		{
             // Anti-stall
             if reqClimbRate > 0
                 set reqClimbRate to max(min(reqClimbRate, Ship:Airspeed - stallSpeed), 0).
-                
+
             local ctrlDamp is 120 / max(Ship:AirSpeed, 80).
 			if Ship:Status = "Landed"
 				set ctrlDamp to ctrlDamp * 1.5.
@@ -740,21 +848,21 @@ until exitButton:TakePress
             if reqClimbRate > -1e6
             {
                 print "reqClimbRate=" + round(reqClimbRate, 1) + " / " + round(ship:verticalspeed, 1) + "   " at (0,0).
-                
+
                 set climbRatePid:kP to climbKP * ctrlDamp.
                 set climbRatePid:kD to climbKD.
 				set climbRatePid:kI to climbKI * ctrlDamp.
-                
+
                 set climbRatePid:SetPoint to reqClimbRate.
                 set reqPitch to climbRatePid:Update(time:seconds, Ship:verticalspeed).
             }
-            
+
             set ctrlDamp to ctrlDamp * max(0.1, min(controlSense, 10)).
 
             set pitchPid:kP to 0.06 * ctrlDamp.
             set pitchPid:kD to 0.04 * ctrlDamp.
 			set pitchPid:kI to 0.002 * ctrlDamp.
-            
+
             set pitchPid:SetPoint to reqPitch.
             set ship:control:pitch to pitchPid:update(time:seconds, ShipPitch).
 
@@ -773,18 +881,18 @@ until exitButton:TakePress
             {
                 bankPid:Reset().
             }
-			
+
 			set rollPid:kP to 0.005 * ctrlDamp.
 			set rollPid:kI to 0.0001 * ctrlDamp.
 			set rollPid:kD to 0.002 * ctrlDamp.
-			
+
 			set rollPid:SetPoint to reqBank.
 			set ship:control:roll to rollPid:Update(time:seconds, shipRoll()).
         }
 		else
 		{
 			set Ship:Control:Neutralize to true.
-            
+
 			climbRatePid:Reset().
             pitchPid:Reset().
             rollPid:Reset().
@@ -793,7 +901,7 @@ until exitButton:TakePress
 		if reqSpeed > 0
 		{
 			set throtPid:MaxOutput to maxThrottle.
-		
+
 			// Throttle control
 			set throtPid:SetPoint to reqSpeed.
 			set Ship:Control:PilotMainThrottle to throttleDamp * throttlePrev + throtPid:Update(time:seconds, Ship:AirSpeed) * (1 - throttleDamp).
@@ -814,8 +922,13 @@ until exitButton:TakePress
 			set wheelPid:kD to wheelPid:kP * 2 / 3.
 
 			set Ship:Control:WheelSteer to wheelPid:update(time:seconds, -wheelError).
+            if flightState = fs_Takeoff
+                set Ship:Control:Yaw to yawPid:Update(time:seconds, wheelError).
 
-			set guiButtons["dbg"]:Text to round(groundHeading, 1) + "° ".
+            if flightState = fs_Taxi
+                set guiButtons["dbg"]:Text to round(groundHeading, 1) + "° " + round(getDistanceToTarget(), 1) + "m".
+            else
+                set guiButtons["dbg"]:Text to round(groundHeading, 1) + "° ".
 		}
         else
         {
@@ -831,34 +944,92 @@ until exitButton:TakePress
             set flightState to fs_Flight.
 			set debugName:Text to "Flight".
             set Ship:Control:PilotMainThrottle to maxThrottle.
-            
+
             print "Autopilot disengaged.".
-            
+
             set guiButtons["lnd"]:Enabled to true.
         }
 	}
+	else if taxiButton1:IsType("Button") and (taxiButton1:Pressed or taxiButton2:Pressed)
+	{
+        if taxiButton1:TakePress
+        {
+            set flightTarget to runwayEnd1 + vcrs(Ship:Up:Vector, runwayEnd2 - runwayEnd1):Normalized * 4.
+            set taxiHeading to runwayHeading.
+        }
+        else if taxiButton2:TakePress
+        {
+            set flightTarget to runwayEnd2 + vcrs(Ship:Up:Vector, runwayEnd1 - runwayEnd2):Normalized * 4.
+            set taxiHeading to mod(runwayHeading + 180, 360).
+        }
+
+        set flightState to fs_Taxi.
+		set debugName:Text to "Taxi to " + runwayNumber(taxiHeading).
+		set guiButtons["to"]:Enabled to false.
+        set taxiButton1:Enabled to false.
+        set taxiButton2:Enabled to false.
+
+		startTaxiEngines().
+
+        // Idle power only while on the ground
+		set Ship:Control:PilotMainThrottle to 0.
+
+        if leftGear:IsType("part") and rightGear:IsType("part")
+        {
+            leftGear:GetModule("ModuleWheelBrakes"):SetField("brakes", 25).
+            rightGear:GetModule("ModuleWheelBrakes"):SetField("brakes", 25).
+        }
+
+		brakes on.
+		brakes off.
+
+		print debugName:Text.
+    }
 	else if guiButtons["to"]:TakePress
 	{
 		set flightState to fs_Takeoff.
 		set debugName:Text to "Takeoff".
 		set guiButtons["to"]:Enabled to false.
+        if taxiButton1:IsType("Button")
+        {
+            set taxiButton1:Enabled to false.
+            set taxiButton2:Enabled to false.
+        }
 
-		set groundHeading to round(shipHeading, 1).
+        // set landing target for abort
+        if (-Ship:Body:Position - runwayEnd1):SqrMagnitude < (-Ship:Body:Position - runwayEnd2):SqrMagnitude
+        {
+            set groundHeading to runwayHeading.
+            set landingTarget to runwayEnd2.
+        }
+        else
+        {
+            set groundHeading to mod(runwayHeading + 180, 360).
+            set landingTarget to runwayEnd1.
+        }
 
-		if Ship:Status = "PreLaunch"
-		{
-			print "Engine start.".
-			stage.
-		}
-		
-		local allEngines is list().
-		list engines in allEngines.
+      	print "Takeoff from runway " + runwayNumber(groundHeading).
+        print "Engine start.".
 
-		for eng in allEngines
-		{
-			if eng:Stage = stage:Number
-				eng:Activate().
-		}
+        local allEngines is list().
+        list engines in allEngines.
+
+        local haveEngines is false.
+
+        until haveEngines
+        {
+            for eng in allEngines
+            {
+                if eng:Stage = stage:Number
+                {
+                    eng:Activate.
+                    set haveEngines to true.
+                }
+            }
+
+            if not haveEngines
+                stage.
+        }
 
 		set Ship:Control:PilotMainThrottle to maxThrottle.
 
@@ -892,12 +1063,12 @@ until exitButton:TakePress
 
 		print "Beginning takeoff roll.".
 
-		when alt:radar >= 20 then { gear off. if currentFlapDeflect > 1 setFlaps(1). }
+		when alt:radar >= 25 then { gear off. if currentFlapDeflect > 1 setFlaps(1). }
 	}
-	
+
 	set guiButtons["rwh"]:Text to round(getHeadingToTarget(runwayCentre), 1) + "°".
 	set guiButtons["rwd"]:Text to round(getDistanceToTarget(runwayCentre) * 0.001, 1) + " km".
- 
+
     // throttle update rate
     wait 0.
 }
