@@ -49,19 +49,23 @@ global function EM_Ignition
     // If we have engines, prep them to ignite.
     if not activeEngines:empty
     {
+        for e in activeEngines
+            e:Shutdown.
+			
         // Burn forwards with RCS.
         rcs on.
         set Ship:Control:Fore to 1.
+        set Ship:Control:PilotMainThrottle to 1.
         
         for e in activeEngines
             wait until e:FuelStability >= 0.99.
         
-        set Ship:Control:PilotMainThrottle to 1.
-        
         for e in activeEngines
             e:Activate.
+			
+		local t is time:seconds + 3.
 
-        wait until EM_CheckThrust(0.5) or activeEngines[0]:Flameout.
+        wait until EM_CheckThrust(0.5) or activeEngines[0]:Flameout or time:seconds > t.
         
         set Ship:Control:Fore to 0.
     }

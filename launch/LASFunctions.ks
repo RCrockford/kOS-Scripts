@@ -42,6 +42,8 @@ global function LAS_GetPartParam
     return value.
 }
 
+local ResourceAliases is lexicon("LqdHydrogen", list("LH2")).
+
 local function GetConnectedResources
 {
     parameter p.
@@ -55,10 +57,20 @@ local function GetConnectedResources
 		{
 			if r:Enabled
 			{
-				if res:HasKey(r:name)
-					set res[r:name] to res[r:name] + r:amount.
-				else
-					res:Add(r:name, r:amount).
+				local nameList is list(r:Name).
+				if ResourceAliases:HasKey(r:Name)
+				{
+					for a in ResourceAliases[r:Name]
+						nameList:Add(a).
+				}
+				
+				for name in nameList
+				{
+					if res:HasKey(name)
+						set res[name] to res[name] + r:amount.
+					else
+						res:Add(name, r:amount).
+				}
 			}
 		}
 	}	
@@ -66,12 +78,12 @@ local function GetConnectedResources
     seen:Add(p).
 	
 	// Connected engines
-	if p:IsType("Engine") and p:Name = eng:Name
+	if p:IsType("Engine")
 	{
 		if res:HasKey("eng")
-			set res["eng"] to res["eng"] + 1.
+			res["eng"]:add(p).
 		else
-			res:Add("eng", 1).
+			res:Add("eng", list(p)).
 	}	
 	
     // Don't consider crossfeed for solid fuel engines
@@ -107,23 +119,47 @@ local EngineStats is lexicon().
         EngineStats[eng]:Add("igniteTime", -1).
 
         local engRes is GetConnectedResources(eng, lexicon(), uniqueset(), eng).
+		
+		local resConsumption is lexicon().
+        for k in engRes:keys
+        {
+			resConsumption:add(k, 0).
+		}
+		
+		for e in engRes["eng"]
+		{
+			for k in e:ConsumedResources:keys
+			{
+				local r is e:ConsumedResources[k].
+				if resConsumption:HasKey(r:Name)
+				{
+					set resConsumption[r:Name] to resConsumption[r:Name] + r:MaxFuelFlow.
+				}
+			}
+		}
         
         local fuelTime is 1e6.
+		local resShare is 1.
         for k in eng:ConsumedResources:keys
         {
             local r is eng:ConsumedResources[k].
             if engRes:HasKey(r:Name)
             {
-                set fuelTime to min(fuelTime, engRes[r:Name] / r:MaxFuelFlow).
+                set fuelTime to min(fuelTime, engRes[r:Name] / resConsumption[r:Name]).
+				set resShare to min(resShare, r:MaxFuelFlow / resConsumption[r:Name]).
             }
             else
             {
+				print eng:Config + " missing fuel " + r:name.
                 set fuelTime to 0.
             }
         }
         
         EngineStats[eng]:Add("fuelTime", fuelTime).
-        EngineStats[eng]:Add("resShare", engRes["eng"]).
+        EngineStats[eng]:Add("resShare", resShare).
+		
+		if not LAS_EngineIsUllage(eng)
+			print "Eng " + eng:Config + " t=" + round(fuelTime, 1) + " s=" + round(resShare, 3).
     }
 }
 
@@ -159,14 +195,13 @@ global function LAS_GetRealEngineBurnTime
             for k in eng:ConsumedResources:keys
             {
                 local r is eng:ConsumedResources[k].
-                set burnTime to min(burnTime, r:Amount / r:MaxFuelFlow).
+                set burnTime to min(burnTime, r:Amount * EngineStats[eng]:resShare / r:MaxFuelFlow).
             }
         }
         else
         {
             set burnTime to EngineStats[eng]:fuelTime.
         }
-        set burnTime to burnTime / EngineStats[eng]:resShare.
     }
     
     return burnTime.
@@ -260,7 +295,7 @@ global function LAS_GetStagePerformance
 
 	for eng in allEngines
 	{
-		if eng:DecoupledIn = s - 1 and not LAS_EngineIsUllage(eng) and not eng:Tag:Contains("nostage")
+		if eng:DecoupledIn = s - 1 and not LAS_EngineIsUllage(eng) and not eng:Tag:Contains("nostage") and not eng:Name:Contains("vernier")
 		{
 			set massFlow to massFlow + eng:MaxMassFlow.
 			set stageThrust to stageThrust + eng:PossibleThrustAt(0).
@@ -283,7 +318,7 @@ global function LAS_GetStagePerformance
 
 	for shipPart in Ship:Parts
 	{
-		if not shipPart:HasModule("LaunchClamp")
+		if not shipPart:HasModule("LaunchClamp") and not (shipPart:tag:Contains("les") and shipPart:IsType("Engine"))
 		{
 			// Because decoupler tanks don't report correctly.
 			local decoupleStage is shipPart:DecoupledIn.

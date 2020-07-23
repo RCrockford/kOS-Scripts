@@ -8,7 +8,13 @@ wait until Ship:Unpacked.
 // Launch to the south?
 local southerlyLaunch is true.
 
-local plannerSlots is 8.
+set config:ipu to 2000.
+
+local isGroundStation is (Ship:Mass < 1) and (Ship:Status = "Landed").
+
+local plannerSlots is choose 16 if isGroundStation else 8.
+
+ClearGUIs().
 
 local function GetPeriapsisLat
 {
@@ -114,13 +120,13 @@ local function CalcFlightTime
 	local eccAnom is 0.
 	local meanAnom is 0.
 
-	if ecc < 1
+	if ecc < 1 and ecc >= 0
 	{
 		// Elliptic orbit
 		set eccAnom to mod(arctan2(sqrt(1 - ecc^2) * sin(trueAnomaly), ecc + cos(trueAnomaly)) + 360, 360).
 		set meanAnom to (eccAnom * constant:degtorad - ecc * sin(eccAnom)) * constant:radtodeg.
 	}
-	else if trueAnomaly >= 180
+	else if trueAnomaly >= 180 or ecc < 0
 	{
 		// Cannot reach via hyperbolic trajectory
 		return 0.
@@ -250,13 +256,14 @@ local function UpdateGuiEntry
 	{
 		if setKACAlarm:Pressed and not guiData:go:IsType("KACAlarm") and guiData:launch > 1800
 		{
-			set guiData:go to AddAlarm("Raw", guiData:launch - 1800, Ship:Name + " Launch Window", Ship:Name + " is nearing its launch window").
+			local lwName is (choose "Lunar" if isGroundStation else Ship:Name).
+			set guiData:go to AddAlarm("Raw", guiData:launch - 1800, lwName + " Launch Window", lwName + " is nearing its launch window").
 		}
 	}
 }
 
 // Must be prelaunch for system to activate (allows for reboots after liftoff).
-if Ship:Status = "PreLaunch"
+if Ship:Status = "PreLaunch" or isGroundStation
 {
     Core:DoEvent("Open Terminal").
 
@@ -329,7 +336,21 @@ if Ship:Status = "PreLaunch"
 	local nextTick is 0.
     
 	local targetPe is LAS_TargetPe * 1000 + Ship:Body:Radius.
-    local estPeLat is GetPeriapsisLat(LAS_TargetPe * 1000 + Ship:Body:Radius, Moon:Altitude + Ship:Body:Radius + targetPe, 4000).
+    local estPeLat is 0.
+	if isGroundStation
+	{
+		if exists("1:/pelat.json")
+		{
+			local peLat to readjson("1:/pelat.json").
+			set estPeLat to Ship:Latitude - peLat[0].
+		}
+		else
+			set estPeLat to 22.
+	}
+	else
+	{
+		set estPeLat to GetPeriapsisLat(LAS_TargetPe * 1000 + Ship:Body:Radius, Moon:Altitude + Ship:Body:Radius + targetPe, 4000).
+	}
     
 	set tweaksBox:AddLabel("Pe Lat"):style:height to 25.
 	local PeriapsisLat is tweaksBox:AddTextField(LAS_GetPartParam(Core:Part, "pelat=", Ship:Latitude - estPeLat):ToString()).
@@ -348,11 +369,12 @@ if Ship:Status = "PreLaunch"
 
 	controlBox:AddSpacing(10).
 	local autoWarp is controlBox:AddCheckBox("Auto Warp").
-	set autoWarp:Pressed to true.
+	set autoWarp:Pressed to not isGroundStation.
 	set autoWarp:style:height to 25.
 
 	controlBox:AddSpacing(10).
 	set setKACAlarm to controlBox:AddCheckBox("Set Alarm").
+	set setKACAlarm:Pressed to isGroundStation.
 	set setKACAlarm:style:height to 25.
 
 	controlBox:AddSpacing(10).
@@ -361,35 +383,42 @@ if Ship:Status = "PreLaunch"
 
 	planningGui:Show().
 
-	local prevStagePerf is 0.
-
-	from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
+	if isGroundStation
 	{
-		local stagePerf is LAS_GetStagePerformance(s).
-		
-		if stagePerf:eV <= 0
-            break.
+		set deltaVBudget to 12500.
+	}
+	else
+	{
+		local prevStagePerf is 0.
 
-        if stagePerf:litPrevStage and prevStagePerf:IsType("lexicon")
-        {
-            local vacThrust is stagePerf:Accel * stagePerf:WetMass.
+		from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
+		{
+			local stagePerf is LAS_GetStagePerformance(s).
+			
+			if stagePerf:eV <= 0
+				break.
 
-            // Model as two separate burns
-            local burn1Accel is vacThrust / prevStagePerf:WetMass.
-            local burn1dV is -stagePerf:eV * ln(1 - prevStagePerf:BurnTime * burn1Accel / stagePerf:eV).
+			if stagePerf:litPrevStage and prevStagePerf:IsType("lexicon")
+			{
+				local vacThrust is stagePerf:Accel * stagePerf:WetMass.
 
-            local burn2Accel is vacThrust / (stagePerf:WetMass - stagePerf:MassFlow * prevStagePerf:BurnTime).
-            local burn2dV is -stagePerf:eV * ln(1 - (stagePerf:BurnTime - prevStagePerf:BurnTime) * burn2Accel / stagePerf:eV).
+				// Model as two separate burns
+				local burn1Accel is vacThrust / prevStagePerf:WetMass.
+				local burn1dV is -stagePerf:eV * ln(1 - prevStagePerf:BurnTime * burn1Accel / stagePerf:eV).
 
-            set deltaVBudget to deltaVBudget + burn1dV + burn2dV.
-        }
-        else
-        {
-            local deltaV is -stagePerf:eV * ln(1 - stagePerf:BurnTime * stagePerf:Accel / stagePerf:eV).
-            set deltaVBudget to deltaVBudget + deltaV.
-        }
+				local burn2Accel is vacThrust / (stagePerf:WetMass - stagePerf:MassFlow * prevStagePerf:BurnTime).
+				local burn2dV is -stagePerf:eV * ln(1 - (stagePerf:BurnTime - prevStagePerf:BurnTime) * burn2Accel / stagePerf:eV).
 
-		set prevStagePerf to stagePerf.
+				set deltaVBudget to deltaVBudget + burn1dV + burn2dV.
+			}
+			else
+			{
+				local deltaV is -stagePerf:eV * ln(1 - stagePerf:BurnTime * stagePerf:Accel / stagePerf:eV).
+				set deltaVBudget to deltaVBudget + deltaV.
+			}
+
+			set prevStagePerf to stagePerf.
+		}
 	}
 	print "DeltaV budget: " + round(deltaVBudget, 1) + "m/s".
     
@@ -557,15 +586,15 @@ if Ship:Status = "PreLaunch"
 			if autoWarp:pressed
 			{
 				local warpRate is 1.
-				//if (goTime - Time:Seconds) > 3600 * 4
-					//set warpRate to 10000.
-				if (goTime - Time:Seconds) > 60 * 35
+				if (goTime - Time:Seconds) > 3600 * 4
+					set warpRate to 10000.
+				else if (goTime - Time:Seconds) > 60 * 35
 					set warpRate to 1000.
 				else if (goTime - Time:Seconds) > 90
 					set warpRate to 100.
 				else if (goTime - Time:Seconds) > 30
 					set warpRate to 10.
-				if (goTime - Time:Seconds) < 900 and abs(nextUpdate - Time:Seconds) < 20
+				if (goTime - Time:Seconds) < 900 and abs(nextUpdate - Time:Seconds) < 16
 					set warpRate to 1.
 				if kUniverse:TimeWarp:Rate <> warpRate
 					set kUniverse:TimeWarp:Rate to warpRate.
@@ -579,6 +608,12 @@ if Ship:Status = "PreLaunch"
 		else
 		{
 			set goTime to 0.
+		}
+		
+		if isGroundStation
+		{
+			local periapsisLatitude is PeriapsisLat:Text:ToScalar(Ship:Latitude - estPeLat).
+			writejson(list(periapsisLatitude), "1:/pelat.json").
 		}
 
 		wait until nextTick < Time:Seconds.

@@ -17,7 +17,7 @@ wait until e:FuelStability>=0.99.
 set Ship:Control:MainThrottle to 1.
 for e in n
 e:Activate.
-wait until n[0]:Thrust>n[0]:PossibleThrust*0.5 or n[0]:Flameout.
+wait until n[0]:Thrust>(n[0]:PossibleThrust*0.5).
 set Ship:Control:Fore to 0.
 wait until n[0]:Flameout.
 for e in n

@@ -7,13 +7,32 @@ local NextStageEngines is list().
 local NextStageDecouplers is list().
 local NextStageUllage is list().
 local NextStageChutes is list().
+local NextStageRCS is list().
 local ShutdownEngines is list().
 
 local StagingFunction is CheckStageType@.
 
 local LAS_IsParachuting is false.
-local nextStageHasRCS is false.
 local engineSpooling is true.
+
+local kscPos is Ship:GeoPosition.
+
+global function LAS_FireDecoupler
+{
+	parameter decoup.
+
+	local modDecouple is 0.
+	if decoup:HasModule("ModuleDecouple")
+		set modDecouple to decoup:GetModule("ModuleDecouple").
+	else
+		set modDecouple to decoup:GetModule("ModuleAnchoredDecoupler").
+	if modDecouple:HasEvent("decouple")
+		modDecouple:DoEvent("decouple").
+	else if modDecouple:HasEvent("decouple top node")
+		modDecouple:DoEvent("decouple top node").
+	else if modDecouple:HasEvent("decoupler staging")
+		modDecouple:DoEvent("decoupler staging").
+}
 
 local function StageFlameout
 {
@@ -27,8 +46,14 @@ local function StageFlameout
     {
 		if (s < 0) or (eng:DecoupledIn = s)
 		{
-			// If any engine is producing less than 10% nominal thrust, consider it burned out.
-			if not eng:Flameout() and (engineSpooling or eng:Thrust >= eng:PossibleThrust * 0.1)
+			local hasThrust is false.
+			// If any liquid fuelled engine is producing less than 10% nominal thrust, consider it burned out.
+			if eng:AllowShutdown
+				set hasThrust to engineSpooling or eng:Thrust >= eng:PossibleThrust * 0.1.
+			else
+			// Solid fuel are considered burned out when TWR is below 1.
+				set hasThrust to eng:Thrust >= (eng:Mass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude).
+			if not eng:Flameout and hasThrust
 			{
 				set allFlamedOut to false.
 				if eng:Thrust < eng:PossibleThrust * 0.1
@@ -57,17 +82,7 @@ local function DecoupleStage
         // Fire all decouplers
         for decoup in NextStageDecouplers
         {
-            local modDecouple is 0.
-			if decoup:HasModule("ModuleDecouple")
-				set modDecouple to decoup:GetModule("ModuleDecouple").
-			else
-				set modDecouple to decoup:GetModule("ModuleAnchoredDecoupler").
-            if modDecouple:HasEvent("decouple")
-                modDecouple:DoEvent("decouple").
-            else if modDecouple:HasEvent("decouple top node")
-                modDecouple:DoEvent("decouple top node").
-            else if modDecouple:HasEvent("decoupler staging")
-                modDecouple:DoEvent("decoupler staging").
+			LAS_FireDecoupler(decoup).
         }
 
         set NextStageDecouplers to list().
@@ -181,43 +196,61 @@ local function UllageStageSettle
     {
         // Fire engines (i.e. stage).
 		print "Fuel Stability: " + round(fuelState * 100, 1) + "%".
+		set ship:control:fore to 0.
         return true.
     }
-    
-    // Check ullage motor burn time
-    local burnTime is LAS_GetRealEngineBurnTime(NextStageUllage[0]).
-    
-	// If less than 0.05 seconds to go, just go for it
-	if burnTime < 0.05
+
+	// Out of atmosphere just allow the ship to drift after the motors cut off and hope for stable ignition.
+	if Ship:Q > 0 and not NextStageUllage:empty
 	{
-		print "Fuel Stability: " + round(fuelState * 100, 1) + "%".
-		return true.
+		// Check ullage motor burn time
+		local burnTime is LAS_GetRealEngineBurnTime(NextStageUllage[0]).
+		
+		// If less than 0.05 seconds to go, just go for it
+		if burnTime < 0.05
+		{
+			print "Fuel Stability: " + round(fuelState * 100, 1) + "%".
+			set ship:control:fore to 0.
+			return true.
+		}
+		
+		// Ramp up ignition chance as we get near ullage burnout
+		// Allows stable (95%) igntion at ~0.235s, 75% at ~0.15s, 50% at ~0.07s
+		if sqrt(4 * (burnTime - 0.01)) < fuelState
+		{
+			print "Fuel Stability: " + round(fuelState * 0.01, 1) + "%".
+			set ship:control:fore to 0.
+			return true.
+		}
 	}
-	
-    // Ramp up ignition chance as we get near ullage burnout
-	// Allows stable (95%) igntion at ~0.235s, 75% at ~0.15s, 50% at ~0.07s
-    if sqrt(4 * (burnTime - 0.01)) < fuelState
-	{
-		print "Fuel Stability: " + round(fuelState * 0.01, 1) + "%".
-		return true.
-	}
-	
+
 	return false.
 }
 
 // LF engine with ullage motors (part 2).
 local function UllageStageFire
 {
-    // Fire ullage motors.
-    for eng in NextStageUllage
-    {
-        LAS_IgniteEngine(eng).
-    }
+	if NextStageUllage:empty
+	{
+		rcs on.
+		for r in NextStageRCS
+			set r:enabled to true.
+		set ship:control:fore to 1.
+	}
+	else
+	{
+		// Fire ullage motors.
+		for eng in NextStageUllage
+		{
+			LAS_IgniteEngine(eng).
+		}
+	}
     
     set StagingFunction to UllageStageSettle@.
 }
 
 local heightWarn is false.
+local pressureWarn is false.
 local apoWarn is false.
 
 // LF engine with ullage motors (part 1).
@@ -259,10 +292,18 @@ local function UllageStageSeparate
                 print "Separation in " + round(ETA:Apoapsis - apoTime, 1) + " s.".
                 set apoWarn to true.
             }
-			
-			// RCS ullage
-			if ETA:Apoapsis - apoTime < 3 and rcs
-				set Ship:Control:Fore to 1.
+
+            return false.
+        }
+		
+		local maxPressure is LAS_GetPartParam(NextStageEngines[0], "p=", 10).   // 10 kPa is a default ignition chance of 92.5%, 100% at 5 kPA.
+        if (Ship:Q * constant:AtmToKPa > maxPressure)
+        {
+            if not pressureWarn
+            {
+                print "Presssure too high to stage (" + round(Ship:Q * constant:AtmToKPa, 1) + " kPa), separation at " + maxPressure + " kPa.".
+                set pressureWarn to true.
+            }
 
             return false.
         }
@@ -280,6 +321,8 @@ local function UllageStageSeparate
     return false.
 }
 
+local maxAltitude is 0.
+
 // Parachute descent stage.
 local function ParachuteDescent
 {
@@ -288,12 +331,19 @@ local function ParachuteDescent
     {
         return false.
     }
+	
+	set maxAltitude to max(Ship:Altitude, maxAltitude).
+	if maxAltitude < 5000
+		return false.
 
     // Do we have decouplers? If so drop boost stage at 80 km.
 	if Ship:Altitude <= 80000 or GetBatteryProportion() < 0.05
 	{
 		if DecoupleStage()
+		{
 			print "Decoupling return capsule.".
+			set StageEngines to LAS_GetStageEngines().
+		}
 	}
 
     // Arm chutes as soon as we hit atmosphere.
@@ -371,7 +421,7 @@ local function CheckStageType
         if p:HasModule("RealChuteModule")
             NextStageChutes:add(p).
         if p:IsType("RCS")
-            set nextStageHasRCS to true.
+            NextStageRCS:add(p).
     }
 
     local enginesNeedStartup is false.
@@ -380,7 +430,7 @@ local function CheckStageType
 		if eng:Tag:Contains("nostage")
 		{
             set StagingFunction to FinalStage@.
-            print "Next stage: Final (Forced)".
+            print "Next stage: Final".
 			return.
 		}
 	
@@ -391,11 +441,12 @@ local function CheckStageType
     if enginesNeedStartup
     {
         // Engine staging
-        if not NextStageUllage:empty
+        if not NextStageUllage:empty or not NextStageRCS:empty
         {
             set StagingFunction to UllageStageSeparate@.
-            print "Next stage: Ullage".
+            print "Next stage: Ullage" + (choose " (rcs)" if NextStageUllage:empty else "").
             set heightWarn to false.
+			set pressureWarn to false.
             set apoWarn to false.
         }
         else
@@ -467,16 +518,75 @@ local function EnableECForStage
     }
 }
 
+local function CheckAbort
+{    
+	local allEngines is list().
+    list engines in allEngines.
+	
+	local doAbort is false.
+	if LAS_HasEscapeSystem
+	{
+		local shipThrust is 0.
+		for eng in allEngines
+			set shipThrust to shipThrust + eng:Thrust.
+		local twr is ShipThrust / (Ship:Mass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude).
+		
+		if Ship:Q > 0.1 and Ship:Q * vang(Facing:Vector, SrfPrograde:Vector) > 2
+		{
+			print "Ship violated Qα constraint (" + round(Ship:Q * vang(Facing:Vector, SrfPrograde:Vector), 2) + "), aborting launch.".
+			set doAbort to true.
+		}
+		if alt:radar < 25000 and TWR < 1.05 - Alt:Radar * 1e-5
+		{
+			print "Ship violated TWR constraint (" + round(twr, 2) + "), aborting launch.".
+			set doAbort to true.
+		}
+		if Ship:VerticalSpeed < 0
+		{
+			print "Ship violated vertical speed constraint, aborting launch.".
+			set doAbort to true.
+		}
+	}
+	else
+	{
+		// If less than 1.5 second to ground impact
+		if Alt:Radar < -Ship:VerticalSpeed * 1.5
+			set doAbort to (Ship:GeoPosition:Position - kscPos:Position):Mag < 1200.
+	}
+
+	if doAbort
+	{
+		// Shutdown all engines
+		for eng in allEngines
+		{
+			eng:Shutdown().
+		}
+		
+		HudText("RSO: Commanded ship destruction.", 5, 2, 15, red, false).
+
+		// Tell all other CPUs to destroy themselves.
+		for cpu in Ship:ModulesNamed("kOSProcessor")
+		{
+			if cpu <> Core
+				cpu:Connection:SendMessage("RSO").
+		}
+
+		LAS_CrewEscape().
+
+		if Ship:Crew:Empty
+			Core:Part:GetModule("ModuleRangeSafety"):DoAction("Range Safety", true).
+	}
+}
+
 global function LAS_CheckStaging
 {
     if not Stage:Ready
         return false.
+		
+	CheckAbort().
 
     if StagingFunction()
     {
-        if nextStageHasRCS
-            rcs on.
-            
         EnableECForStage(Stage:Number - 1).
     
         stage.
@@ -542,7 +652,7 @@ global function LAS_CheckPayload
 {
     if not PL_FairingsJettisoned
     {
-        if Ship:Q < 1e-4
+        if Ship:Q < 1e-3
         {
             // Jettison fairings
 			local jettisoned is false.
@@ -569,7 +679,7 @@ global function LAS_CheckPayload
 			
 			for antenna in Ship:ModulesNamed("ModuleDeployableAntenna")
             {
-                if antenna:HasEvent("extend antenna")
+                if antenna:HasEvent("extend antenna") and not antenna:part:tag:contains("noextend")
                 {
                     antenna:DoEvent("extend antenna").
                 }

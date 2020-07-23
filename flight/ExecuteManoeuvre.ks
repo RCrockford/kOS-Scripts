@@ -13,27 +13,30 @@ parameter burnStart is 0.
 // Wait for unpack
 wait until Ship:Unpacked.
 
+switch to 0.
+
+local dV is 0.
+
 if not HasNode
 {
-    lock tVec to Ship:Prograde:Vector.
-    lock bVec to vcrs(tVec, ship:up:vector):Normalized.
-    lock nVec to vcrs(tVec, bVec):Normalized.
-    lock dV to tangent * tVec + normal * nVec + binormal * bVec.
+    set dV to V(tangent, normal, binormal).
     set burnStart to time:Seconds + burnStart.
     lock burnEta to burnStart - time:Seconds.
 }
 else
 {
-    lock dV to NextNode:DeltaV.
+    set dV to NextNode:DeltaV.
     lock burnEta to NextNode:eta.
 }
 runoncepath("0:/FCFuncs").
+runoncepath("0:/flight/FlightFuncs").
 
 local duration is 0.
 local burnStage is stage:Number.
 local activeEngines is list().
 local fuelName is 0.
 local fuelAmount is 0.
+local fuelTotal is 0.
 
 if rcsBurn
 {
@@ -98,21 +101,30 @@ else
         
         local finalMass is shipMass / massRatio.
         set duration to (shipMass - finalMass) / massFlow.
+		
+		local ResourceAliases is lexicon("LH2", "LqdHydrogen").
 
 		local startFuelMass is 0.
+		local maxFlow is 0.
         
         for eng in activeEngines
         {
             for k in eng:ConsumedResources:keys
             {
                 local res is eng:ConsumedResources[k].
-                if res:Density > 0 and activeResources:HasKey[res:name]
+				local resName is res:Name.
+				if ResourceAliases:HasKey(resName) and activeResources:HasKey(ResourceAliases[resName])
+				{
+					set resName to ResourceAliases[resName].
+				}
+                if res:Density > 0 and activeResources:HasKey(resName)
                 {
-                    set startFuelMass to startFuelMass + activeResources[res] * res:Density.
-                    if fuelName = 0
+                    set startFuelMass to startFuelMass + activeResources[resName] * res:Density.
+                    if res:MaxFuelFlow > maxFlow
                     {
-                        set fuelName to res:name.
-                        set fuelAmount to activeResources[res].
+                        set fuelName to resName.
+                        set fuelAmount to activeResources[resName].
+						set maxFlow to res:MaxFuelFlow.
                     }
                 }
             }
@@ -121,17 +133,18 @@ else
 		if startFuelMass > 0 
 		{
 			local fuelProp is (shipMass - finalMass) / startFuelMass.
-			set fuelProp to min(max(0, fuelProp), 1).			
+			set fuelProp to min(max(0, fuelProp), 1).
+			set fuelTotal to fuelAmount.
 			set fuelAmount to fuelAmount * fuelProp.
 		}
     }
 }
 
-print "Executing manoeuvre in " + round(burnEta, 1) + " seconds.".
+print "Executing manoeuvre in " + FormatTime(burnEta).
 print "  DeltaV: " + round(dV:Mag, 1) + " m/s.".
 print "  Duration: " + round(duration, 1) + " s.".
 if not rcsBurn
-	print "  Fuel Monitor: " + fuelName + " => " + round(fuelAmount, 2).
+	print "  Fuel Monitor: " + fuelName + " " + round(fuelTotal, 2) + " => " + round(fuelTotal - fuelAmount, 2).
 if rcsBurn
 {
     print "  RCS burn.".
@@ -149,18 +162,28 @@ if burnEta > 120 and Addons:Available("KAC")
 }
 
 local burnParams is lexicon(
-    "eta", burnEta + Time:Seconds,
-    "dv", dV,
-    "fuelN", fuelName,
-    "fuelA", fuelAmount,
     "t", duration,
     "eng", not activeEngines:empty,
-    "stage", burnStage,
-    "inertial", spinKick,
-    "spin", spinRate
+    "inertial", spinKick
 ).
 
-local fileList is list("flight/ExecuteManoeuvreBurn.ks", "FCFuncs.ks").
+if burnParams:eng
+{
+    burnParams:Add("fuelN", fuelName).
+    burnParams:Add("fuelA", fuelAmount).
+    burnParams:Add("stage", burnStage).
+}
+
+if spinKick
+    burnParams:Add("spin", spinRate).
+
+if not HasNode
+{
+    burnParams:Add("eta", burnStart).
+    burnParams:Add("dv", dV).
+}
+
+local fileList is list("flight/ExecuteManoeuvreBurn.ks", "FCFuncs.ks", "flight/TuneSteering.ks").
 if burnParams:eng
     fileList:add("flight/EngineMgmt.ks").
 

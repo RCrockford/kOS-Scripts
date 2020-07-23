@@ -16,7 +16,7 @@ set _p0 to min(_p0,Stage:Number-1).
 local _1 is list().
 for e in _0
 {
-if e:Stage=_p0 and LAS_EngineIsUllage(e)=_p1
+if e:Stage=_p0 and LAS_EngineIsUllage(e)=_p1 and not e:Name:Contains("vernier")
 {
 _1:Add(e).
 }

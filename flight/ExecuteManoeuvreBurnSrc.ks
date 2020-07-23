@@ -4,7 +4,11 @@ wait until Ship:Unpacked.
 
 local p is readjson("1:/burn.json").
 
-local dv is V(0,0,0).
+local lock tVec to Prograde:Vector.
+local lock bVec to vcrs(tVec, up:vector):Normalized.
+local lock nVec to vcrs(tVec, bVec):Normalized.
+
+local dV is v(0,0,0).
 if HasNode
 {
     lock burnETA to NextNode:eta.
@@ -13,16 +17,18 @@ if HasNode
 else
 {
 	lock burnETA to p:eta - Time:Seconds.
-	set dV to p:dV.
+	set dV to tVec * p:dV:x + nVec * pDv:y + bVec * p:dV:z.
 }
 
 print "Align in " + round(burnETA - 60, 0) + " seconds.".
 
 wait until burnETA < 60.
 
+kUniverse:Timewarp:CancelWarp().
 print "Aligning ship".
 
 runoncepath("/FCFuncs").
+runpath("flight/TuneSteering").
 
 local ignitionTime is 0.
 if p:eng
@@ -33,8 +39,10 @@ if p:eng
 
 local function CheckHeading
 {
-	if HasNode
+	if HasNode and nextNode:eta < 60
 		set dV to NextNode:deltaV.
+	else if p:haskey("dV")
+		set dV to tVec * p:dV:x + nVec * pDv:y + bVec * p:dV:z.
 }
 
 LAS_Avionics("activate").
@@ -46,19 +54,26 @@ lock steering to LookDirUp(dV:Normalized, Facing:UpVector).
 if p:inertial
 {
     // spin up
-    set Ship:Control:Roll to -1.
     until burnETA <= ignitionTime
     {
-        local rollRate is vdot(Facing:Vector, Ship:AngularVel).
-        if abs(rollRate) > p:spin * 1.25
-        {
-            set Ship:Control:Roll to 0.1.
-        }
-        else if abs(rollRate) > p:spin and abs(rollRate) < p:spin * 1.2
-        {
-            set Ship:Control:Roll to -0.1.
-        }
+		if vdot(dV:Normalized, Facing:Vector) > 0.99
+		{
+			local rollRate is vdot(Facing:Vector, Ship:AngularVel).
+			if abs(rollRate) > p:spin * 1.25
+			{
+				set Ship:Control:Roll to 0.1.
+			}
+			else if abs(rollRate) > p:spin and abs(rollRate) < p:spin * 1.2
+			{
+				set Ship:Control:Roll to -0.1.
+			}
+			else
+			{
+				set Ship:Control:Roll to -1.
+			}
+		}
 
+		CheckHeading().
         wait 0.
     }
 
@@ -66,7 +81,9 @@ if p:inertial
 }
 else
 {
-    wait until burnETA <= ignitionTime.
+    wait until burnETA <= ignitionTime + 5.
+	CheckHeading().
+	wait until burnETA <= ignitionTime.
 }
 
 print "Starting burn".

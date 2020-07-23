@@ -35,14 +35,17 @@ global function EM_Ignition
 {
 if not _2:empty
 {
+for e in _2
+e:Shutdown.
 rcs on.
 set Ship:Control:Fore to 1.
-for e in _2
-wait until e:FuelStability>=0.99.
 set Ship:Control:PilotMainThrottle to 1.
 for e in _2
+wait until e:FuelStability>=0.99.
+for e in _2
 e:Activate.
-wait until EM_CheckThrust(0.5)or _2[0]:Flameout.
+local t is time:seconds+3.
+wait until EM_CheckThrust(0.5)or _2[0]:Flameout or time:seconds>t.
 set Ship:Control:Fore to 0.
 }
 return not _2:empty.

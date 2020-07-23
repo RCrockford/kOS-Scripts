@@ -4,11 +4,12 @@ wait until Ship:Unpacked.
 
 local p is readjson("1:/burn.json").
 
+runoncepath("0:/flight/FlightFuncs").
 runpath("/flight/EngineMgmt", stage:number).
 local ignitionTime is EM_IgDelay().
 
 local lock NodeAngle to (choose 180 if Ship:Latitude > 0 else 360) - mod(Ship:Orbit:ArgumentOfPeriapsis + Ship:Orbit:TrueAnomaly + 360, 360).
-local NodeETA is NodeAngle * Ship:Orbit:Period / 360.
+local lock meanAnomDelta to CalcMeanAnom(Ship:Orbit:TrueAnomaly + NodeAngle) - CalcMeanAnom(Ship:Orbit:TrueAnomaly).
 
 local alignAngle is (p:t + 60) * 360 / Ship:Orbit:Period.
 local burnAngle is (p:t + ignitionTime) * 360 / Ship:Orbit:Period.
@@ -23,9 +24,9 @@ local mainBox is debugGui:AddVBox().
 local debugStat is mainBox:AddLabel("Liftoff").
 debugGui:Show().
 
-until NodeAngle <= alignAngle
+until meanAnomDelta <= alignAngle
 {
-	set debugStat:Text to round(NodeAngle, 2) + "°".
+	set debugStat:Text to round(meanAnomDelta, 2) + "°".
 	wait 0.1.
 }
 
@@ -34,12 +35,14 @@ print "Aligning ship".
 
 LAS_Avionics("activate").
 
-rcs on.
-lock steering to LookDirUp(Prograde:Vector, Facing:UpVector).
+local lock deltaV to p:tV - Ship:Velocity:Orbit.
 
-until NodeAngle <= burnAngle
+rcs on.
+lock steering to LookDirUp(deltaV:Normalized, Facing:UpVector).
+
+until meanAnomDelta <= burnAngle
 {
-	set debugStat:Text to round(NodeAngle, 2) + "°".
+	set debugStat:Text to round(meanAnomDelta, 2) + "°".
 	wait 0.1.
 }
 
@@ -50,6 +53,6 @@ ClearGUIs().
 EM_Ignition().
 rcs off.
 
-wait until Ship:Obt:Apoapsis >= 35793171 or not EM_CheckThrust(0.1).
+wait until Ship:Obt:SemiMajorAxis >= (35793171 + Ship:Body:Radius) or not EM_CheckThrust(0.1).
 
 EM_Shutdown().

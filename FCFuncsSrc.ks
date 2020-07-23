@@ -25,7 +25,7 @@ global function LAS_GetStageEngines
     local stageEngines is list().
     for e in allEngines
     {
-        if e:Stage = stageNum and LAS_EngineIsUllage(e) = ullage
+        if e:Stage = stageNum and LAS_EngineIsUllage(e) = ullage and not e:Name:Contains("vernier")
         {
             stageEngines:Add(e).
         }

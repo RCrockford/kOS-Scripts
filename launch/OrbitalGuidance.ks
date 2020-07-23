@@ -328,7 +328,8 @@ local function UpdateGuidance
 
 			if vtheta < 4500
 			{
-				set fh to -sqrt(1 - vdot(vcrs(LAS_ShipPos():Normalized, Heading(aeroHeading, 0):Vector), hVec)^2).
+				local fdfr is vdot(vcrs(LAS_ShipPos():Normalized, Heading(aeroHeading, 0):Vector), hVec)^2.
+				set fh to choose 0 if fdfr >= 1 else -sqrt(1 - fdfr).
 			}
 			else
 			{
@@ -720,7 +721,11 @@ global function LAS_GetGuidanceAim
 			// Don't yaw steer until downrange speed is high enough
 			if vtheta < 4500
 			{
-				set fh to -sqrt(1 - vdot(vcrs(rVec, Heading(aeroHeading, 0):Vector), hVec)^2).
+				set fh to 1 - vdot(vcrs(rVec, Heading(aeroHeading, 0):Vector), hVec)^2.
+				if fh > 0
+					set fh to -sqrt(fh).
+				else
+					set fh to 0.
 			}
 			else
 			{
@@ -747,13 +752,18 @@ global function LAS_GetGuidanceAim
 				set fh to -fh.
         }
 
-        set debugFr:text to "fr=" + round(fr,3) + " fh=" + round(fh,4) + " s=" + s + "/" + GuidanceLastStage + " t=" + round(t, 2).
-
         // Construct aim vector
         if (fr * fr + fh * fh) < 0.999
         {
-            return fr * rVec + fh * hVec + sqrt(1 - fr * fr - fh * fh) * downtrack.
+			set fr to min(fr, 0.6).
+			local fd is sqrt(1 - fr * fr - fh * fh).
+			set debugFr:text to "fr=" + round(fr,3) + " fh=" + round(fh,4) +  " fd=" + round(fd,3) + " s=" + s + "/" + GuidanceLastStage + " t=" + round(t, 2).
+            return fr * rVec + fh * hVec + fd * downtrack.
         }
+		else
+		{
+			set debugFr:text to "fr=" + round(fr,3) + " fh=" + round(fh,4) + "fd=0 s=" + s + "/" + GuidanceLastStage + " t=" + round(t, 2).
+		}
     }
 	else
 	{
@@ -785,35 +795,12 @@ global function LAS_StartGuidance
         // Update estimate for T for active stage
 		set stageT[Stage:Number] to LAS_GetStageBurnTime().
 
-		if hT <= 0
+		from {local i is startStage.} until i < 0 step {set i to i - 1.} do
 		{
-			from {local i is startStage.} until i < 0 step {set i to i - 1.} do
-			{
-				if stageExhaustV[i] > 0
-				{
-					set GuidanceLastStage to i.
-				}
-			}
-		}
-		else
-		{
-			local r is LAS_ShipPos():Mag.
-			local h is vcrs(LAS_ShipPos(), Ship:Velocity:Orbit):Mag.
-
-			local deltaVReq is 1.4 * (hT - h) / (rT + r).   // This gives a fairly reasonable guess at the required deltaV.
-			local deltaV is 0.
-			from {local i is startStage.} until i < 0 step {set i to i - 1.} do
-			{
-				if stageExhaustV[i] > 0
-				{
-					set deltaV to deltaV - stageExhaustV[i] * ln(1 - stageT[i] * stageAccel[i] / stageExhaustV[i]).
-					set GuidanceLastStage to i.
-					if deltaV >= deltaVReq
-						break.
-				}
-			}
-
-			print "dV=" + round(deltaV, 1) + "/" + round(deltaVReq, 1).
+			if stageExhaustV[i] > 0
+				set GuidanceLastStage to i.
+			else
+				break.
 		}
     }
     print "S=" + startStage + " Last guidance stage: " + GuidanceLastStage.

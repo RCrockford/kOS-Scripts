@@ -1,95 +1,73 @@
 @lazyglobal off.
-
-// Lift off then just turn 30 degrees and wait for guidance to become active
-
-// Set some fairly safe defaults
-parameter launchAzimuth is 90.
-
-local pitchOverSpeed is 20.
-local pitchOverAngle is 30.
-
-local pitchOverCosine is cos(pitchOverAngle).
-
-local lock velocityPitch to 90 - vang(Ship:up:vector, Ship:Velocity:Surface).
-
-// Flight phases
-local c_PhaseLiftoff        is 0.
-local c_PhasePitchOver      is 1.
-local c_PhaseGuidanceReady  is 2.
-local c_PhaseGuidanceActive is 3.
-local c_PhaseMECO           is 4.
-
-local flightPhase is c_PhaseLiftoff.
-
-local function checkAscent
+parameter _0 is 90.
+local _1 is 20.
+local _2 is 30.
+local _3 is cos(_2).
+local lock _f0 to 90-vang(Ship:up:vector,Ship:Velocity:Surface).
+local _4 is 0.
+local _5 is 1.
+local _6 is 2.
+local _7 is 3.
+local _8 is 4.
+local _9 is _4.
+local function _f1
 {
-    if flightPhase >= c_PhaseGuidanceReady
-    {
-        LAS_UpdateGuidance().
-        
-        local guidance is LAS_GetGuidanceAim().
-        // If guidance is valid then it is a unit vector
-        
-        if flightPhase = c_PhaseGuidanceReady
-        {
-            if guidance:SqrMagnitude > 0.9
-            {
-                // Check guidance pitch, when guidance is saying pitch down relative to open loop, engage guidance.
-                local upVec is LAS_ShipPos():Normalized.
-                if vdot(upVec, guidance) <= vdot(upVec, Ship:Velocity:Surface:Normalized)
-                {
-                    flightPhase = c_PhaseGuidanceActive.
-                    lock Steering to guidance.
-                    print "Orbital guidance mode active".
-                }
-            }
-        }
-        else
-        {
-            if guidance:SqrMagnitude > 0.9
-                lock Steering to guidance.
-            
-            if LAS_GuidanceCutOff()
-            {
-                print "Main engine cutoff".
-                set Ship:Control:PilotMainThrottle to 0.
-                
-                local mainEngines is LAS_GetStageEngines().
-                for eng in mainEngines
-                {
-                    if eng:AllowShutdown
-                        eng:Shutdown().
-                }
-                
-                set flightPhase to c_PhaseMECO.
-            }
-        }
-    }
-    else if Ship:VerticalSpeed >= pitchOverSpeed
-    {
-        if vdot(Ship:SrfPrograde:ForeVector, LAS_ShipPos():Normalized) > pitchOverCosine
-        {
-            set flightPhase to c_PhasePitchOver.
-        }
-        else
-        {
-            if LAS_StartGuidance(Stage:Number, -1, 0, launchAzimuth)
-                set flightPhase to c_PhaseGuidanceReady.
-        }
-        lock Steering to Heading(launchAzimuth, min(90 - pitchOverAngle, velocityPitch)).
-    }
-    else
-    {
-        // If we're not going up, thrust vertically until we are.
-        lock Steering to LookDirUp(Ship:Up:Vector, Ship:Facing:TopVector).
-    }
-}
-
-until flightPhase = c_PhaseMECO
+if _9>=_6
 {
-    checkAscent().
-    wait 0.
+LAS_UpdateGuidance().
+local _10 is LAS_GetGuidanceAim().
+if _9=_6
+{
+if _10:SqrMagnitude>0.9
+{
+local _11 is LAS_ShipPos():Normalized.
+if vdot(_11,_10)<=vdot(_11,Ship:Velocity:Surface:Normalized)
+{
+_9=_7.
+lock Steering to _10.
+print"Orbital guidance mode active".
 }
-
-// Release control
+}
+}
+else
+{
+if _10:SqrMagnitude>0.9
+lock Steering to _10.
+if LAS_GuidanceCutOff()
+{
+print"Main engine cutoff".
+set Ship:Control:PilotMainThrottle to 0.
+local _12 is LAS_GetStageEngines().
+for eng in _12
+{
+if eng:AllowShutdown
+eng:Shutdown().
+}
+set _9 to _8.
+}
+}
+}
+else if Ship:VerticalSpeed>=_1
+{
+if vdot(Ship:SrfPrograde:ForeVector,LAS_ShipPos():Normalized)>_3
+{
+set _9 to _5.
+}
+else
+{
+if LAS_StartGuidance(Stage:Number,-1,0,_0)
+set _9 to _6.
+}
+lock Steering to Heading(_0,min(90-_2,_f0)).
+}
+else
+{
+lock Steering to LookDirUp(Ship:Up:Vector,Ship:Facing:TopVector).
+}
+}
+until _9=_8
+{
+_f1().
+wait 0.
+}
 set Ship:Control:Neutralize to true.

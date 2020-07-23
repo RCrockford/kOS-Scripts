@@ -36,6 +36,9 @@ until False
 		LAS_CheckPayload().
 
     LAS_CheckStaging().
+	
+	if navmode <> "surface"
+		set navmode to "surface".
 
 	if Ship:Control:PilotMainThrottle > 0 and maxApoapsis > 0 and Ship:Orbit:Apoapsis > maxApoapsis * 1000
 	{
@@ -50,7 +53,7 @@ until False
         }
 	}
 
-	set debugStat:Text to "Flight Q=" + round(Ship:Q * constant:AtmToKPa, 1) + " D=" + round((Ship:GeoPosition:Position - kscPos:Position):Mag * 0.001, 0) + "km".
+	set debugStat:Text to "Flight Q=" + round(Ship:Q * constant:AtmToKPa, 1) + " D=" + round((Ship:GeoPosition:Position - kscPos:Position):Mag * 0.001, 1) + "km".
 
     // Relatively low frequency to reduce power consumption.
     wait 0.1.

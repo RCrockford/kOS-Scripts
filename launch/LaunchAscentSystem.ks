@@ -20,18 +20,25 @@ if Ship:Status = "PreLaunch"
    
     // Setup functions
     runoncepath("0:/launch/LASFunctions").
+	
+	global function dummy_func {}
+	
+	global LAS_CrewEscape is dummy_func@.
+	global LAS_EscapeJetisson is dummy_func@.
+	global LAS_HasEscapeSystem is false.
+	if not Ship:Crew:Empty
+	{
+		print "Crew found, setting up escape system.".
+		runpath("0:/launch/LaunchEscape").
+	}
+	
     runpath("0:/launch/Staging").
-    
-    local shipParts is list().
-    list parts in shipParts.
-    local guidance is false.
-    for p in shipParts
+
+    local totalControlled is 0.
+	for a in Ship:ModulesNamed("ModuleProceduralAvionics")
     {
-        if p:HasModule("ModuleProceduralAvionics")
-        {
-            set guidance to true.
-            break.
-        }
+		local controllable is choose a:GetField("controllable") if a:HasField("Controllable") else 0.
+		set totalControlled to totalControlled + controllable.
     }
     
     local pitchOverSpeed is 50.
@@ -41,7 +48,7 @@ if Ship:Status = "PreLaunch"
     local targetOrbitable is 0.
     local maxApoapsis is -1.
 
-    if guidance
+    if totalControlled > 0
     {
         print "Avionics unit detected.".
         
@@ -95,7 +102,7 @@ if Ship:Status = "PreLaunch"
         local newControl is controlBox:AddTextField(str).
         set newControl:Style:Height to 25.
         set newControl:OnConfirm to dlg.
-        set newControl:Enabled to guidance.
+        set newControl:Enabled to totalControlled > 0.
         return newControl.
     }
     
@@ -108,6 +115,8 @@ if Ship:Status = "PreLaunch"
 
     local function setAzimuth
     {
+		parameter south is false.
+	
         if targetInclination >= 0
         {
             local targetPe is LAS_TargetPe * 1000 + Ship:Body:Radius.
@@ -122,7 +131,7 @@ if Ship:Status = "PreLaunch"
             // Using the identity sin2 + cos2 = 1 to avoid inverse trig.
             set launchAzimuth to mod(arctan2(vOrbit * sinInertialAz - vEqRot * cos(Ship:Latitude), vOrbit * sqrt(1 - sinInertialAz^2)) + 360, 360).
 			
-			if defined LAS_TargetInc and LAS_TargetInc < 0
+			if south
 				set launchAzimuth to mod(360 + 180 - launchAzimuth, 360).
             
             set azimuthText:text to round(launchAzimuth, 3):ToString.
@@ -132,10 +141,15 @@ if Ship:Status = "PreLaunch"
     }
     
     local inclinationLabel is createLabel("Inclination").
-    local inclinationText is createControl(targetInclination:ToString, { parameter str. set targetInclination to str:ToNumber(targetInclination). setAzimuth(). }).
+    local inclinationText is createControl(targetInclination:ToString, {
+		parameter str.
+		set targetInclination to str:replace("s", ""):ToNumber(targetInclination).
+		setAzimuth(str:contains("s")).
+	}).
     
-    if guidance
+    if totalControlled > 0
     {
+		local launchSouth is false.
         if targetOrbit:IsType("Orbitable")
         {
             set targetOrbitable to targetOrbit.
@@ -151,10 +165,16 @@ if Ship:Status = "PreLaunch"
 		else if defined LAS_TargetInc
 		{
             set targetInclination to max(Ship:Latitude, min(abs(LAS_TargetInc), 180 - Ship:Latitude)).
-            set inclinationText:Text to round(targetInclination, 2):ToString.			
+            set inclinationText:Text to round(targetInclination, 2):ToString.
+			set launchSouth to (defined LAS_TargetInc and LAS_TargetInc < 0).
+		}
+		else
+		{
+			set launchSouth to targetInclination >= 0 and (Ship:Latitude < 0).// or (Ship:Longitude > -122 and Ship:Longitude < -78)).	// Southerly launches by default from North America.
+            set inclinationText:Text to round(targetInclination, 2):ToString + (choose "s" if launchSouth else "").
 		}
         
-        setAzimuth().
+        setAzimuth(launchSouth).
 		
 		// Preset launch, just go straight into countdown.
 		if defined LAS_LaunchTime
@@ -167,27 +187,29 @@ if Ship:Status = "PreLaunch"
     }
     
     // Trigger GLC
-	if guidance
-		runpath("0:/launch/GroundLaunchControl", engineStart, targetOrbit, launchButton).
+	if totalControlled > 0
+		runpath("0:/launch/GroundLaunchControl", engineStart, targetOrbit, launchButton, totalControlled).
 	else
 		runpath("0:/launch/GroundLaunchControl", engineStart).
 
     // Check if we actually lifted off
     if Ship:Status = "Flying"
     {
+		local canCoast is core:tag:contains("coast").
+	
         // Clear tag and boot file So they don't affect ships in flight / orbit.
         Set Core:Tag to "".
         Set Core:BootFileName to "".
     
         // Trigger flight control
-        if not guidance
+        if totalControlled <= 0
         {
             runpath("0:/launch/FlightControlUnguided", maxApoapsis).
         }
         else
         {
             flightGui:Hide().
-            runpath("0:/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable).
+            runpath("0:/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, canCoast).
         }
     }
     else

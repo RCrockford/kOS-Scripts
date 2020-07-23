@@ -43,6 +43,7 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
     }
 	
     runpath("0:/flight/EngineMgmt", Stage:Number).
+	runpath("0:/flight/TuneSteering").
     
     local fileList is list().
     local burnParams is lexicon("pe", targetPe * 1000).
@@ -50,7 +51,15 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
     if EM_GetEngines():empty and abs(burnLatLong) > 180
     {
         LAS_Avionics("activate").
-        
+
+		for rcs in Ship:ModulesNamed("ModuleRCSFX")
+		{
+			if rcs:HasField("rcs")
+			{
+				rcs:SetField("rcs", true).
+			}
+		}
+
         // Cheap version, RCS only, immediate.
         runoncepath("0:/flight/rcsperf").
         if GetRCSForePerf():Thrust < GetRCSAftPerf():Thrust * 0.5
@@ -67,8 +76,10 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
         fileList:Add("flight/ReEntryBurn.ks").
         fileList:add("FCFuncs").
         if burnParams:engines
-            fileList:add("flight/EngineManagement.ks").
+            fileList:add("flight/EngineMgmt.ks").
     }
+    fileList:add("flight/ReEntryLanding.ks").
+	print "Using " + fileList[0].
 
     runpath("0:/flight/SetupBurn", burnParams, fileList).
 }

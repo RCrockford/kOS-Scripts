@@ -5,6 +5,39 @@
 parameter engineStart is -1.
 parameter targetOrbit is 0.
 parameter launchButton is 0.
+parameter totalControlled is 0.
+
+local function GetAngleToAN
+{
+	// From KER / MJ2
+	local bodyAngVel is Ship:Body:AngularVel:Normalized.
+	local lanVec is (SolarPrimeVector * AngleAxis(TargetOrbit:LAN, bodyAngVel)):Normalized.
+	local orbitNormal is bodyAngVel * AngleAxis(-TargetOrbit:Inclination, lanVec).
+	
+	local inc is abs(vang(orbitNormal, bodyAngVel)).
+	local bVec is vxcl(bodyAngVel, orbitNormal):Normalized.
+	set bVec to bVec * Ship:Body:Radius * sin(Ship:Latitude) / tan(inc).
+	
+	local cVec is vcrs(orbitNormal, bodyAngVel):Normalized.
+	local cMagSq is (Ship:Body:Radius * cos(Ship:Latitude)) ^ 2 - bVec:SqrMagnitude.
+	set cMagSq to choose 0 if cMagSq <= 0 else sqrt(cMagSq).
+	set cVec to cVec * cMagSq.
+	
+	local aVec1 is bVec + cVec.
+	local aVec2 is bVec - cVec.
+	
+	local longVec is (LatLng(0,Ship:Longitude):Position - Ship:Body:Position):Normalized.
+	
+	local angle1 is abs(vang(longVec, aVec1)).
+	if vdot(vcrs(longVec, aVec1), bodyAngVel) < 0
+		set angle1 to 360 - angle1.
+		
+	local angle2 is abs(vang(longVec, aVec2)).
+	if vdot(vcrs(longVec, aVec2), bodyAngVel) < 0
+		set angle2 to 360 - angle2.
+
+	return min(angle1, angle2).
+}
 
 local liftoffTime is -1.
 // Initialise launch parameters
@@ -35,7 +68,7 @@ for eng in mainEngines
     }
     else
     {
-        set autoStartTime to max(autoStartTime, 4).
+        set autoStartTime to max(autoStartTime, 5).
     }
 
     print "  " + eng:Config + ", " + engType.
@@ -55,6 +88,7 @@ print "  Engine start at T-" + round(engineStart, 2) + ".".
 
 local launchMass is Ship:Mass.
 local padFuelling is engineStart <= 0.5 or mainEnginesLF:empty().   // If not pre-spooling engines, then don't worry about pad fuel pumps
+local ascentTime is 0.
 
 // Ship description dump
 {
@@ -117,6 +151,7 @@ local padFuelling is engineStart <= 0.5 or mainEnginesLF:empty().   // If not pr
     }
 
 	set launchMass to stageWetMass[Stage:Number-1].
+	local stageTime is 1.
 
     from {local s is Stage:Number - 1.} until s < 0 step {set s to s-1.} do
     {
@@ -132,10 +167,21 @@ local padFuelling is engineStart <= 0.5 or mainEnginesLF:empty().   // If not pr
             set slThrust to slThrust + eng:PossibleThrustAt(1).
         }
         set massFlow to max(massFlow, 1e-6) * Constant:g0.
+		
+		if stageTime > 0 and (defined LAS_TargetSMA or LAS_TargetAp > 100)
+		{
+			set stageTime to LAS_GuidanceBurnTime(s).
+			set ascentTime to ascentTime + stageTime.
+		}
 
         //log "  Stage " + s + ", drymass=" + round(stageDryMass[s] * 1000, 1) + ", wetmass=" + round(stageWetMass[s] * 1000, 1) +
         //    ", ThrustVac=" + round(vacThrust, 1) + ", IspVac=" + round(vacThrust / massFlow, 1) + ", IspSL=" + round(slThrust / massFlow, 1) to logPath.
     }
+}
+
+if totalControlled > 0 and totalControlled < launchMass
+{
+    print "Insufficient avionics for liftoff control (Ctrl=" + round(totalControlled, 2) + "T, M=" + round(launchMass,2) + "T).".
 }
 
 // Check for sufficient thrust
@@ -146,11 +192,13 @@ if mainEngines:length > 0
     {
         set engineMaxThrust to engineMaxThrust + eng:PossibleThrust().
     }
+	
+	print "Liftoff thrust: " + round(engineMaxThrust, (choose 1 if engineMaxThrust < 1000 else 0)) + " kN.".
 
     local twr is engineMaxThrust / (launchMass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude).
     if twr < 1.1
     {
-        print "Insufficient thrust for liftoff (TWR=" + round(twr, 2) + ", T=" + round(engineMaxThrust,1) + "kN, W=" + round((launchMass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude), 1) + "kN).".
+        print "Insufficient thrust for liftoff (TWR=" + round(twr, 2) + ", W=" + round((launchMass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude), 1) + "kN).".
         shutdown.
     }
 }
@@ -181,25 +229,50 @@ if defined LAS_LaunchTime
 }
 else
 {
-	// Ascent time is estimated as 5 minutes
-	local leadAngle is 360 * (8 * 60) / Ship:Body:RotationPeriod.
-	local lock lanDiff to (Ship:Orbit:LAN + leadAngle) - TargetOrbit:LAN.
+	print "Ascent Time: " + round(ascentTime, 1) + " s".
+	set ascentTime to ascentTime + 24.
+	local waitTime is 0.
 
 	if TargetOrbit:IsType("Orbit")
 	{
-		local waitDiff is lanDiff.
-		if waitDiff > 0.1
-			set waitDiff to waitDiff - 360.
-
-		local waitTime is LAS_FormatTime(max(-waitDiff, 0) * Ship:Body:RotationPeriod / 360).
-
-		print "Launch window opening in approximately " + waitTime.
+		set waitTime to GetAngleToAN() * Ship:Body:RotationPeriod / 360 - ascentTime.
+		print "Launch window opening in approximately " + LAS_FormatTime(waitTime).
+		
+		// Assume it's the Moon
+		if TargetOrbit:SemiMajorAxis > 3e8
+		{
+			local ANAngle is mod(TargetOrbit:TrueAnomaly + TargetOrbit:ArgumentOfPeriapsis + 360 * waitTime / TargetOrbit:Period, 360).
+			local AngToAN is 360 - ANAngle.
+			local AngToDN is mod(AngToAN + 180, 360).
+			local NodeTime is 0.
+			print "AN=" + round(AngToAN,2) + " DN=" + round(AngToDN,2) + " Ang=" + round(ANAngle,2).
+			if AngToAN < AngToDN
+			{
+				set NodeTime to AngToAN / 360 * TargetOrbit:Period.
+				print "  Time to AN: " + LAS_FormatTime(NodeTime).
+			}
+			else
+			{
+				set NodeTime to AngToDN / 360 * TargetOrbit:Period.
+				print "  Time to DN: " + LAS_FormatTime(NodeTime).
+			}
+			
+			// ~3 day flight time
+			if NodeTime > 2 * 86400 and NodeTime < 4 * 86400
+				print "  Launch window quality: Excellent".
+			else if NodeTime > 1 * 86400 and NodeTime < 5 * 86400
+				print "  Launch window quality: Good".
+			else if NodeTime > 0 * 86400 and NodeTime < 6 * 86400
+				print "  Launch window quality: Acceptable".
+			else
+				print "  Launch window quality: Poor".
+		}
 	}
 
 	print "Awaiting Launch command:".
 
 	// Wait for command
-	until cmd = "l"
+	until cmd = "l" or cmd = "n"
 	{
 		wait 0.
 		if launchButton:IsType("Button") and launchButton:TakePress
@@ -210,10 +283,58 @@ else
 		if cmd = "a"
 		{
 			print "Aborting Launch.".
+			ClearGUIs().
 			break.    // User aborted launch sequence.
 		}
 		if cmd = "r"
+		{
+			ClearGUIs().
 			reboot.     // Direct reboot to allow for easy staging corrections.
+		}
+		if cmd = "n" and TargetOrbit:IsType("Orbit")
+		{
+			// Go 5 degrees past.
+			set waitTime to waitTime + 5 * Ship:Body:RotationPeriod / 360.
+			
+			local waitGui is GUI(220).
+			local mainBox is waitGui:AddVBox().
+
+			local guiHeading is mainBox:AddLabel("Awaiting next launch window").
+
+			local guiTime is mainBox:AddLabel("T-" + Time(waitTime):Clock).
+			waitGui:Show().
+
+			// Wait until we're within 60 seconds.
+			until waitTime <= 60
+			{
+				local t is 1.
+				if waitTime >= 3600
+				{
+					set t to mod(waitTime, 1800).
+					if t < 10
+						set t to t + 1800.
+				}
+				else if waitTime >= 120
+				{
+					set t to mod(waitTime, 60).
+					if t < 1
+						set t to t + 60.
+				}
+
+				set kUniverse:TimeWarp:Rate to choose 10000 if t > 100 else 1000.
+
+				wait t.
+
+				if t > 0
+				{
+					set waitTime to waitTime - t.
+					set guiTime:Text to "T-" + Time(waitTime):Clock.
+				}
+			}
+			kUniverse:Timewarp:CancelWarp().
+			ClearGUIs().
+			reboot.
+		}
 	}
 
 	if cmd = "l"
@@ -238,18 +359,13 @@ if TargetOrbit:IsType("Orbit")
     local guiHeading is mainBox:AddLabel("Awaiting launch window").
 
     // Launch window planning, simply matches ascending nodes.
-	local leadAngle is 360 * (8 * 60) / Ship:Body:RotationPeriod.
-    local lock lanDiff to (Ship:Orbit:LAN + leadAngle) - TargetOrbit:LAN.
-    local waitDiff is lanDiff.
-    if waitDiff > 0.08
-        set waitDiff to waitDiff - 360.
-    local waitTime is max(-waitDiff, 0) * Ship:Body:RotationPeriod / 360.
+	local waitTime is GetAngleToAN() * Ship:Body:RotationPeriod / 360 - ascentTime.
 
     local guiTime is mainBox:AddLabel("T-" + Time(waitTime):Clock).
     waitGui:Show().
 
-    // Wait until we're within 0.1 degrees.
-    until lanDiff < 0.1 and lanDiff > -0.05 and waitTime <= launchDelay
+    // Wait until we're within launch time
+    until waitTime <= launchDelay
     {
         local t is 1.
         if waitTime > 3600
@@ -265,7 +381,7 @@ if TargetOrbit:IsType("Orbit")
                 set t to t + 60.
         }
 
-		set kUniverse:TimeWarp:Rate to min(max(1, (waitTime - 20) / 2), 1000).
+		set kUniverse:TimeWarp:Rate to min(max(1, (waitTime - 10) / 2), 10000).
 
         wait t.
 
@@ -275,10 +391,7 @@ if TargetOrbit:IsType("Orbit")
             set guiTime:Text to "T-" + Time(waitTime):Clock.
         }
 
-        set waitDiff to lanDiff.
-        if waitDiff > 0.1
-            set waitDiff to waitDiff - 360.
-        set waitTime to max(-waitDiff, 0) * Ship:Body:RotationPeriod / 360.
+        set waitTime to GetAngleToAN() * Ship:Body:RotationPeriod / 360 - ascentTime.
     }
     kUniverse:Timewarp:CancelWarp().
 
@@ -308,31 +421,19 @@ local function GLCAbort
 
     if Ship:Status = "Flying"
     {
-        // check range safety, if within 1 km downrange of the launch site then RSO will command destruction.
-        local padVector is launchSite - LAS_ShipPos().
+		HudText("RSO: Commanded ship destruction.", 5, 2, 15, red, false).
 
-        if vxcl(LAS_ShipPos():Normalized, padVector):Mag < 1000
-        {
-            if Alt:Radar < 1000
-            {
-                HudText("RSO: Commanded ship destruction.", 5, 2, 15, red, false).
+		// Tell all other CPUs to destroy themselves.
+		for cpu in Ship:ModulesNamed("kOSProcessor")
+		{
+			if cpu <> Core
+				cpu:Connection:SendMessage("RSO").
+		}.
 
-                // Tell all other CPUs to destroy themselves.
-                for cpu in Ship:ModulesNamed("kOSProcessor")
-                {
-                    if cpu <> Core
-                        cpu:Connection:SendMessage("RSO").
-                }
-            }
-        }
-
-        abort on.
-
-        // Wait for launch safety systems to clear the ship.
-        wait 0.5.
+        LAS_CrewEscape().
 
         if Ship:Crew:Empty
-            Ship:RootPart:GetModule("ModuleRangeSafety"):DoAction("Range Safety", true).
+            Core:Part:GetModule("ModuleRangeSafety"):DoAction("Range Safety", true).
     }
 
     // Release control
@@ -390,7 +491,7 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
     {
         if not eng:Ignition()
         {
-            GLCAbort(eng:Config + " " + engCount + " failed to ignite.").
+            GLCAbort(eng:Config + " #" + engCount + " failed to ignite.").
         }
         set engCount to engCount + 1.
     }
@@ -440,6 +541,15 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
 
 // Wait for countdown
 wait until countdown = 0 or not padFuelling.
+
+// Check for main engine issues just before liftoff.
+local engCount is 1.
+for eng in mainEnginesLF
+{
+	if eng:Thrust < eng:PossibleThrust * 0.98
+		GLCAbort(eng:Config + " #" + engCount + " reported reduced thrust.").
+	set engCount to engCount + 1.
+}
 
 local liftoffHeading is Ship:Facing.
 lock Steering to liftoffHeading.

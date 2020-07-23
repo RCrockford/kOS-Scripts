@@ -62,28 +62,5 @@ break.
 set _0 to Ship:Mass.
 }
 }
-unlock steering.
-set Ship:Control:Neutralize to true.
 set Ship:Control:PilotMainThrottle to 0.
-rcs off.
-wait until Ship:Altitude<Ship:Body:Atm:Height.
-local _1 is false.
-for rc in Ship:ModulesNamed("RealChuteModule")
-{
-if rc:HasEvent("arm parachute")
-{
-rc:DoEvent("arm parachute").
-set _1 to true.
-}
-}
-if not _1
-chutes on.
-print"Parachutes armed.".
-wait until Ship:Q>1e-5.
-rcs on.
-lock steering to LookDirUp(SrfRetrograde,Facing:UpVector).
-wait until Ship:AirSpeed<1500.
-unlock steering.
-set Ship:Control:Neutralize to true.
-rcs off.
-set core:bootfilename to"".
+runoncepath("/flight/ReEntryLanding").

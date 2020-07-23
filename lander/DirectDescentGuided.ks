@@ -7,13 +7,12 @@
 // Wait for unpack
 wait until Ship:Unpacked.
 
-parameter maxRollRate is 2.
 parameter burnAlt is -1.
 
 switch to 0.
 
 // Setup functions
-runpath("0:/flight/EngineMgmt", Stage:Number - 1).
+runpath("0:/flight/EngineMgmt", Stage:Number).
 
 local DescentEngines is EM_GetEngines().
 
@@ -25,16 +24,7 @@ for eng in DescentEngines
     set massflow to massFlow + eng:MaxMassFlow.
 }
 
-local shipMass is 0.
-for shipPart in Ship:Parts
-{
-    local decoupleStage is shipPart:DecoupledIn.
-
-    if shipPart:DecoupledIn < Stage:Number - 1
-    {
-        set shipMass to shipMass + shipPart:WetMass.
-    }
-}
+local shipMass is Ship:Mass.
 
 // Estimates burn altitude to brake to a stop at sea level
 local function EstimateBrakingBurnAlt
@@ -126,72 +116,64 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 		}
 
 		print "Braking alt: " + round(d * 0.001, 1) + "km".
+		
+		local function WaitBurn
+		{
+			parameter name.
+			parameter margin.
 
-		set debugStat:Text to "Align at " + round((d + Ship:Velocity:Surface:Mag * 120) * 0.001, 1) + "km".
+			until Alt:Radar < d + Ship:Velocity:Surface:Mag * margin
+			{
+				set debugStat:Text to name + " at " + round((d + Ship:Velocity:Surface:Mag * margin) * 0.001, 1) + "km".
+				local t is time:seconds + 10.
+				wait until Alt:Radar < d + Ship:Velocity:Surface:Mag * margin or Time:Seconds >= t.
+			}
+		}
 
-		// 120 second alignment margin
-		wait until Alt:Radar < d + Ship:Velocity:Surface:Mag * 120.
+		// 60 second alignment margin
+		WaitBurn("Align", 60).
 		set kUniverse:Timewarp:Rate to 1.
 
-		// Full retrograde burn until vertical velocity is under 50 (or fuel exhaustion).
-		print "Beginning braking burn".
+		// Full retrograde burn until vertical velocity is under 150 (or fuel exhaustion).
+		print "Aligning for burn".
 
 		LAS_Avionics("activate").
 		rcs on.
 		lock steering to LookDirUp(SrfRetrograde:Vector, Facing:UpVector).
-		
-		set debugStat:Text to "Roll at " + round((d + Ship:Velocity:Surface:Mag * 15 * maxRollRate) * 0.001, 1) + "km".
-		
-		wait until Alt:Radar < d + Ship:Velocity:Surface:Mag * 15 * maxRollRate and vdot(SrfRetrograde:Vector, Facing:Vector) > 0.99.
 
-		// spin up
-		set Ship:Control:Roll to -1.
-		until Alt:Radar <= d + Ship:Velocity:Surface:Mag * EM_IgDelay()
-		{
-			local rollRate is vdot(Facing:Vector, Ship:AngularVel).
-			if abs(rollRate) > maxRollRate
-			{
-				set Ship:Control:Roll to -0.1.
-			}
+		WaitBurn("Ignition", EM_IgDelay()).
 
-			set debugStat:Text to "Roll rate: " + round(vdot(Facing:Vector, Ship:AngularVel), 2) + " / " + maxRollRate.
-			
-			wait 0.
-		}
-
-		set Ship:Control:Roll to -0.1.
-		
-		list engines in DescentEngines.
-		for eng in DescentEngines
-		{
-			if not eng:Ullage and eng:Ignitions < 0
-				eng:Activate.
-		}
-
+		print "Beginning braking burn".
 		EM_Ignition().
-
-		for eng in DescentEngines
+		
+		if DescentEngines[0]:Ignitions < 0 or DescentEngines[0]:Ignitions >= 2
 		{
-			if not eng:Ullage and eng:Ignitions < 0
-				eng:Shutdown.
+			// Do a second burn at 5km alt then jettison and do final descent on thrusters
+			wait until Ship:Velocity:Surface:Mag < 100 or not EM_CheckThrust(0.1).
+			set Ship:Control:PilotMainThrottle to 0.
+			
+			wait until Alt:Radar < 5000.
+			
+			if Ship:Velocity:Surface:Mag > 150
+			{
+				EM_Ignition().
+				wait until Ship:Velocity:Surface:Mag < 30 or not EM_CheckThrust(0.1).
+                if not EM_CheckThrust(0.1)
+                    print "Fuel exhaustion in braking stage".
+			}
 		}
-
-		// Jettison alignment stage.
-		wait until Stage:Ready.
-		stage.
-		
-		set Ship:Control:Neutralize to true.
-		
-		print "Ship Mass: " + round(Ship:Mass * 1000, 1) + " / " + round(shipMass * 1000, 1) + " kg".
-
-		wait until Ship:Velocity:Surface:Mag < 50 or vdot(Facing:Vector, SrfRetrograde:Vector) < 0.5 or not EM_CheckThrust(0.1).	// stop burn if too far from retrograde
+		else
+		{
+			wait until Ship:Velocity:Surface:Mag < 30 or not EM_CheckThrust(0.1).
+		}
 
 		// Jettison braking stage
 		set Ship:Control:PilotMainThrottle to 0.
 		stage.
 	}
 	
-	set Ship:Type to "Lander".
+	set Ship:Type to "Lander".	
+	lock steering to LookDirUp(SrfRetrograde:Vector, Facing:UpVector).
 
     // Cache ship bounds
     local shipBounds is Ship:Bounds.
@@ -204,8 +186,6 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
             set r:enabled to true.
         }
     }
-
-    lock steering to SrfRetrograde:Vector.
 
     // Calculate new thrust
     list engines in DescentEngines.
@@ -222,7 +202,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     // Touchdown speed
     local vT is 0.5.
 
-    when Alt:Radar < 100 then { legs on. }
+    when Alt:Radar < 250 then { legs on. }
 
     // For throttling engines
     //local hFactor is MIN(1+(4-sqrt(minThrottle))/h^0.33,1.4)
@@ -260,26 +240,28 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 		if h < 2
             lock steering to LookDirUp(Up:Vector, Facing:UpVector).
     }
+    
+    print "Touchdown speed: " + round(-Ship:VerticalSpeed, 2) + " m/s".
 
     lock steering to LookDirUp(Up:Vector, Facing:UpVector).
 
     set Ship:Control:PilotMainThrottle to 0.
+    list engines in DescentEngines.
+    for eng in DescentEngines
+		eng:Shutdown.
 
     // Maximum angular velocity before attempting to brake rotation
     local maxAngVel is 1.
 
     // Maintain attitude control until ship settles to prevent roll overs.
     wait until Ship:Velocity:Surface:SqrMagnitude < 0.01 and Ship:AngularVel:Mag < 0.01.
-
-    list engines in DescentEngines.
-    for eng in DescentEngines
-		eng:Shutdown.
 	
     unlock steering.
     set Ship:Control:Neutralize to true.
     rcs off.
 
     LAS_Avionics("shutdown").
+	ClearGUIs().
 
     print "Landing completed".
 }
