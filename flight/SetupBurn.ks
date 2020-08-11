@@ -2,6 +2,7 @@
 
 parameter burnParams.
 parameter fileList.
+parameter name is "manoeuvre".
 
 // Clear storage
 runpath("0:/localpack/InstallPack.ks", list()).
@@ -11,7 +12,7 @@ writejson(burnParams, "1:/burn.json").
 
 if not exists("1:/burn.json")
 {
-	print "Unable to setup manoeuvre, insufficient space on local storage".
+	print "Unable to setup " + name + ", insufficient space on local storage".
 }
 else
 {
@@ -19,13 +20,13 @@ else
 
 	if exists("1:/" + fileList[fileList:Length-1])
 	{
-		print "Waiting for manoeuvre in autonomous mode".
+		print "Waiting for " + name + " in autonomous mode".
 		set core:bootfilename to "/" + fileList[0].
 		switch to 1.
 	}
 	else
 	{
-		print "Waiting for manoeuvre in downlink mode".
+		print "Waiting for " + name + " in downlink mode".
 		switch to 0.
 	}
 

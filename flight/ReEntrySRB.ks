@@ -4,6 +4,9 @@
 // Wait for unpack
 wait until Ship:Unpacked.
 
+parameter targetStage is 0.
+parameter retroBurn is false.
+
 if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
 {
     print "Orienting for re-entry.".
@@ -19,11 +22,13 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
 		}
 	}
 	
+	local lock aimVec to choose Retrograde:Vector if retroBurn else Prograde:Vector.
+	
 	rcs on.
-	lock steering to LookDirUp(Prograde:Vector, Facing:UpVector).
+	lock steering to LookDirUp(aimVec, Facing:UpVector).
 
-	wait until vdot(Prograde:Vector, Facing:Vector) > 0.999998.
-	until Stage:Number = 0
+	wait until vdot(aimVec, Facing:Vector) > 0.999998.
+	until Stage:Number = targetStage
 	{
 		wait until stage:ready.
 		stage.
@@ -34,5 +39,5 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
     
 	fileList:Add("flight/ReEntryLanding.ks").
 
-    runpath("0:/flight/SetupBurn", burnParams, fileList).
+    runpath("0:/flight/SetupBurn", burnParams, fileList, "re-entry").
 }

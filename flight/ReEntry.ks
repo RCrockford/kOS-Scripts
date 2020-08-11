@@ -81,5 +81,5 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
     fileList:add("flight/ReEntryLanding.ks").
 	print "Using " + fileList[0].
 
-    runpath("0:/flight/SetupBurn", burnParams, fileList).
+    runpath("0:/flight/SetupBurn", burnParams, fileList, "re-entry").
 }

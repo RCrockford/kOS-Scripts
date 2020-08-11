@@ -17,6 +17,8 @@ if Ship:Status = "PreLaunch"
 	set Terminal:Height to max(Terminal:Height, 50).
     
     switch to 0.
+	
+	Core:Part:ControlFrom().
    
     // Setup functions
     runoncepath("0:/launch/LASFunctions").
@@ -117,7 +119,11 @@ if Ship:Status = "PreLaunch"
     {
 		parameter south is false.
 	
-        if targetInclination >= 0
+		local orbitInc is targetInclination.
+		if targetOrbit:IsType("Orbit")
+			set orbitInc to max(Ship:Latitude, min(targetOrbit:Inclination, 180 - Ship:Latitude)).
+		
+        if orbitInc >= 0
         {
             local targetPe is LAS_TargetPe * 1000 + Ship:Body:Radius.
             local a is 0.
@@ -125,11 +131,20 @@ if Ship:Status = "PreLaunch"
 				set a to LAS_TargetSMA.
 			else
 				set a to (LAS_TargetPe + LAS_TargetAp) * 500 + Ship:Body:Radius.
-            local sinInertialAz is max(-1, min(cos(targetInclination)/cos(Ship:Latitude),1)).
+            local sinInertialAz is max(-1, min(cos(orbitInc)/cos(Ship:Latitude),1)).
             local vOrbit is sqrt(2 * Ship:Body:Mu / targetPe - Ship:Body:Mu / a).
             local vEqRot is 2 * Constant:pi * Ship:Body:Radius / Ship:Body:RotationPeriod.
             // Using the identity sin2 + cos2 = 1 to avoid inverse trig.
             set launchAzimuth to mod(arctan2(vOrbit * sinInertialAz - vEqRot * cos(Ship:Latitude), vOrbit * sqrt(1 - sinInertialAz^2)) + 360, 360).
+			
+			if targetOrbit:IsType("Orbit")
+			{
+				local orbitNorm is vcrs(targetOrbit:Position - Ship:Body:Position, targetOrbit:Velocity:Orbit):Normalized.
+				local padVec is -Ship:Body:Position:Normalized.
+				local northLaunchNorm is vcrs(heading(launchAzimuth, 0):Vector, padVec):Normalized.
+				local southLaunchNorm is vcrs(heading(mod(360 + 180 - launchAzimuth, 360), 0):Vector, padVec):Normalized.
+				set south to abs(vdot(northLaunchNorm, orbitNorm)) < abs(vdot(southLaunchNorm, orbitNorm)).
+			}
 			
 			if south
 				set launchAzimuth to mod(360 + 180 - launchAzimuth, 360).
@@ -137,7 +152,7 @@ if Ship:Status = "PreLaunch"
             set azimuthText:text to round(launchAzimuth, 3):ToString.
         }
 
-        set azimuthText:Enabled to targetInclination < 0.
+        set azimuthText:Enabled to orbitInc < 0.
     }
     
     local inclinationLabel is createLabel("Inclination").
@@ -153,6 +168,7 @@ if Ship:Status = "PreLaunch"
         if targetOrbit:IsType("Orbitable")
         {
             set targetOrbitable to targetOrbit.
+			set targetOrbit to targetOrbitable:Orbit.
             set targetInclination to -1.
             set inclinationText:Text to "Target (" + targetOrbitable:Name + ")".
             set inclinationText:Enabled to false.

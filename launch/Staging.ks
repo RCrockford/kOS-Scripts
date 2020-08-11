@@ -24,8 +24,11 @@ global function LAS_FireDecoupler
 	local modDecouple is 0.
 	if decoup:HasModule("ModuleDecouple")
 		set modDecouple to decoup:GetModule("ModuleDecouple").
-	else
+	else if decoup:HasModule("ModuleAnchoredDecoupler")
 		set modDecouple to decoup:GetModule("ModuleAnchoredDecoupler").
+	else
+		return.
+	
 	if modDecouple:HasEvent("decouple")
 		modDecouple:DoEvent("decouple").
 	else if modDecouple:HasEvent("decouple top node")

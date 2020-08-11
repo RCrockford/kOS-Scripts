@@ -101,8 +101,6 @@ else
         
         local finalMass is shipMass / massRatio.
         set duration to (shipMass - finalMass) / massFlow.
-		
-		local ResourceAliases is lexicon("LH2", "LqdHydrogen").
 
 		local startFuelMass is 0.
 		local maxFlow is 0.
@@ -113,10 +111,6 @@ else
             {
                 local res is eng:ConsumedResources[k].
 				local resName is res:Name.
-				if ResourceAliases:HasKey(resName) and activeResources:HasKey(ResourceAliases[resName])
-				{
-					set resName to ResourceAliases[resName].
-				}
                 if res:Density > 0 and activeResources:HasKey(resName)
                 {
                     set startFuelMass to startFuelMass + activeResources[resName] * res:Density.

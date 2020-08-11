@@ -8,15 +8,18 @@ local upVec is Ship:ControlPart:Facing:TopVector.
 
 for r in allRCS
 {
-	local thrustMul is 0.
-	for t in r:ThrustVectors
+	if r:HasSuffix("ThrustVectors") and r:Enabled
 	{
-		set thrustMul to thrustMul + max(vdot(t, upVec), 0).
-	}
+		local thrustMul is 0.
+		for t in r:ThrustVectors
+		{
+			set thrustMul to thrustMul + max(vdot(t, upVec), 0).
+		}
 
-	if thrustMul > 0.01
-	{
-		set upTorque to upTorque + r:AvailableThrust * min(thrustMul, 1) * r:position:mag.
+		if thrustMul > 0.01
+		{
+			set upTorque to upTorque + r:AvailableThrust * min(thrustMul, 1) * r:position:mag.
+		}
 	}
 }
 

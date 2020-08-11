@@ -4,6 +4,8 @@
 
 @lazyglobal off.
 
+parameter liftoffStage is stage:number - 1.
+
 //------------------------------------------------------------------------------------------------
 
 local rT is 0.      // Target radial distance
@@ -15,8 +17,9 @@ local eccT is 0.    // Target eccentricty.
 local LT is 0.      // Target semilatus rectum
 
 local incT is -1.   // Target inclination
-local aeroHeading is 90.
-local oTarget is 0. // Target orbitable / direction
+local inertialHeading is 0.
+local oTarget is 0. // Target orbitable
+local launchLat is Ship:Latitude.
 
 local stageA is list().         // Steering constant
 local stageB is list().         // Steering constant (/sec)
@@ -39,10 +42,11 @@ local orbitalEnergy is 0.   // Current orbital energy
 
 local debugGui is GUI(320).
 set debugGui:X to -150.
-set debugGui:Y to debugGui:Y - 320.
+set debugGui:Y to debugGui:Y - 420.
 local mainBox is debugGui:AddVBox().
 
 local debugStat is mainBox:AddLabel("Inactive").
+local debugStatYaw is mainBox:AddLabel("").
 local debugTarget is mainBox:AddLabel("").
 local debugFr is mainBox:AddLabel("").
 local debugStages is list().
@@ -63,7 +67,7 @@ local debugStages is list().
     if defined LAS_LastStage
         set GuidanceLastStage to LAS_LastStage.
 
-    if targetPe < 100000
+    if targetPe < 100000 and Ship:Body = Earth
     {
         print "Suborbital Flight: Ap=" + round(targetAp * 0.001, 1) + " km".
 
@@ -118,7 +122,7 @@ local debugStages is list().
 	//log "Stage,Alt,vTh,Lat,Anom,dAnom" to "0:/logs/lat.csv".
 
 	// Size lists
-	from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
+	from {local s is liftoffStage.} until s < 0 step {set s to s - 1.} do
 	{
 		stageA:add(0).
 		stageB:add(0).
@@ -132,7 +136,7 @@ local debugStages is list().
 	}
 
 	// Populate lists
-	from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
+	from {local s is liftoffStage.} until s < 0 step {set s to s - 1.} do
 	{
 		local stagePerf is LAS_GetStagePerformance(s).
 	
@@ -154,25 +158,28 @@ local debugStages is list().
 	debugGui:Show().
 }
 
-//------------------------------------------------------------------------------------------------
-
-local function UpdateTarget
+local function GetYawSteer
 {
-    parameter deltaAnom.
-
-    // Update estimate for required true anomaly
-    local trueAnom is Ship:Orbit:TrueAnomaly.
-    local trueAnomM is oTarget:Orbit:TrueAnomaly.
-
-    local trueAnomT is trueAnomM + deltaAnom - trueAnom.
+	parameter vtheta.
+	parameter hVec.
 	
-	local newRT is LT / (1 + eccT * cos(trueAnomT)).
-	local newrvT is sqrt(Ship:Body:Mu / LT) * eccT * sin(trueAnomT).
-
-    //set rT to LT / (1 + eccT * cos(trueAnomT)).
-    //set rvT to sqrt(Ship:Body:Mu / LT) * eccT * sin(trueAnomT).
-
-    set debugTarget:Text to "rT = " + round((newRT - Ship:Body:Radius) / 1000, 1) + " km, rvT = " + round(newrvT, 1) + " m/s".
+	local targetVec is V(0,0,0).
+	
+	if oTarget:IsType("Orbitable")
+	{
+		set targetVec to oTarget:Position:Normalized.
+	}
+	else
+	{
+		set targetVec to inertialHeading.
+	}
+	
+	local downtrack is vcrs(hVec, LAS_ShipPos():Normalized):Normalized.
+	local hdot is vdot(hVec, targetVec).
+	local d is vdot(downtrack, targetVec).
+	set d to d / abs(d).
+	
+	return list(hdot, d).
 }
 
 //------------------------------------------------------------------------------------------------
@@ -274,7 +281,6 @@ local function UpdateGuidance
     local fddtheta is 0.
 
     local newYawK is 0.
-    local deltaAnom is 0.
 
     local function calcHeadingDerivs
     {
@@ -291,28 +297,14 @@ local function UpdateGuidance
         local fh is 0.
         local fdh is 0.
 
-        if incT >= 0 or oTarget:IsType("Orbitable") or oTarget:IsType("Vector")
-        {
-            local hdot is 0.
-            local d is 1.
-
-            // Assume downtrack isn't changing much
-            local downtrack is vcrs(hVec, LAS_ShipPos():Normalized).
-
-            if oTarget:IsType("Orbitable")
-            {
-                set hdot to vdot(hVec, oTarget:Position:Normalized).
-                set d to vdot(downtrack:Normalized, oTarget:Position:Normalized).
-            }
-            else
-            {
-                local incDiff is Ship:Orbit:Inclination - incT.
-                set hdot to -sin(incDiff).
-                set d to cos(incDiff).
-            }
-
+        if incT >= 0 or oTarget:IsType("Orbitable")
+        {			
 			local vtheta is omega * r.
 			local vthetaT is omegaT * rT.
+
+			local hdot_d is GetYawSteer((vtheta + vthetaT) / 2, hVec).
+            local hdot is hdot_d[0].
+			local d is hdot_d[1].
 
             local allT is T.
             from {local i is s - 1.} until i < GuidanceLastStage step {set i to i - 1.} do
@@ -326,18 +318,8 @@ local function UpdateGuidance
             if yawK = 0
                 set yawK to (d1*d1*b0 + 2*d1*d2*b1 + d2*d2*b2).
 
-			if vtheta < 4500
-			{
-				local fdfr is vdot(vcrs(LAS_ShipPos():Normalized, Heading(aeroHeading, 0):Vector), hVec)^2.
-				set fh to choose 0 if fdfr >= 1 else -sqrt(1 - fdfr).
-			}
-			else
-			{
-				set fh to hdot * d1 / yawK.
-			}
+			set fh to hdot * d1 / yawK.
 			set fdh to fh * d2 / d1.
-			
-			//set debugStat:Text to "hdot=" + round(hdot, 4) + " d=" + round(d, 4) + " fh=" + round(hdot * d1 / yawK, 4).
 
             if s = startStage
             {
@@ -383,19 +365,6 @@ local function UpdateGuidance
 
         // Angular momentum gain at staging
         local hS is h + (r + rS) * 0.5 * (ftheta * b0 + fdtheta * b1 + fddtheta * b2).
-
-        if oTarget:IsType("Orbitable")
-        {
-            // calc delta anom
-            local c2 is c1 * tau - exhaustV * T^3 / 6.
-            local d3 is h * rv / r^3.
-            local d4 is (hS * rvS / rS^3 - d3) / T.
-
-            local dA is T * h / (r*r)
-                + (ftheta * c0 + fdtheta * c1 + fddtheta * c2) / ((r + rS) * 0.5)
-                - d3 * T*T - d4 * T^3 / 3.
-            set deltaAnom to deltaAnom + dA.
-        }
 
         // Tangental and angular speed at staging
         set omegaS to hS / (rS * rS).
@@ -592,22 +561,6 @@ local function UpdateGuidance
 			local dh is hT - h.
 			local meanRadius is (r + rT) * 0.5.
 
-			if oTarget:IsType("Orbitable")
-			{
-				// calc delta anom
-				local c0 is b0 * T - b1.
-				local c1 is c0 * tau - exhaustV * (T*T) * 0.5.
-				local c2 is c1 * tau - exhaustV * T^3 / 6.
-				local d3 is h * rv / r^3.
-				local d4 is (hT * rvT / rT^3 - d3) / T.
-
-				local dA is T * h / (r*r)
-					+ (ftheta * c0 + fdtheta * c1 + fddtheta * c2) / meanRadius
-					- d3 * T*T - d4 * T^3 / 3.
-				set deltaAnom to deltaAnom + dA.
-
-			}
-
 			local deltaV is dh / meanRadius.
 			set deltaV to deltaV + exhaustV * T * (fdtheta + fddtheta * tau).
 			set deltaV to deltaV + fddtheta * exhaustV * (T*T) * 0.5.
@@ -656,16 +609,9 @@ local function UpdateGuidance
 
 		set tStart to MissionTime.
     }
-	
-	//log Stage:Number + "," + Ship:Altitude + "," + omega*r + "," + Ship:Latitude + "," + Ship:Orbit:TrueAnomaly + "," + deltaAnom to "0:/logs/lat.csv".
 
     set yawK to newYawK.
 	set guidanceValid to true.
-
-    if oTarget:IsType("Orbitable")
-    {
-        UpdateTarget(deltaAnom).
-    }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -712,44 +658,16 @@ global function LAS_GetGuidanceAim
 
         // Yaw heading vector
         local fh is 0.
-        local vtheta is omega * r.
-		local hdot is 0.
-		local d is 1.
 		
 		if yawK <> 0
         {
-			// Don't yaw steer until downrange speed is high enough
-			if vtheta < 4500
-			{
-				set fh to 1 - vdot(vcrs(rVec, Heading(aeroHeading, 0):Vector), hVec)^2.
-				if fh > 0
-					set fh to -sqrt(fh).
-				else
-					set fh to 0.
-			}
-			else
-			{
-				if oTarget:IsType("Orbitable")
-				{
-					set hdot to vdot(hVec, oTarget:Position:Normalized).
-					set d to vdot(downtrack, oTarget:Position:Normalized).
-				}
-				else if oTarget:IsType("Vector")
-				{
-					set hdot to vdot(hVec, oTarget:Normalized).
-					set d to vdot(downtrack, oTarget:Normalized).
-				}
-				else
-				{
-					local incDiff is Ship:Orbit:Inclination - incT.
-					set hdot to sin(incDiff).
-					set d to cos(incDiff).
-				}
-
-				set fh to hdot * d / (vtheta * yawK).
-			}
-			if Ship:Velocity:Orbit:Y < 0
-				set fh to -fh.
+			local vtheta is omega * r.
+			local hdot_d is GetYawSteer(vtheta, hVec).
+            local hdot is hdot_d[0].
+			local d is hdot_d[1].
+			
+			set fh to hdot * d / (vtheta * yawK).
+			set debugStatYaw:Text to "hdot=" + round(hdot, 4) + " d=" + round(d, 4) + " yawK=" + round(yawK, 4).
         }
 
         // Construct aim vector
@@ -762,7 +680,7 @@ global function LAS_GetGuidanceAim
         }
 		else
 		{
-			set debugFr:text to "fr=" + round(fr,3) + " fh=" + round(fh,4) + "fd=0 s=" + s + "/" + GuidanceLastStage + " t=" + round(t, 2).
+			set debugFr:text to "fr=" + round(fr,3) + " fh=" + round(fh,4) + " fd=0 s=" + s + "/" + GuidanceLastStage + " t=" + round(t, 2).
 		}
     }
 	else
@@ -805,20 +723,19 @@ global function LAS_StartGuidance
     }
     print "S=" + startStage + " Last guidance stage: " + GuidanceLastStage.
 
-	if defined LAS_TargetVector
-	{
-		set oTarget to LAS_TargetVector.
-        set incT to inclin.
-	}
-	else if targetObt:IsType("Orbitable")
+	if targetObt:IsType("Orbitable")
     {
         set oTarget to targetObt.
     }
     else
     {
         set incT to inclin.
+		local inertialAz is arcsin(max(-1, min(cos(inclin)/cos(LaunchLat),1))).
+		if hdg > 90
+			set inertialHeading to Heading(180 - inertialAz, 0):Vector.
+		else
+			set inertialHeading to Heading(inertialAz, 0):Vector.
     }
-	set aeroHeading to hdg.
 	
 	from { local s is startStage. } until s < GuidanceLastStage step { set s to s - 1.} do
 	{
@@ -910,3 +827,9 @@ global function LAS_GuidanceBurnTime
 
 	return 0.
 }
+
+global function LAS_GuidanceTargetVTheta
+{
+	return OmegaT * rT.
+}
+

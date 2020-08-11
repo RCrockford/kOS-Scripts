@@ -9,17 +9,20 @@ global function GetRCSForePerf
 
     for r in allRCS
     {
-        local thrustMul is 0.
-        for t in r:ThrustVectors
-        {
-            set thrustMul to thrustMul + max(vdot(t, -Ship:ControlPart:Facing:ForeVector), 0).
-        }
+		if r:HasSuffix("ThrustVectors") and r:Enabled
+		{
+			local thrustMul is 0.
+			for t in r:ThrustVectors
+			{
+				set thrustMul to thrustMul + max(vdot(t, -Ship:ControlPart:Facing:ForeVector), 0).
+			}
 
-        if thrustMul > 0.01
-        {
-            set perfStats:thrust to perfStats:thrust + r:AvailableThrust * min(thrustMul, 1).
-            set perfStats:massflow to perfStats:massflow + r:MaxMassFlow.
-        }
+			if thrustMul > 0.01
+			{
+				set perfStats:thrust to perfStats:thrust + r:AvailableThrust * min(thrustMul, 1).
+				set perfStats:massflow to perfStats:massflow + r:MaxMassFlow.
+			}
+		}
 	}
 
 	return perfStats.
@@ -34,17 +37,20 @@ global function GetRCSAftPerf
 
     for r in allRCS
     {
-        local thrustMul is 0.
-        for t in r:ThrustVectors
-        {
-            set thrustMul to thrustMul + max(vdot(t, Ship:ControlPart:Facing:ForeVector), 0).
-        }
+		if r:HasSuffix("ThrustVectors") and r:Enabled
+		{
+			local thrustMul is 0.
+			for t in r:ThrustVectors
+			{
+				set thrustMul to thrustMul + max(vdot(t, Ship:ControlPart:Facing:ForeVector), 0).
+			}
 
-        if thrustMul > 0.01
-        {
-            set perfStats:thrust to perfStats:thrust + r:AvailableThrust * min(thrustMul, 1).
-            set perfStats:massflow to perfStats:massflow + r:MaxMassFlow.
-        }
+			if thrustMul > 0.01
+			{
+				set perfStats:thrust to perfStats:thrust + r:AvailableThrust * min(thrustMul, 1).
+				set perfStats:massflow to perfStats:massflow + r:MaxMassFlow.
+			}
+		}
 	}
 
 	return perfStats.
@@ -67,19 +73,22 @@ global function GetRCSPerf
 
     for r in allRCS
     {
-		for a in shipAxes
+		if r:HasSuffix("ThrustVectors") and r:Enabled
 		{
-			local thrustMul is 0.
-			for t in r:ThrustVectors
+			for a in shipAxes
 			{
-				set thrustMul to thrustMul + max(vdot(t, a[1]), 0).
-			}
+				local thrustMul is 0.
+				for t in r:ThrustVectors
+				{
+					set thrustMul to thrustMul + max(vdot(t, a[1]), 0).
+				}
 
-			if thrustMul > 0.01
-			{
-				set perfStats[a[0]]:thrust to perfStats[a[0]]:thrust + r:AvailableThrust * min(thrustMul, 1).
-				set perfStats[a[0]]:torque to perfStats[a[0]]:torque + r:AvailableThrust * min(thrustMul, 1) * r:position:mag.
-				set perfStats[a[0]]:massflow to perfStats[a[0]]:massflow + r:MaxMassFlow.
+				if thrustMul > 0.01
+				{
+					set perfStats[a[0]]:thrust to perfStats[a[0]]:thrust + r:AvailableThrust * min(thrustMul, 1).
+					set perfStats[a[0]]:torque to perfStats[a[0]]:torque + r:AvailableThrust * min(thrustMul, 1) * r:position:mag.
+					set perfStats[a[0]]:massflow to perfStats[a[0]]:massflow + r:MaxMassFlow.
+				}
 			}
 		}
 	}

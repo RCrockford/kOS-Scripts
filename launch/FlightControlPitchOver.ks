@@ -17,7 +17,9 @@ local maxQset is false.
 local kscPos is Ship:GeoPosition.
 local coastMode is false.
 
-local lock velocityPitch to max(90 - vang(Ship:up:vector, Ship:Velocity:Surface), choose 0 if coastMode else (choose 85 if pitchOverAngle < 1e-4 else 30)).
+local minPitch is choose 85 if pitchOverAngle < 1e-4 else 30.
+local maxPitch is 90.
+local lock velocityPitch to min(maxPitch, max(90 - vang(Ship:up:vector, Ship:Velocity:Surface), minPitch)).
 local lock shipPitch to 90 - vang(Ship:up:vector, Ship:facing:forevector).
 
 // Flight phases
@@ -118,6 +120,12 @@ local function checkAscent
 		LAS_GuidanceUpdate(guidanceStage).
         
         local guidance is LAS_GetGuidanceAim(guidanceStage).
+		
+		if Ship:GroundSpeed < 4000 and guidance:SqrMagnitude > 0.9
+		{
+			// Just fly along launch azimuth until 4 km ground speed, then use guidance yaw steering
+			set guidance to Heading(launchAzimuth, 90 - arccos(vdot(guidance, Ship:Up:Vector))):Vector.
+		}
         
         // Make sure dynamic pressure is low enough to start manoeuvres
         if flightPhase = c_PhaseGuidanceReady
@@ -213,10 +221,18 @@ local function checkAscent
             local h is vcrs(LAS_ShipPos(), Ship:Velocity:Orbit):Mag.
             local vTheta is h / r.
 			
-			if not coastMode and canCoast and Ship:Q < 0.12 and Ship:Altitude > 10000
+			if Ship:Altitude > 12000
 			{
-				set coastMode to true.				
-				lock Steering to Heading(launchAzimuth, min(90 - pitchOverAngle, choose (velocityPitch - 2) if (Ship:Orbit:Apoapsis < LAS_TargetPe * 800) else 0), 0).
+				if not coastMode and canCoast and Ship:Q < 0.12
+				{
+					set coastMode to true.
+					set minPitch to 0.
+					lock Steering to Heading(launchAzimuth, choose (velocityPitch - 2) if (Ship:Orbit:Apoapsis < LAS_TargetPe * 800) else 0, 0).
+				}
+				else if Ship:Q < 0.3 and not LAS_HasEscapeSystem
+				{
+					set maxPitch to 60.
+				}
 			}
 
 			if coastMode
@@ -325,18 +341,23 @@ until flightPhase = c_PhaseSECO
 		{
 			local mainEngines is LAS_GetStageEngines().
 			local haveControl is false.
+			local rcsRoll is false.
 			for eng in mainEngines
 			{
 				if eng:HasGimbal
 				{
 					set haveControl to true.
+					set rcsRoll to eng:tag:contains("rcsroll").
 					break.
 				}
 			}
 			
 			if haveControl
 			{
-				rcs off.
+				if rcsRoll
+					rcs on.
+				else
+					rcs off.
 			}
 			else
 			{

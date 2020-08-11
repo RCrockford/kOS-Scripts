@@ -44,43 +44,40 @@ local function LAS_CrewEscapeImpl
 		
 		wait 0.
 	}
-	
-	list engines in LESBoosters.
+	print "Flameout on engines:".
+	print LESBoosters.
 	
 	for e in LESBoosters
 	{
 		if e:tag:contains("les")
 			LAS_FireDecoupler(e).
 	}
+	for p in Ship:PartsTaggedPattern("\blesbooster\b")
+	{
+		print "Decoupling " + p:Name.
+		LAS_FireDecoupler(p).
+	}
 	
 	wait until Ship:VerticalSpeed < 0.
 
-	if Alt:Radar <= 5000
+	local chutesArmed is false.
+	for modRealChute in Ship:ModulesNamed("RealChuteModule")
 	{
-		for modRealChute in Ship:ModulesNamed("RealChuteModule")
+		print "Arm chute: " + modRealChute:Part:Name.
+		if modRealChute:HasEvent("arm parachute")
 		{
-			if modRealChute:HasEvent("deploy chute")
-			{
-				modRealChute:DoEvent("deploy chute").
-			}
+			modRealChute:DoEvent("arm parachute").
+			set chutesArmed to true.
 		}
-		print "Parachutes deployed.".
-	}
-	else
-	{
-		local chutesArmed is false.
-		for modRealChute in Ship:ModulesNamed("RealChuteModule")
+		else if modRealChute:HasEvent("deploy chute")
 		{
-			if modRealChute:HasEvent("arm parachute")
-			{
-				modRealChute:DoEvent("arm parachute").
-				set chutesArmed to true.
-			}
+			modRealChute:DoEvent("deploy chute").
+			set chutesArmed to true.
 		}
-		if not chutesArmed
-			chutes on.
-		print "Parachutes armed.".
 	}
+	if not chutesArmed
+		chutes on.
+	print "Parachutes armed.".
 	
 	shutdown.
 }
@@ -92,6 +89,10 @@ local function LAS_EscapeJetissonImpl
 	{
 		e:Activate.		
 		LAS_FireDecoupler(e).
+	}
+	for p in Ship:PartsTaggedPattern("\blesbooster\b")
+	{
+		LAS_FireDecoupler(p).
 	}
 	set LESBoosters to list().
 	set LAS_HasEscapeSystem to false.

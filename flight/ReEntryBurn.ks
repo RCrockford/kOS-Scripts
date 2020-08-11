@@ -63,4 +63,4 @@ set _0 to Ship:Mass.
 }
 }
 set Ship:Control:PilotMainThrottle to 0.
-runoncepath("/flight/ReEntryLanding").
+runpath("/flight/ReEntryLanding").

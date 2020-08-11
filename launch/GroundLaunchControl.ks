@@ -230,7 +230,6 @@ if defined LAS_LaunchTime
 else
 {
 	print "Ascent Time: " + round(ascentTime, 1) + " s".
-	set ascentTime to ascentTime + 24.
 	local waitTime is 0.
 
 	if TargetOrbit:IsType("Orbit")

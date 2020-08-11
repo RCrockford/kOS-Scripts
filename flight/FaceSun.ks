@@ -21,9 +21,7 @@ local mainBox is debugGui:AddVBox().
 local debugStat is mainBox:AddLabel("").
 debugGui:Show().
 
-wait 0.
-
-until abs(SteeringManager:AngleError) < 0.1 and Ship:AngularVel:Mag < 4e-4
+until vdot(Sun:Position:Normalized, Facing:Vector) > 0.99999 and abs(SteeringManager:AngleError) < 0.1 and Ship:AngularVel:Mag < 4e-4
 {
 	set debugStat:Text to "a = " + round(abs(SteeringManager:AngleError), 2) + " / 0.1   avm = " + round(Ship:AngularVel:Mag, 6).
 	wait 0.

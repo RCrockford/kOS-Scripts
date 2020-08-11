@@ -23,28 +23,29 @@ if not chutesArmed
 
 print "Chutes armed.".
 
-wait until Ship:Q > 1e-4.
+wait until Ship:Q > 1e-5.
+
+for a in Ship:ModulesNamed("ModuleProceduralAvionics")
+{
+	if a:HasEvent("activate avionics")
+		a:DoEvent("activate avionics").
+}
 
 rcs on.
 lock steering to LookDirUp(SrfRetrograde:Vector, Facing:UpVector).
 
-local debugGui is GUI(300, 80).
-set debugGui:X to -150.
-set debugGui:Y to debugGui:Y - 480.
-local mainBox is debugGui:AddVBox().
-local debugStat is mainBox:AddLabel("Liftoff").
-debugGui:Show().
-
-until vdot(SrfRetrograde:Vector, Facing:Vector) > 0.9995
-{
-	set debugStat:Text to vdot(SrfRetrograde:Vector, Facing:Vector) + " / " + 0.9995.
-	wait 0.1.
-}
-//wait until vdot(SrfRetrograde:Vector, Facing:Vector) > 0.9995.
+wait until vdot(SrfRetrograde:Vector, Facing:Vector) > 0.9995.
+wait 1.
 
 unlock steering.
 set Ship:Control:Neutralize to true.
 rcs off.
+
+for a in Ship:ModulesNamed("ModuleProceduralAvionics")
+{
+	if a:HasEvent("shutdown avionics")
+		a:DoEvent("shutdown avionics").
+}
 
 set core:bootfilename to "".
 

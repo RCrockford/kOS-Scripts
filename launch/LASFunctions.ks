@@ -150,7 +150,7 @@ local EngineStats is lexicon().
             }
             else
             {
-				print eng:Config + " missing fuel " + r:name.
+				//print eng:Config + " missing fuel " + r:name.
                 set fuelTime to 0.
             }
         }
@@ -158,8 +158,8 @@ local EngineStats is lexicon().
         EngineStats[eng]:Add("fuelTime", fuelTime).
         EngineStats[eng]:Add("resShare", resShare).
 		
-		if not LAS_EngineIsUllage(eng)
-			print "Eng " + eng:Config + " t=" + round(fuelTime, 1) + " s=" + round(resShare, 3).
+		//if not LAS_EngineIsUllage(eng)
+			//print "Eng " + eng:Config + " t=" + round(fuelTime, 1) + " s=" + round(resShare, 3).
     }
 }
 
@@ -295,7 +295,8 @@ global function LAS_GetStagePerformance
 
 	for eng in allEngines
 	{
-		if eng:DecoupledIn = s - 1 and not LAS_EngineIsUllage(eng) and not eng:Tag:Contains("nostage") and not eng:Name:Contains("vernier")
+		local engStage is min(eng:DecoupledIn + 1, eng:stage).
+		if engStage = s and not LAS_EngineIsUllage(eng) and not eng:Tag:Contains("nostage") and not eng:Name:Contains("vernier")
 		{
 			set massFlow to massFlow + eng:MaxMassFlow.
 			set stageThrust to stageThrust + eng:PossibleThrustAt(0).

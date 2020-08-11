@@ -76,4 +76,4 @@ if Ship:Obt:Periapsis > p:pe
 
 set Ship:Control:PilotMainThrottle to 0.
 
-runoncepath("/flight/ReEntryLanding").
+runpath("/flight/ReEntryLanding").
