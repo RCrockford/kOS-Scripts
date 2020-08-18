@@ -40,13 +40,13 @@ local fuelTotal is 0.
 
 if rcsBurn
 {
-	runoncepath("0:/flight/RCSPerf.ks").
-	local RCSPerf is GetRCSForePerf().
+    runoncepath("0:/flight/RCSPerf.ks").
+    local RCSPerf is GetRCSForePerf().
 
-	// Calc burn duration
-	local massRatio is constant:e ^ (dV:Mag * RCSPerf:massflow / RCSPerf:thrust).
-	local finalMass is Ship:Mass / massRatio.
-	set duration to (Ship:Mass - finalMass) / RCSPerf:massflow.
+    // Calc burn duration
+    local massRatio is constant:e ^ (dV:Mag * RCSPerf:massflow / RCSPerf:thrust).
+    local finalMass is Ship:Mass / massRatio.
+    set duration to (Ship:Mass - finalMass) / RCSPerf:massflow.
 }
 else
 {
@@ -69,8 +69,8 @@ else
             set burnThrust to burnThrust + eng:PossibleThrust.
         }
         local massRatio is constant:e ^ (dV:Mag * massFlow / burnThrust).
-		
-		local activeResources is lexicon().
+        
+        local activeResources is lexicon().
         
         local shipMass is 0.
         for shipPart in Ship:Parts
@@ -85,58 +85,51 @@ else
             else if shipPart:DecoupledIn < burnStage
             {
                 set shipMass to shipMass + shipPart:Mass.
-				
-				for r in shipPart:resources
-				{
-					if r:Density > 0
-					{
-						if not activeResources:HasKey(r:Name)
-							activeResources:Add(r:Name, r:amount).
+                
+                for r in shipPart:resources
+                {
+                    if r:Density > 0
+                    {
+                        if not activeResources:HasKey(r:Name)
+                            activeResources:Add(r:Name, r:amount).
                         else
                             set activeResources[r:name] to activeResources[r:name] + r:amount.
-					}
-				}
+                    }
+                }
             }
         }
         
         local finalMass is shipMass / massRatio.
         set duration to (shipMass - finalMass) / massFlow.
-		
-		local ResourceAliases is lexicon("LH2", "LqdHydrogen").
 
-		local startFuelMass is 0.
-		local maxFlow is 0.
-        
-        for eng in activeEngines
+        local maxFlow is 0.
+        for k in activeEngines[0]:ConsumedResources:keys
         {
-            for k in eng:ConsumedResources:keys
+            local res is activeEngines[0]:ConsumedResources[k].
+            local resName is res:Name.
+            if res:Density > 0 and activeResources:HasKey(resName)
             {
-                local res is eng:ConsumedResources[k].
-				local resName is res:Name.
-				if ResourceAliases:HasKey(resName) and activeResources:HasKey(ResourceAliases[resName])
-				{
-					set resName to ResourceAliases[resName].
-				}
-                if res:Density > 0 and activeResources:HasKey(resName)
+                if res:MaxFuelFlow > maxFlow and res:Name <> "LH2"  // Don't use LH2, use oxygen instead as it suffers less boil off.
                 {
-                    set startFuelMass to startFuelMass + activeResources[resName] * res:Density.
-                    if res:MaxFuelFlow > maxFlow and res:Name <> "LH2"	// Don't use LH2, use oxygen instead as it suffers less boil off.
-                    {
-                        set fuelName to resName.
-                        set fuelAmount to activeResources[resName].
-						set maxFlow to res:MaxFuelFlow.
-                    }
+                    set fuelName to resName.
+                    set fuelTotal to activeResources[resName].
+                    set maxFlow to res:MaxFuelFlow.
                 }
             }
         }
-		
-		if startFuelMass > 0 
-		{
-			local fuelProp is (shipMass - finalMass) / startFuelMass.
-			set fuelProp to min(max(0, fuelProp), 1).
-			set fuelTotal to fuelAmount.
-			set fuelAmount to fuelAmount * fuelProp.
-		}
+        
+        set maxFlow to 0.
+        for eng in activeEngines
+        {
+            if eng:ConsumedResources:HasKey(fuelName)
+            {
+                local res is eng:ConsumedResources[fuelName].
+                set maxFlow to maxFlow + res:MaxFuelFlow.
+            }
+        }
+        
+        print "Fuel Flow: " + round(maxFlow, 2).
+        set fuelAmount to maxFlow * duration.
     }
 }
 
@@ -144,7 +137,7 @@ print "Executing manoeuvre in " + FormatTime(burnEta).
 print "  DeltaV: " + round(dV:Mag, 1) + " m/s.".
 print "  Duration: " + round(duration, 1) + " s.".
 if not rcsBurn
-	print "  Fuel Monitor: " + fuelName + " " + round(fuelTotal, 2) + " => " + round(fuelTotal - fuelAmount, 2).
+    print "  Fuel Monitor: " + fuelName + " " + round(fuelTotal, 2) + " => " + round(fuelTotal - fuelAmount, 2).
 if rcsBurn
 {
     print "  RCS burn.".
