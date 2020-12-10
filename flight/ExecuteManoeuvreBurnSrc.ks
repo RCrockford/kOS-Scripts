@@ -20,12 +20,19 @@ else
     set dV to tVec * p:dV:x + nVec * pDv:y + bVec * p:dV:z.
 }
 
-print "Align in " + round(burnETA - 60, 0) + " seconds.".
+print "Align in " + round(burnETA - p:align, 0) + " seconds.".
 
-wait until burnETA < 60.
+wait until burnETA <= p:align.
 
 kUniverse:Timewarp:CancelWarp().
 print "Aligning ship".
+
+local debugGui is GUI(350, 80).
+set debugGui:X to 100.
+set debugGui:Y to debugGui:Y + 300.
+local mainBox is debugGui:AddVBox().
+local debugStat is mainBox:AddLabel("Aligning ship").
+debugGui:Show().
 
 runoncepath("/FCFuncs").
 runpath("flight/TuneSteering").
@@ -39,7 +46,7 @@ if p:eng
 
 local function CheckHeading
 {
-    if HasNode and nextNode:eta < 60
+    if HasNode and nextNode:eta <= p:align
         set dV to NextNode:deltaV.
     else if p:haskey("dV")
         set dV to tVec * p:dV:x + nVec * pDv:y + bVec * p:dV:z.
@@ -81,8 +88,32 @@ if p:inertial
 }
 else
 {
-    wait until burnETA <= ignitionTime + 5.
+    until burnETA <= ignitionTime + min(max(p:align / 40, 2), 10).
+    {
+        local err is vang(dV:Normalized, Facing:Vector).
+        local omega is Ship:AngularVel:Mag * 180 / Constant:Pi.
+		set debugStat:Text to "Aligning ship, <color=" + (choose "#ff8000" if err > 0.5 else "#00ff00") + ">Δθ: " + round(err, 2)
+            + "°</color> <color=" + (choose "#ff8000" if err / max(omega, 1e-4) > burnETA - ignitionTime else "#00ff00") + ">ω: " + round(omega, 3) + "°/s</color>".
+        wait 0.
+    }
     CheckHeading().
+    
+    // Pre-ullage
+    if p:eng and EM_IgDelay() > 0
+    {
+        rcs on.
+        set Ship:Control:Fore to 1.
+        until burnETA <= ignitionTime
+        {
+            if EM_GetEngines()[0]:FuelStability >= 0.99
+            {
+                set ship:control:fore to 0.
+                break.
+            }
+            wait 0.
+        }
+    }
+	
     wait until burnETA <= ignitionTime.
 }
 
@@ -91,6 +122,12 @@ print "Starting burn".
 // If we have engines, ignite them.
 if p:eng
 {
+	set debugStat:Text to "Ignition".
+	
+	local duration to p:t.
+	if not p:inertial
+		set duration to (ship:Mass - ship:Mass / p:mRatio) / p:mFlow.
+	
     local fuelRes is 0.
     local fuelTarget is 0.
     for r in Ship:Resources
@@ -99,9 +136,10 @@ if p:eng
         {
             set fuelRes to r.
             // Wait until we have burned the right amount of fuel.
-            set fuelTarget to r:Amount - p:fuelA.
+            set fuelTarget to r:Amount -  p:fFlow * duration.
         }
     }
+	local fuelStart is fuelRes:Amount.
 
     EM_Ignition().
 
@@ -114,11 +152,18 @@ if p:eng
         rcs off.
         stage.
     }
+	
+	local burnStart is Time:Seconds.
 
     until fuelRes:Amount <= fuelTarget or not EM_CheckThrust(0.1)
     {
+		local prevUpdate is Time:Seconds.
         CheckHeading().
+		set debugStat:Text to "Burning, Fuel: " + round(fuelRes:Amount, 2) + " / " + round(fuelTarget, 2) + " [" + round((fuelRes:Amount - fuelTarget) / p:fFlow, 2) + "s]".
         wait 0.
+		// Break if we'll hit the target fuel in one update.
+		if fuelRes:Amount - (p:fFlow * (Time:Seconds - prevUpdate)) <= fuelTarget
+			break.
     }
 
     EM_Shutdown().
@@ -131,6 +176,7 @@ else
     local stopTime is Time:Seconds + p:t.
     until stopTime <= Time:Seconds
     {
+		set debugStat:Text to "Burning, Cutoff: " + round(stopTime - Time:Seconds, 1) + " s".
         CheckHeading().
         wait 0.
     }
@@ -141,3 +187,4 @@ else
 
     LAS_Avionics("shutdown").
 }
+ClearGuis().

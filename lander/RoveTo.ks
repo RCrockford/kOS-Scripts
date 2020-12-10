@@ -1,23 +1,66 @@
 @lazyglobal off.
 
-parameter targetPoint is AllWaypoints()[0].
-parameter maxSpeed is 10.
+parameter maxSpeed is 5.
 parameter minDist is 20.
+parameter targetPoint is 0.
+
+Core:Part:ControlFrom().
+clearGuis().
+
+if abs(vdot(facing:vector, up:vector)) > 0.5
+{
+	print "Unable to drive using this control point".
+}
+else
+{
+switch to scriptpath():volume.
+
+runoncepath("/FCFuncs").
+
+if targetPoint:IsType("Scalar")
+{
+	local minDist is Body:Radius.
+
+	for wp in AllWayPoints()
+	{
+		if wp:Body = Body
+		{
+			if wp:IsSelected
+			{
+				set targetPoint to wp.
+				break.
+			}
+			if wp:geoPosition:Distance < minDist
+			{
+				set targetPoint to wp.
+				set minDist to wp:geoPosition:Distance.
+			}
+		}
+	}
+}
 
 local targetGeoPos is choose targetPoint:GeoPosition if targetPoint:IsType("WayPoint") else targetPoint.
 
-local steerPid is PIDLoop(0.1, 0, 0.1, -1, 1).
-local throttlePid is PIDLoop(0.2, 0.005, 0.15, -1, 1).
+if targetPoint:IsType("WayPoint")
+	print "Roving to " + targetPoint:Name.
 
-local statusGui is Gui(300).
-set statusGui:X to 200.
-set statusGui:Y to statusGui:Y + 80.
+local scaleFactor is 9.81 / (Ship:Body:Mu / LAS_ShipPos():SqrMagnitude).
+
+local steerPid is PIDLoop(0.1 * scaleFactor, 0.001, 0.1 * scaleFactor, -1, 1).
+local throttlePid is PIDLoop(0.002, 0, 0.0025, -1, 1).
+
+local takeoffTime is 0.
+local isLanded is true.
+
+local statusGui is Gui(400).
+set statusGui:X to 160.
+set statusGui:Y to statusGui:Y + 120.
 
 local mainBox is statusGui:AddHBox().
 local labelBox is mainBox:AddVBox().
-set labelBox:style:width to 150.
+set labelBox:style:width to 100.
 local statusBox is mainBox:AddVBox().
-set statusBox:style:width to 150.
+set statusBox:style:width to 100.
 
 local guiStatus is lexicon().
 
@@ -39,35 +82,155 @@ local function createGuiInfo
 createGuiInfo("hdg", "Heading").
 createGuiInfo("br", "Bearing").
 createGuiInfo("dst", "Distance").
+createGuiInfo("eta", "ETA").
+
+// Second column
+set labelBox to mainBox:AddVBox().
+set labelBox:style:width to 100.
+set statusBox to mainBox:AddVBox().
+set statusBox:style:width to 100.
+
+createGuiInfo("sv", "Last Save").
+createGuiInfo("ra", "Roll Angle").
+createGuiInfo("spd", "Drive Speed").
+createGuiInfo("thr", "Throttle").
 
 statusGui:Show().
 
+LAS_Avionics("activate").
+set Ship:Type to "Rover".
+
 brakes off.
 
-until targetPoint:Distance < minDist
+local wheelList is list().
+for w in Ship:ModulesNamed("KSPWheelBase")
 {
-	set steerPid:kP to 0.02 / max(0.5, Ship:GroundSpeed / 4).
+	if vdot(w:part:position, facing:vector) > 0 and vdot(w:part:position, facing:starvector) > 0
+	{
+		wheelList:add(w:part).
+		break.
+	}
+}
+for w in Ship:ModulesNamed("KSPWheelBase")
+{
+	if vdot(w:part:position, facing:vector) < 0 and vdot(w:part:position, facing:starvector) > 0
+	{
+		wheelList:add(w:part).
+		break.
+	}
+}
+for w in Ship:ModulesNamed("KSPWheelBase")
+{
+	if vdot(w:part:position, facing:starvector) < 0
+	{
+		wheelList:add(w:part).
+		break.
+	}
+}
+
+set steeringmanager:maxstoppingtime to 5.
+
+local lastSaveTime is Time:Seconds - 239.95.
+
+local smoothThrottle is 0.
+
+until targetGeoPos:Distance < minDist
+{
+	// Calc slope
+	local slopeVec is vcrs(Body:GeoPositionOf(wheelList[0]:position):Position - Body:GeoPositionOf(wheelList[2]:position):Position, Body:GeoPositionOf(wheelList[1]:position):Position - Body:GeoPositionOf(wheelList[2]:position):Position):Normalized.
+
+	if Ship:Status <> "Landed"
+	{
+		if isLanded
+		{
+			set takeoffTime to Time:Seconds.
+			set isLanded to false.
+		}
+		else if Time:Seconds - takeoffTime >= 1
+		{
+			set Ship:Control:WheelSteer to 0.
+			set Ship:Control:WheelThrottle to 0.
+			
+			rcs on.
+			local lock rightVec to vcrs(Up:Vector, Ship:Velocity:Surface:Normalized).
+			lock steering to lookdirup(vcrs(rightVec, Up:Vector), slopeVec).
+			
+			wait until Ship:Status = "Landed" and vdot(Facing:UpVector, slopeVec) > 0.999.
+			
+			unlock steering.
+			rcs off.
+			
+			set isLanded to true.
+		}
+	}
+	
+	if Time:Seconds - lastSaveTime > 240 and vdot(Facing:UpVector, slopeVec) > 0.9985
+	{
+		set Ship:Control:WheelThrottle to 0.
+		brakes on.
+		wait until Ship:GroundSpeed < 0.1.
+		kUniverse:QuickSaveTo("RoveTo").
+		set lastSaveTime to Time:Seconds.
+	}
+
+	set steerPid:kP to kUniverse:TimeWarp:Rate * 0.02 / max(0.5, Ship:GroundSpeed / 4).
 	set steerPid:kD to steerPid:kP * 2 / 3.
+    
+    set throttlePid:kP to 0.002 * kUniverse:TimeWarp:Rate.
+    set throttlePid:kD to 0.0025 * kUniverse:TimeWarp:Rate.
 	
-	set Ship:Control:WheelSteer to steerPid:update(time:seconds, targetPoint:Bearing).
+	set Ship:Control:WheelSteer to steerPid:update(time:seconds, targetGeoPos:Bearing).
 	
-	set Ship:Control:WheelThrottle to throttlePid:update(time:seconds, Ship:GroundSpeed - maxSpeed).
-	if Ship:Control:WheelThrottle < 0.1
+	local reqSpeed is maxSpeed * max(1-vang(slopeVec, Up:Vector)/30, 0.5)^1.5.
+	set throttlePid:SetPoint to reqSpeed.
+	local throttleDelta is throttlePid:Update(time:seconds, Ship:GroundSpeed).
+
+	set Ship:Control:WheelThrottle to min(max(-1, Ship:Control:WheelThrottle + throttleDelta), 1).
+
+	if Ship:Control:WheelThrottle < -0.2
 		brakes on.
 	else
 		brakes off.
-	
-	set guiStatus:hdg:text to round(targetPoint:Heading, 1) + "°".
-	set guiStatus:br:text to round(targetPoint:Bearing, 1) + "°".
-	if targetPoint:Distance > 5000
-		set guiStatus:dst:text to round(targetPoint:Distance, 1) + " km".
-	else if targetPoint:Distance > 1200
-		set guiStatus:dst:text to round(targetPoint:Distance, 2) + " km".
+		
+	if Ship:Control:WheelThrottle > 0.95 and vdot(slopeVec, Up:Vector) < 0.965
+	{
+		rcs on.
+		set Ship:Control:Top to 1.
+	}
 	else
-		set guiStatus:dst:text to round(targetPoint:Distance, 1) + " m".
+	{
+		rcs off.
+		set Ship:Control:Top to 0.
+	}
+	
+	set guiStatus:hdg:text to round(targetGeoPos:Heading, 1) + "°".
+	set guiStatus:br:text to round(targetGeoPos:Bearing, 1) + "°".
+	if targetGeoPos:Distance > 5000
+		set guiStatus:dst:text to round(targetGeoPos:Distance / 1000, 1) + " km".
+	else if targetGeoPos:Distance > 1200
+		set guiStatus:dst:text to round(targetGeoPos:Distance / 1000, 2) + " km".
+	else
+		set guiStatus:dst:text to round(targetGeoPos:Distance, 1) + " m".
+	
+	local etaSeconds is max(targetGeoPos:Distance - minDist, 0) / max(Ship:GroundSpeed, 0.001).
+	if etaSeconds > 90
+		set guiStatus:eta:text to round(etaSeconds / 60, 0) + "m " + round(mod(etaSeconds, 60), 0) + "s".
+	else
+		set guiStatus:eta:text to round(etaSeconds, 1) + "s".
+
+	set guiStatus:sv:Text to round(Time:Seconds - lastSaveTime, 0) + " / 240 s".
+	set guiStatus:ra:Text to round(vang(Facing:UpVector, slopeVec), 1) + " / 3.14°".
+	set guiStatus:spd:Text to round(reqSpeed, 2) + " m/s".
+	
+	set guiStatus:thr:Text to round(Ship:Control:WheelThrottle, 2):ToString().
+
+	wait 0.
 }
 
 set ship:control:neutralize to true.
 brakes on.
+
+LAS_Avionics("shutdown").
+}
 
 clearGuis().

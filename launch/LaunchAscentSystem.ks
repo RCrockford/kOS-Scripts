@@ -44,11 +44,13 @@ if Ship:Status = "PreLaunch"
     }
     
     local pitchOverSpeed is 50.
-    local pitchOverAngle is 3.
+    local pitchOverAngle is 4.
     local launchAzimuth is 90.
     local targetInclination is -1.
     local targetOrbitable is 0.
     local maxApoapsis is -1.
+    local stagingValid is true.
+    local helioSync is false.
 
     if totalControlled > 0
     {
@@ -67,7 +69,15 @@ if Ship:Status = "PreLaunch"
             global LAS_TargetAp is targetAp.
         
 		if defined LAS_TargetSMA or LAS_TargetAp > 100
+        {
 			runpath("0:/launch/OrbitalGuidance").
+            if LAS_GuidanceDeltaV() < LAS_GuidanceTargetVTheta() + 1000
+            {
+                print "Insufficient deltaV in guided stages:".
+                print "  Needs " + round(LAS_GuidanceTargetVTheta() + 1000, 0) + " m/s, has " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
+                set stagingValid to false.
+            }
+        }
         
         set pitchOverSpeed to LAS_GetPartParam(Core:Part, "spd=", pitchOverSpeed).
         set pitchOverAngle to LAS_GetPartParam(Core:Part, "ang=", pitchOverAngle).
@@ -79,72 +89,64 @@ if Ship:Status = "PreLaunch"
         print "No avionics unit detected, assuming unguided.".
         set maxApoapsis to LAS_GetPartParam(Core:Part, "ap=", maxApoapsis).
     }
-
-    local flightGui is Gui(250).
-    set flightGui:X to 100.
-    set flightGui:Y to flightGui:Y + 50.
-    local mainBox is flightGui:AddHBox().
-    local labelBox is mainBox:AddVBox().
-    set labelBox:style:width to 150.
-    local controlBox is mainBox:AddVBox().
-    set controlBox:style:width to 100.
-	local launchButton is flightGui:AddButton("Launch").
     
-    local function createLabel
+    runpath("0:/launch/LaunchGUI").
+
+	local launchButton is LGUI_GetButton().
+    set launchButton:Enabled to stagingValid.
+    
+    local speedText is LGUI_CreateTextEdit("Speed", pitchOverSpeed:ToString, { parameter str. set pitchOverSpeed to str:ToNumber(pitchOverSpeed). }, totalControlled > 0).
+    local angleText is LGUI_CreateTextEdit("Angle", pitchOverAngle:ToString, { parameter str. set pitchOverAngle to str:ToNumber(pitchOverAngle). }, totalControlled > 0).
+    local azimuthText is LGUI_CreateTextEdit("Azimuth", launchAzimuth:ToString, { parameter str. set launchAzimuth to str:ToNumber(launchAzimuth). }, totalControlled > 0).
+    local southCheckbox is LGUI_CreateCheckbox("Launch South").
+    
+    local function CalcAzimuth
     {
-        parameter str.
-        local newLabel is labelBox:AddLabel(str).
-        set newLabel:Style:Height to 25.
-        return newLabel.
-    }
-    local function createControl
-    {
-        parameter str.
-        parameter dlg.
-        local newControl is controlBox:AddTextField(str).
-        set newControl:Style:Height to 25.
-        set newControl:OnConfirm to dlg.
-        set newControl:Enabled to totalControlled > 0.
-        return newControl.
+        local targetPe is LAS_TargetPe * 1000 + Ship:Body:Radius.
+        local a is 0.
+        if defined LAS_TargetSMA
+            set a to LAS_TargetSMA.
+        else
+            set a to (LAS_TargetPe + LAS_TargetAp) * 500 + Ship:Body:Radius.
+        local sinInertialAz is max(-1, min(cos(targetInclination)/cos(Ship:Latitude),1)).
+        local vOrbit is sqrt(2 * Ship:Body:Mu / targetPe - Ship:Body:Mu / a).
+        local vEqRot is 2 * Constant:pi * Ship:Body:Radius / Ship:Body:RotationPeriod.
+        // Using the identity sin2 + cos2 = 1 to avoid inverse trig.
+        return mod(arctan2(vOrbit * sinInertialAz - vEqRot * cos(Ship:Latitude), vOrbit * sqrt(1 - sinInertialAz^2)) + 360, 360).
     }
     
-    local speedLabel is createLabel("Speed").
-    local speedText is createControl(pitchOverSpeed:ToString, { parameter str. set pitchOverSpeed to str:ToNumber(pitchOverSpeed). }).
-    local angleLabel is createLabel("Angle").
-    local angleText is createControl(pitchOverAngle:ToString, { parameter str. set pitchOverAngle to str:ToNumber(pitchOverAngle). }).
-    local azimuthLabel is createLabel("Azimuth").
-    local azimuthText is createControl(launchAzimuth:ToString, { parameter str. set launchAzimuth to str:ToNumber(launchAzimuth). }).
-
+    local function RendezvousLaunchSouth
+    {
+        local bodyAngVel is Ship:Body:AngularVel:Normalized.
+        local lanVec is (SolarPrimeVector * AngleAxis(TargetOrbit:LAN, bodyAngVel)):Normalized.
+        local orbitNorm is bodyAngVel * AngleAxis(-TargetOrbit:Inclination, lanVec).
+        local padVec is -Ship:Body:Position:Normalized.
+        local northLaunchNorm is vcrs(heading(launchAzimuth, 0):Vector, padVec):Normalized.
+        local southLaunchNorm is vcrs(heading(mod(360 + 180 - launchAzimuth, 360), 0):Vector, padVec):Normalized.
+        return abs(vdot(northLaunchNorm, orbitNorm)) < abs(vdot(southLaunchNorm, orbitNorm)).
+    }
+    
+    local function TerminatorLaunchSouth
+    {
+        local padVec is -Ship:Body:Position:Normalized.
+        local northLaunchNorm is vcrs(heading(launchAzimuth, 0):Vector, padVec):Normalized.
+        local southLaunchNorm is vcrs(heading(mod(360 + 180 - launchAzimuth, 360), 0):Vector, padVec):Normalized.
+        return abs(vdot(northLaunchNorm, Sun:Position:Normalized)) < abs(vdot(southLaunchNorm, Sun:Position:Normalized)).
+    }
+    
     local function setAzimuth
     {
-		parameter south is false.
+		local south is southCheckbox:Pressed.
 	
-		local orbitInc is targetInclination.
 		if targetOrbit:IsType("Orbit")
-			set orbitInc to max(Ship:Latitude, min(targetOrbit:Inclination, 180 - Ship:Latitude)).
+			set targetInclination to max(Ship:Latitude, min(targetOrbit:Inclination, 180 - Ship:Latitude)).
 		
-        if orbitInc >= 0
+        if targetInclination >= 0
         {
-            local targetPe is LAS_TargetPe * 1000 + Ship:Body:Radius.
-            local a is 0.
-			if defined LAS_TargetSMA
-				set a to LAS_TargetSMA.
-			else
-				set a to (LAS_TargetPe + LAS_TargetAp) * 500 + Ship:Body:Radius.
-            local sinInertialAz is max(-1, min(cos(orbitInc)/cos(Ship:Latitude),1)).
-            local vOrbit is sqrt(2 * Ship:Body:Mu / targetPe - Ship:Body:Mu / a).
-            local vEqRot is 2 * Constant:pi * Ship:Body:Radius / Ship:Body:RotationPeriod.
-            // Using the identity sin2 + cos2 = 1 to avoid inverse trig.
-            set launchAzimuth to mod(arctan2(vOrbit * sinInertialAz - vEqRot * cos(Ship:Latitude), vOrbit * sqrt(1 - sinInertialAz^2)) + 360, 360).
+            set launchAzimuth to CalcAzimuth().
 			
 			if targetOrbit:IsType("Orbit")
-			{
-				local orbitNorm is vcrs(targetOrbit:Position - Ship:Body:Position, targetOrbit:Velocity:Orbit):Normalized.
-				local padVec is -Ship:Body:Position:Normalized.
-				local northLaunchNorm is vcrs(heading(launchAzimuth, 0):Vector, padVec):Normalized.
-				local southLaunchNorm is vcrs(heading(mod(360 + 180 - launchAzimuth, 360), 0):Vector, padVec):Normalized.
-				set south to abs(vdot(northLaunchNorm, orbitNorm)) < abs(vdot(southLaunchNorm, orbitNorm)).
-			}
+                set south to RendezvousLaunchSouth().
 			
 			if south
 				set launchAzimuth to mod(360 + 180 - launchAzimuth, 360).
@@ -152,20 +154,42 @@ if Ship:Status = "PreLaunch"
             set azimuthText:text to round(launchAzimuth, 3):ToString.
         }
 
-        set azimuthText:Enabled to orbitInc < 0.
+        set azimuthText:Enabled to targetInclination < 0.
     }
-    
-    local inclinationLabel is createLabel("Inclination").
-    local inclinationText is createControl(targetInclination:ToString, {
+
+    local LANOrbit is false.
+
+    local inclinationText is LGUI_CreateTextEdit("Inclination", targetInclination:ToString, {
 		parameter str.
-		set targetInclination to str:replace("s", ""):ToNumber(targetInclination).
-		setAzimuth(str:contains("s")).
-	}).
+		set targetInclination to str:ToNumber(targetInclination).
+        if LANOrbit
+            set targetOrbit to CreateOrbit(max(Ship:Latitude, min(targetInclination, 180 - Ship:Latitude)), 0, (LAS_TargetAp + LAS_TargetPe) * 500 + Body:Radius, targetOrbit:LAN, 0, 0, 0, Body).
+		setAzimuth().
+	}, totalControlled > 0).
+    
+    local lanText is LGUI_CreateTextEdit("LAN", "-1", {
+		parameter str.
+		local newLAN to str:ToNumber(-1).
+        if newLAN >= 0 and newLAN < 360
+        {
+            set targetOrbit to CreateOrbit(max(Ship:Latitude, min(targetInclination, 180 - Ship:Latitude)), 0, (LAS_TargetAp + LAS_TargetPe) * 500 + Body:Radius, newLAN, 0, 0, 0, Body).
+            set LANOrbit to true.
+        }
+        else
+        {
+            set targetOrbit to 0.
+            set LANOrbit to false.
+        }
+		setAzimuth().
+	}, totalControlled > 0).
+    
+    set lanText:Enabled to targetOrbit:IsType("Scalar").
     
     if totalControlled > 0
     {
 		local launchSouth is false.
-        if targetOrbit:IsType("Orbitable")
+        set southCheckbox:Enabled to false.
+        if targetOrbit:IsType("Orbitable") and targetOrbit <> Sun
         {
             set targetOrbitable to targetOrbit.
 			set targetOrbit to targetOrbitable:Orbit.
@@ -173,24 +197,33 @@ if Ship:Status = "PreLaunch"
             set inclinationText:Text to "Target (" + targetOrbitable:Name + ")".
             set inclinationText:Enabled to false.
         }
+        else if targetOrbit = Sun and targetInclination <= 90
+        {
+            set targetInclination to arccos(vdot(Body:AngularVel:Normalized, Sun:Position:Normalized)).
+            if targetInclination > 90
+                set targetInclination to 180 - targetInclination.
+            set launchAzimuth to CalcAzimuth().
+			set launchSouth to TerminatorLaunchSouth().
+        }
         else if targetOrbit:IsType("Orbit")
         {
             set targetInclination to max(Ship:Latitude, min(targetOrbit:Inclination, 180 - Ship:Latitude)).
-            set inclinationText:Text to round(targetInclination, 2):ToString.
         }
 		else if defined LAS_TargetInc
 		{
             set targetInclination to max(Ship:Latitude, min(abs(LAS_TargetInc), 180 - Ship:Latitude)).
-            set inclinationText:Text to round(targetInclination, 2):ToString.
 			set launchSouth to (defined LAS_TargetInc and LAS_TargetInc < 0).
 		}
 		else
 		{
-			set launchSouth to targetInclination >= 0 and (Ship:Latitude < 0).// or (Ship:Longitude > -122 and Ship:Longitude < -78)).	// Southerly launches by default from North America.
-            set inclinationText:Text to round(targetInclination, 2):ToString + (choose "s" if launchSouth else "").
+			set launchSouth to targetInclination >= 0 and Ship:Latitude > 0 and (Ship:Longitude > -122 and Ship:Longitude < -78).	// Southerly launches by default from North America.
+            set southCheckbox:Enabled to true.
 		}
+        if inclinationText:Enabled
+            set inclinationText:Text to round(targetInclination, 2):ToString.
+        set southCheckbox:Pressed to launchSouth.
         
-        setAzimuth(launchSouth).
+        setAzimuth().
 		
 		// Preset launch, just go straight into countdown.
 		if defined LAS_LaunchTime
@@ -199,12 +232,12 @@ if Ship:Status = "PreLaunch"
 			set launchButton:Enabled to false.
 		}
 
-        flightGui:Show().
+        LGUI_Show().
     }
     
     // Trigger GLC
 	if totalControlled > 0
-		runpath("0:/launch/GroundLaunchControl", engineStart, targetOrbit, launchButton, totalControlled).
+		runpath("0:/launch/GroundLaunchControl", engineStart, { return targetOrbit. }, launchButton, totalControlled).
 	else
 		runpath("0:/launch/GroundLaunchControl", engineStart).
 
@@ -212,6 +245,7 @@ if Ship:Status = "PreLaunch"
     if Ship:Status = "Flying"
     {
 		local canCoast is core:tag:contains("coast").
+		local canLoft is core:tag:contains("loft").
 	
         // Clear tag and boot file So they don't affect ships in flight / orbit.
         Set Core:Tag to "".
@@ -224,12 +258,46 @@ if Ship:Status = "PreLaunch"
         }
         else
         {
-            flightGui:Hide().
-            runpath("0:/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, canCoast).
+            // Reverify orbit paramters
+            if targetOrbit:IsType("Orbit")
+            {
+                set targetInclination to max(Ship:Latitude, min(targetOrbit:Inclination, 180 - Ship:Latitude)).
+                set launchAzimuth to CalcAzimuth().
+                
+                if RendezvousLaunchSouth()
+                    set launchAzimuth to mod(360 + 180 - launchAzimuth, 360).
+            }
+            else if targetOrbit = Sun and targetInclination <= 90
+            {
+                set targetInclination to arccos(vdot(Body:AngularVel:Normalized, Sun:Position:Normalized)).
+                if targetInclination > 90
+                    set targetInclination to 180 - targetInclination.
+                set launchAzimuth to CalcAzimuth().
+                
+                if TerminatorLaunchSouth()
+                    set launchAzimuth to mod(360 + 180 - launchAzimuth, 360).
+            }
+                
+            print "Launch parameters: " + round(targetInclination, 2) + "° inc, " + round(launchAzimuth, 2) + "° azimuth".
+        
+            LGUI_Hide().
+            
+            writejson(list(pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, canCoast, canLoft), "1:/launch.json").
+            runpath("0:/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, canCoast, canLoft).
         }
     }
     else
     {
         print "Ship not flying: " + Ship:Status.
+    }
+}
+else if Ship:Status = "Flying"
+{
+    if exists("1:/launch.json")
+    {
+        local p is readjson("1:/launch.json").
+        
+        print "Resuming launch: " + round(p[3], 2) + "° inc, " + round(p[2], 2) + "° azimuth".
+        runpath("0:/launch/FlightControlPitchOver", p[0], p[1], p[2], p[3], p[4], p[5], p[6]).
     }
 }

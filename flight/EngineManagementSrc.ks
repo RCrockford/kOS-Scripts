@@ -12,17 +12,16 @@ local stageEngines is LAS_GetStageEngines(burnStage).
 
 for e in stageEngines
 {
-    if e:Ignitions <> 0
+    if e:Ignitions <> 0 or e:Ignition
     {
         activeEngines:Add(e).
             
         if e:Ullage
         {
-            // Add half a second for ullage.
             if e:PressureFed
-                set ignitionDelay to max(ignitionDelay, 1).
+                set ignitionDelay to max(ignitionDelay, 0.91).
             else
-                set ignitionDelay to max(ignitionDelay, 3).
+                set ignitionDelay to max(ignitionDelay, 2.39).
         }
     }
 }

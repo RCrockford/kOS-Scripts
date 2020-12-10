@@ -5,6 +5,7 @@
 local StageEngines is list().
 local NextStageEngines is list().
 local NextStageDecouplers is list().
+local NextStageFairings is uniqueset().
 local NextStageUllage is list().
 local NextStageChutes is list().
 local NextStageRCS is list().
@@ -14,6 +15,9 @@ local StagingFunction is CheckStageType@.
 
 local LAS_IsParachuting is false.
 local engineSpooling is true.
+
+local PL_FairingsJettisoned is false.
+local PL_PanelsExtended is false.
 
 local kscPos is Ship:GeoPosition.
 
@@ -82,13 +86,20 @@ local function DecoupleStage
 {
     if not NextStageDecouplers:empty
     {
+        for fairing in NextStageFairings
+        {
+            if fairing:HasEvent("jettison fairing")
+                fairing:DoEvent("jettison fairing").
+        }
+        NextStageFairings:Clear().
+    
         // Fire all decouplers
         for decoup in NextStageDecouplers
         {
 			LAS_FireDecoupler(decoup).
         }
 
-        set NextStageDecouplers to list().
+        NextStageDecouplers:Clear().
         
         return true.
     }
@@ -203,29 +214,40 @@ local function UllageStageSettle
         return true.
     }
 
-	// Out of atmosphere just allow the ship to drift after the motors cut off and hope for stable ignition.
-	if Ship:Q > 0 and not NextStageUllage:empty
-	{
-		// Check ullage motor burn time
-		local burnTime is LAS_GetRealEngineBurnTime(NextStageUllage[0]).
-		
-		// If less than 0.05 seconds to go, just go for it
-		if burnTime < 0.05
-		{
-			print "Fuel Stability: " + round(fuelState * 100, 1) + "%".
-			set ship:control:fore to 0.
-			return true.
-		}
-		
-		// Ramp up ignition chance as we get near ullage burnout
-		// Allows stable (95%) igntion at ~0.235s, 75% at ~0.15s, 50% at ~0.07s
-		if sqrt(4 * (burnTime - 0.01)) < fuelState
-		{
-			print "Fuel Stability: " + round(fuelState * 0.01, 1) + "%".
-			set ship:control:fore to 0.
-			return true.
-		}
-	}
+    if not NextStageUllage:empty
+    {
+        // Out of atmosphere just allow the ship to drift after the motors cut off and hope for stable ignition.
+        if Ship:Q > 0
+        {
+            // Check ullage motor burn time
+            local burnTime is LAS_GetRealEngineBurnTime(NextStageUllage[0]).
+            
+            // If less than 0.05 seconds to go, just go for it
+            if burnTime < 0.05
+            {
+                print "Fuel Stability: " + round(fuelState * 100, 1) + "%".
+                set ship:control:fore to 0.
+                return true.
+            }
+            
+            // Ramp up ignition chance as we get near ullage burnout
+            // Allows stable (95%) igntion at ~0.235s, 75% at ~0.15s, 50% at ~0.07s
+            if sqrt(4 * (burnTime - 0.01)) < fuelState
+            {
+                print "Fuel Stability: " + round(fuelState * 0.01, 1) + "%".
+                set ship:control:fore to 0.
+                return true.
+            }
+        }
+        else if NextStageUllage[0]:Flameout and NextStageRCS
+        {
+            // Try RCS.
+            rcs on.
+            for r in NextStageRCS
+                set r:enabled to true.
+            set ship:control:fore to 1.
+        }
+    }
 
 	return false.
 }
@@ -242,6 +264,7 @@ local function UllageStageFire
 	}
 	else
 	{
+        set Ship:Control:PilotMainThrottle to 1.
 		// Fire ullage motors.
 		for eng in NextStageUllage
 		{
@@ -413,14 +436,16 @@ local function CheckStageType
         set NextStageUllage to list().
     }
 
-    set ShutdownEngines to list().
-    set NextStageDecouplers to list().
-    set NextStageChutes to list().
+    ShutdownEngines:Clear().
+    NextStageDecouplers:Clear().
+    NextStageChutes:Clear().
 
     for p in NextStageParts
     {
         if (p:HasModule("ModuleDecouple") or p:HasModule("ModuleAnchoredDecoupler")) and not p:Tag:Contains("payload")
             NextStageDecouplers:add(p).
+        if p:HasModule("ProceduralFairingDecoupler") and p:GetModule("ProceduralFairingDecoupler"):HasEvent("jettison fairing")
+            NextStageFairings:add(p:GetModule("ProceduralFairingDecoupler")).
         if p:HasModule("RealChuteModule")
             NextStageChutes:add(p).
         if p:IsType("RCS")
@@ -648,21 +673,21 @@ global function LAS_EnableAllEC
     }
 }
 
-local PL_FairingsJettisoned is false.
-local PL_PanelsExtended is false.
-
 global function LAS_CheckPayload
 {
     if not PL_FairingsJettisoned
     {
-        if Ship:Q < 1e-3
+        if Ship:Q < 5e-3
         {
             // Jettison fairings
 			local jettisoned is false.
 			for fairing in Ship:ModulesNamed("ProceduralFairingDecoupler")
             {
-                if fairing:HasEvent("jettison fairing")
+                if fairing:HasEvent("jettison fairing") and not fairing:part:tag:contains("nojettison")
                 {
+                    if NextStageFairings:Contains(fairing)
+                        NextStageFairings:Remove(fairing).
+                    
                     fairing:DoEvent("jettison fairing").
                     set jettisoned to true.
                 }
@@ -678,7 +703,20 @@ global function LAS_CheckPayload
     {
         if Ship:Q < 1e-5
         {
-            Panels on.
+			for panel in Ship:ModulesNamed("ModuleROSolar")
+            {
+                if panel:HasAction("extend solar panel") and not panel:part:tag:contains("noextend")
+                {
+                    panel:DoAction("extend solar panel", true).
+                }
+            }
+			for panel in Ship:ModulesNamed("ModuleDeployableSolarPanel")
+            {
+                if panel:HasAction("extend solar panel") and not panel:part:tag:contains("noextend")
+                {
+                    panel:DoAction("extend solar panel", true).
+                }
+            }
 			
 			for antenna in Ship:ModulesNamed("ModuleDeployableAntenna")
             {

@@ -20,7 +20,12 @@ local targetV is sqrt(Ship:Body:Mu * targetA * (1 - targetEcc^2)) / (Ship:Orbit:
 local deltaV is targetV - currentV.
 
 runoncepath("0:/flight/FlightFuncs").
+runpath("0:/flight/TuneSteering").
 local burnDur is CalcBurnDuration(deltaV:Mag, true).
+
+// Calc alignment time
+runpath("0:/flight/AlignTime").
+local alignMargin is GetAlignTime().
 
 // Time to next node
 local NodeAngle is mod(Ship:Orbit:ArgumentOfPeriapsis + Ship:Orbit:TrueAnomaly + 360, 360).
@@ -36,6 +41,7 @@ else
 }
 
 local meanAnomDelta is CalcMeanAnom(Ship:Orbit:TrueAnomaly + NodeAngle) - CalcMeanAnom(Ship:Orbit:TrueAnomaly).
+set meanAnomDelta to mod(meanAnomDelta + 360, 360).
 
 local NodeETA is meanAnomDelta * Ship:Orbit:Period / 360.
 print "  Node ETA: " + FormatTime(nodeETA).
@@ -43,17 +49,19 @@ print "  Node ETA: " + FormatTime(nodeETA).
 print "Executing manoeuvre at Node-" + round(burnDur:halfBurn, 1) + " seconds.".
 print "  DeltaV: " + round(deltaV:Mag, 1) + " m/s.".
 print "  Duration: " + round(burnDur:duration, 1) + " s.".
+print "  Align at: T-" + round(alignMargin, 1) + " s.".
 
 local burnEta is NodeETA - burnDur:halfBurn.
-if burnEta > 240 and Addons:Available("KAC")
+if burnEta > 300 and Addons:Available("KAC")
 {
     // Add a KAC alarm.
-    AddAlarm("Raw", burnEta - 180 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+    AddAlarm("Raw", burnEta - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
 }
 
 local burnParams is lexicon(
     "t", burnDur:halfBurn,
-    "tV", targetV
+    "tV", targetV,
+    "align", alignMargin
 ).
 
 runpath("0:/flight/SetupBurn", burnParams, list("flight/GEOCircBurn.ks", "FCFuncs.ks", "flight/FlightFuncs.ks", "flight/EngineMgmt.ks")).

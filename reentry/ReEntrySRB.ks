@@ -37,7 +37,7 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
     local fileList is list().
     local burnParams is lexicon().
     
-	fileList:Add("flight/ReEntryLanding.ks").
+	fileList:Add("reentry/ReEntryLanding.ks").
 
     runpath("0:/flight/SetupBurn", burnParams, fileList, "re-entry").
 }

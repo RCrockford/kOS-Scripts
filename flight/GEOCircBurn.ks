@@ -9,9 +9,9 @@ runpath("/flight/EngineMgmt", stage:number).
 local ignitionTime is EM_IgDelay().
 
 local lock NodeAngle to (choose 180 if Ship:Latitude > 0 else 360) - mod(Ship:Orbit:ArgumentOfPeriapsis + Ship:Orbit:TrueAnomaly + 360, 360).
-local lock meanAnomDelta to CalcMeanAnom(Ship:Orbit:TrueAnomaly + NodeAngle) - CalcMeanAnom(Ship:Orbit:TrueAnomaly).
+local lock meanAnomDelta to mod(CalcMeanAnom(Ship:Orbit:TrueAnomaly + NodeAngle) - CalcMeanAnom(Ship:Orbit:TrueAnomaly) + 360, 360).
 
-local alignAngle is (p:t + 60) * 360 / Ship:Orbit:Period.
+local alignAngle is (p:t + p:align) * 360 / Ship:Orbit:Period.
 local burnAngle is (p:t + ignitionTime) * 360 / Ship:Orbit:Period.
 
 print "Align angle " + round(alignAngle, 2) + "°".
@@ -27,6 +27,8 @@ debugGui:Show().
 until meanAnomDelta <= alignAngle
 {
 	set debugStat:Text to round(meanAnomDelta, 2) + "°".
+    if meanAnomDelta < alignAngle + 1 and kUniverse:Timewarp:Rate > 10
+        set kUniverse:Timewarp:Rate to 10.
 	wait 0.1.
 }
 

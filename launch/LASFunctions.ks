@@ -279,6 +279,7 @@ global function LAS_FormatTimeStamp
 global function LAS_GetStagePerformance
 {
 	parameter s.
+    parameter fromGuidance is false.
 
 	local allEngines is list().
     list engines in allEngines.
@@ -296,19 +297,29 @@ global function LAS_GetStagePerformance
 	for eng in allEngines
 	{
 		local engStage is min(eng:DecoupledIn + 1, eng:stage).
-		if engStage = s and not LAS_EngineIsUllage(eng) and not eng:Tag:Contains("nostage") and not eng:Name:Contains("vernier")
+		if engStage = s and not LAS_EngineIsUllage(eng) and not eng:Tag:Contains("nostage") and not eng:Name:Contains("vernier") and not (eng:Tag:Contains("noguide") and fromGuidance)
 		{
-			set massFlow to massFlow + eng:MaxMassFlow.
-			set stageThrust to stageThrust + eng:PossibleThrustAt(0).
-			
 			local t is LAS_GetRealEngineBurnTime(eng).
-			set burnTime to max(burnTime, t).
+            if t >= 10 or not fromGuidance
+            {
+                set massFlow to massFlow + eng:MaxMassFlow.
+                set stageThrust to stageThrust + eng:PossibleThrustAt(0).
+                
+                set burnTime to max(burnTime, t).
 
-			set perf:guided to perf:guided or eng:HasGimbal.
+                set perf:guided to perf:guided or eng:HasGimbal.
 
-			set decoupler to eng:Decoupler.
-			set litPrevStage to litPrevStage or eng:Stage > s.
+                set decoupler to eng:Decoupler.
+                set litPrevStage to litPrevStage or eng:Stage > s.
+            }
 		}
+        
+        if fromGuidance and engStage > s and eng:Tag:Contains("lastguide")
+        {
+            set massFlow to 0.
+            set stageThrust to 0.
+            break.
+        }
 	}
 
 	if not decoupler:IsType("Decoupler")

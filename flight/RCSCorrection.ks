@@ -10,7 +10,7 @@ parameter burnStart is 0.
 // Wait for unpack
 wait until Ship:Unpacked.
 
-switch to 0.
+switch to scriptpath():volume.
 
 local dV is 0.
 
@@ -26,6 +26,7 @@ else
     lock burnEta to NextNode:eta.
 }
 runoncepath("0:/FCFuncs").
+runoncepath("0:/flight/FlightFuncs").
 
 runoncepath("0:/flight/RCSPerf.ks").
 local RCSPerf is GetRCSPerf().
@@ -62,7 +63,7 @@ print "Executing manoeuvre in " + FormatTime(burnEta).
 print "  DeltaV: " + round(dV:Mag, 1) + " m/s.".
 print "  Duration: " + round(duration, 1) + " s.".
 
-if burnEta > 120 and Addons:Available("KAC")
+if burnEta > 300 and Addons:Available("KAC")
 {
     // Add a KAC alarm.
     AddAlarm("Raw", burnEta - 60 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").

@@ -9,9 +9,9 @@ local ignitionTime is EM_IgDelay().
 
 local lock burnEta to choose eta:Apoapsis if p:ap else eta:periapsis.
 
-print "Align in " + round(burnEta - p:t - 60, 1) + "s to " + (choose "Prograde" if p:sma >= Ship:Orbit:SemiMajorAxis else "Retrograde").
+print "Align in " + round(burnEta - p:t - p:align, 1) + "s to " + (choose "Prograde" if p:sma >= Ship:Orbit:SemiMajorAxis else "Retrograde").
 
-wait until burnEta - p:t < 60.
+wait until burnEta - p:t <= p:align.
 
 kUniverse:Timewarp:CancelWarp().
 print "Aligning ship".

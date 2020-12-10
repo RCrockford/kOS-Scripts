@@ -10,7 +10,7 @@ global function CalcBurnDuration
 
 	if useEngines
 	{
-		runpath("0:/flight/EngineMgmt", Stage:Number).
+		runpath("/flight/EngineMgmt", Stage:Number).
 		local activeEngines to EM_GetEngines().
 
 		for eng in activeEngines
@@ -23,7 +23,7 @@ global function CalcBurnDuration
 	else
 	{
 		// Get RCS stats
-		runoncepath("0:/flight/RCSPerf.ks").
+		runoncepath("/flight/RCSPerf.ks").
 		local RCSPerf is GetRCSForePerf().
 		set massFlow to RCSPerf:massflow.
 		set burnThrust to RCSPerf:thrust.

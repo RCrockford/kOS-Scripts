@@ -26,22 +26,28 @@ set burnDur:HalfBurn to burnDur:HalfBurn + timeOffset.
 
 local burnAtAp is abs(burnETA() - eta:Apoapsis) < Ship:Orbit:Period * 0.25.
 
+// Calc alignment time
+runpath("0:/flight/AlignTime").
+local alignMargin is GetAlignTime().
+
 print "Executing manoeuvre at " + (choose "Ap" if burnAtAp else "Pe") + (choose "-" if burnDur:halfBurn > 0 else "+") + round(abs(burnDur:halfBurn), 1) + " seconds.".
 print "  DeltaV: " + round(deltaV, 1) + " m/s.".
 print "  Duration: " + round(burnDur:duration, 1) + " s.".
+print "  Align at: T-" + round(alignMargin, 1) + " s.".
 
 if burnDur:duration < Ship:Orbit:Period * 0.25
 {
-	if burnETA() - burnDur:halfBurn > 240 and Addons:Available("KAC")
+	if burnETA() - burnDur:halfBurn > 300 and Addons:Available("KAC")
 	{
 		// Add a KAC alarm.
-		AddAlarm("Raw", (burnETA() - burnDur:halfBurn) - 180 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+		AddAlarm("Raw", (burnETA() - burnDur:halfBurn) - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
 	}
 
 	local burnParams is lexicon(
 		"sma", targetA,
 		"ap", burnAtAp,
-		"t", burnDur:halfBurn
+		"t", burnDur:halfBurn,
+        "align", alignMargin
 	).
 	
 	runpath("0:/flight/TuneSteering").

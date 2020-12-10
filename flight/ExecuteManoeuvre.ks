@@ -35,18 +35,20 @@ local duration is 0.
 local burnStage is stage:Number.
 local activeEngines is list().
 local fuelName is 0.
-local fuelAmount is 0.
 local fuelTotal is 0.
+local maxFuelFlow is 0.
+local massRatio is 0.
+local massFlow is 0.
+local burnThrust is 0.
+local shipMass is Ship:Mass.
 
 if rcsBurn
 {
     runoncepath("0:/flight/RCSPerf.ks").
     local RCSPerf is GetRCSForePerf().
-
-    // Calc burn duration
-    local massRatio is constant:e ^ (dV:Mag * RCSPerf:massflow / RCSPerf:thrust).
-    local finalMass is Ship:Mass / massRatio.
-    set duration to (Ship:Mass - finalMass) / RCSPerf:massflow.
+	
+	set massFlow to RCSPerf:massFlow.
+	set burnThrust to RCSPerf:thrust.
 }
 else
 {
@@ -57,32 +59,23 @@ else
     set activeEngines to EM_GetEngines().
     if activeEngines:Length = 0
     {
-        print "No active engines!".
+        print "No active engines for stage " + burnStage.
     }
     else
     {
-        local massFlow is 0.
-        local burnThrust is 0.
         for eng in activeEngines
         {
             set massFlow to massFlow + eng:MaxMassFlow.
             set burnThrust to burnThrust + eng:PossibleThrust.
         }
-        local massRatio is constant:e ^ (dV:Mag * massFlow / burnThrust).
         
         local activeResources is lexicon().
         
-        local shipMass is 0.
+        set shipMass to 0.
         for shipPart in Ship:Parts
         {
-            if shipPart:IsType("Decoupler")
-            {
-                if shipPart:Stage < burnStage
-                {
-                    set shipMass to shipMass + shipPart:Mass.
-                }
-            }
-            else if shipPart:DecoupledIn < burnStage
+            local partStage is choose shipPart:Stage if shipPart:IsType("Decoupler") else shipPart:DecoupledIn.
+            if partStage < burnStage
             {
                 set shipMass to shipMass + shipPart:Mass.
                 
@@ -98,86 +91,95 @@ else
                 }
             }
         }
-        
-        local finalMass is shipMass / massRatio.
-        set duration to (shipMass - finalMass) / massFlow.
 
         local maxFlow is 0.
         for k in activeEngines[0]:ConsumedResources:keys
         {
             local res is activeEngines[0]:ConsumedResources[k].
-            local resName is res:Name.
-            if res:Density > 0 and activeResources:HasKey(resName)
+            if res:Density > 0 and activeResources:HasKey(res:Name) and res:Name = k
             {
-                if res:MaxFuelFlow > maxFlow and res:Name <> "LH2"  // Don't use LH2, use oxygen instead as it suffers less boil off.
+                if res:MaxFuelFlow > maxFlow
                 {
-                    set fuelName to resName.
-                    set fuelTotal to activeResources[resName].
+                    set fuelName to res:Name.
+                    set fuelTotal to activeResources[res:Name].
                     set maxFlow to res:MaxFuelFlow.
                 }
             }
         }
         
-        set maxFlow to 0.
+        set maxFuelFlow to 0.
         for eng in activeEngines
         {
             if eng:ConsumedResources:HasKey(fuelName)
             {
                 local res is eng:ConsumedResources[fuelName].
-                set maxFlow to maxFlow + res:MaxFuelFlow.
+                set maxFuelFlow to maxFuelFlow + res:MaxFuelFlow.
             }
         }
-        
-        print "Fuel Flow: " + round(maxFlow, 2).
-        set fuelAmount to maxFlow * duration.
     }
 }
 
-print "Executing manoeuvre in " + FormatTime(burnEta).
-print "  DeltaV: " + round(dV:Mag, 1) + " m/s.".
-print "  Duration: " + round(duration, 1) + " s.".
-if not rcsBurn
-    print "  Fuel Monitor: " + fuelName + " " + round(fuelTotal, 2) + " => " + round(fuelTotal - fuelAmount, 2).
-if rcsBurn
+if massFlow > 0
 {
-    print "  RCS burn.".
-    set spinKick to false.
-}
-if spinKick
-{
-    print "  Inertial burn.".
-}
+	// Calc burn duration
+	set massRatio to constant:e ^ (dV:Mag * massflow / burnThrust).
+	local finalMass is Ship:Mass / massRatio.
+	set duration to (Ship:Mass - finalMass) / massflow.
     
-if burnEta > 120 and Addons:Available("KAC")
-{
-    // Add a KAC alarm.
-    AddAlarm("Raw", burnEta - 90 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+    // Calc alignment time
+    runpath("0:/flight/AlignTime").
+    local alignMargin is GetAlignTime().
+
+	print "Executing manoeuvre in " + FormatTime(burnEta).
+	print "  DeltaV: " + round(dV:Mag, 1) + " m/s.".
+	print "  Duration: " + round(duration, 1) + " s.".
+	print "  Align at: T-" + round(alignMargin, 1) + " s.".
+	if not rcsBurn
+		print "  Fuel Monitor: " + fuelName + " " + round(fuelTotal, 2) + " => " + round(fuelTotal - maxFuelFlow * duration, 2).
+	if rcsBurn
+	{
+		print "  RCS burn.".
+		set spinKick to false.
+	}
+	if spinKick
+	{
+		print "  Inertial burn.".
+	}
+		
+	if burnEta > 300 and Addons:Available("KAC")
+	{
+		// Add a KAC alarm.
+		AddAlarm("Raw", burnEta - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+	}
+
+	local burnParams is lexicon(
+		"t", duration,
+		"eng", not activeEngines:empty,
+		"inertial", spinKick,
+        "align", alignMargin
+	).
+
+	if burnParams:eng
+	{
+		burnParams:Add("fuelN", fuelName).
+		burnParams:Add("mRatio", massRatio).
+		burnParams:Add("mFlow", massflow).
+		burnParams:Add("fFlow", maxFuelFlow).
+		burnParams:Add("stage", burnStage).
+	}
+
+	if spinKick
+		burnParams:Add("spin", spinRate).
+
+	if not HasNode
+	{
+		burnParams:Add("eta", burnStart).
+		burnParams:Add("dv", dV).
+	}
+
+	local fileList is list("flight/ExecuteManoeuvreBurn.ks", "FCFuncs.ks", "flight/TuneSteering.ks").
+	if burnParams:eng
+		fileList:add("flight/EngineMgmt.ks").
+
+	runpath("0:/flight/SetupBurn", burnParams, fileList).
 }
-
-local burnParams is lexicon(
-    "t", duration,
-    "eng", not activeEngines:empty,
-    "inertial", spinKick
-).
-
-if burnParams:eng
-{
-    burnParams:Add("fuelN", fuelName).
-    burnParams:Add("fuelA", fuelAmount).
-    burnParams:Add("stage", burnStage).
-}
-
-if spinKick
-    burnParams:Add("spin", spinRate).
-
-if not HasNode
-{
-    burnParams:Add("eta", burnStart).
-    burnParams:Add("dv", dV).
-}
-
-local fileList is list("flight/ExecuteManoeuvreBurn.ks", "FCFuncs.ks", "flight/TuneSteering.ks").
-if burnParams:eng
-    fileList:add("flight/EngineMgmt.ks").
-
-runpath("0:/flight/SetupBurn", burnParams, fileList).

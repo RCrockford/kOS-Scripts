@@ -6,6 +6,7 @@ parameter targetAp.
 parameter targetPe.
 parameter launchAzimuth is 90.
 parameter ascentStage is stage:number.
+parameter targetOrbitable is 0.
 
 // Wait for unpack
 wait until Ship:Unpacked.
@@ -37,7 +38,7 @@ if Ship:Status = "Landed" or Ship:Status = "Splashed"
     for eng in stageEngines
     {
         if eng:Ignition
-            wait until eng:Thrust > eng:PossibleThrust * 0.5.
+            wait until eng:Thrust > (Ship:Mass * Ship:Body:Mu / Body:Position:SqrMagnitude).
     }
 	
 	until stage:number <= ascentStage
@@ -51,7 +52,8 @@ if Ship:Status = "Landed" or Ship:Status = "Splashed"
 
 if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
 {
-    legs off.
+    legs off. gear off.
+
 
     if defined LAS_TargetPe
         set LAS_TargetPe to targetPe.
@@ -75,6 +77,6 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
     }
     else
     {
-        runpath("/launch/FlightControlNoAtm", launchAzimuth).
+        runpath("/launch/FlightControlNoAtm", launchAzimuth, -1, targetOrbitable).
     }
 }

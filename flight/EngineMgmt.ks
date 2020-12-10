@@ -6,15 +6,15 @@ runoncepath("/FCFuncs").
 local _3 is LAS_GetStageEngines(_0).
 for e in _3
 {
-if e:Ignitions<>0
+if e:Ignitions<>0 or e:Ignition
 {
 _2:Add(e).
 if e:Ullage
 {
 if e:PressureFed
-set _1 to max(_1,1).
+set _1 to max(_1,0.91).
 else
-set _1 to max(_1,3).
+set _1 to max(_1,2.39).
 }
 }
 }

@@ -35,6 +35,7 @@ local stageExhaustV is list().
 local stageAccel is list().
 local stageGuided is list().
 local GuidanceLastStage is -1.
+local guidancedeltaV is 0.
 
 local tStart is 0.   // Time since last guidance update
 
@@ -134,11 +135,13 @@ local debugStages is list().
 		stageGuided:add(false).
 		debugStages:Insert(0, mainBox:AddLabel("")).
 	}
-
+    
+    
+    local stoppedGuidance is false.
 	// Populate lists
 	from {local s is liftoffStage.} until s < 0 step {set s to s - 1.} do
 	{
-		local stagePerf is LAS_GetStagePerformance(s).
+		local stagePerf is LAS_GetStagePerformance(s, true).
 	
 		set stageT[s] to stagePerf:BurnTime.
 		set stageTFull[s] to stagePerf:BurnTime.
@@ -151,6 +154,14 @@ local debugStages is list().
 			set stageT[s] to stageT[s] - stageT[s+1].
 			
 		set stageTFull[s] to stageT[s].
+        
+        if s > GuidanceLastStage and not stoppedGuidance
+        {
+            if stagePerf:eV > 0
+                set guidanceDeltaV to guidanceDeltaV + stagePerf:eV * ln(stagePerf:WetMass / stagePerf:DryMass).
+            else
+                set stoppedGuidance to true.
+        }
 		
 		set debugStages[s]:Text to "S" + s + ": Ev=" + round(stageExhaustV[s], 1) + " a=" + round(stageAccel[s], 2) + " T=" + round(stageT[s], 1) + " G=" + stageGuided[s].
 	}
@@ -247,6 +258,12 @@ local function UpdateGuidance
 			set debugStat:Text to "No Thrust: eng=" + engCount + " Thr=" + round(100 * currentThrust / max(ratedThrust, 0.001), 1) + "% Isp=" + round(currentThrust / (max(currentMassFlow, 1e-6) * Constant:g0), 1) + " vTh=" + round(omega * r, 1).
 			set guidanceValid to false.
 			return.
+		}
+		
+		if stageChange
+		{
+			set kUniverse:TimeWarp:Mode to "Physics".
+			set kUniverse:TimeWarp:Rate to 2.
 		}
 
 		set stageChange to false.
@@ -748,9 +765,10 @@ global function LAS_StartGuidance
     local ConvergeStage is startStage.
 
     local count is 0.
+    local A is stageA[ConvergeStage].
     until ConvergeStage < GuidanceLastStage
     {
-        local A is stageA[ConvergeStage].
+        set A to stageA[ConvergeStage].
         set tStart to MissionTime.
 
 		// Update estimate for T for active stage
@@ -761,7 +779,7 @@ global function LAS_StartGuidance
 		if abs(stageA[ConvergeStage]) > 50 or stageT[ConvergeStage] <= 0
 			break.
 
-        if abs(stageA[ConvergeStage] - A) < 0.01 and abs(stageA[ConvergeStage]) < 1
+        if abs(stageA[ConvergeStage] - A) < 0.01 and abs(stageA[ConvergeStage]) < 2
             set ConvergeStage to ConvergeStage - 1.
 
         set count to count + 1.
@@ -772,7 +790,7 @@ global function LAS_StartGuidance
     if ConvergeStage < GuidanceLastStage
         print "Guidance converged successfully in " + count + " iterations.".
     else
-        print "Guidance failed to converge.".
+        print "Guidance failed to converge, s=" + ConvergeStage + " d=" + round(abs(stageA[ConvergeStage] - A), 4).
 
     return ConvergeStage < GuidanceLastStage.
 }
@@ -833,3 +851,12 @@ global function LAS_GuidanceTargetVTheta
 	return OmegaT * rT.
 }
 
+global function LAS_GuidanceDeltaV
+{
+    return guidanceDeltaV.
+}
+
+global function LAS_GuidanceLastStage
+{
+    return GuidanceLastStage.
+}

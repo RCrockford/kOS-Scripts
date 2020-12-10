@@ -17,7 +17,7 @@ if HasNode
 else
 {
 	lock burnETA to p:eta - Time:Seconds.
-	set dV to tVec * p:dV:x + nVec * pDv:y + bVec * p:dV:z.
+    set dV to tVec * p:dV:x + nVec * p:dv:y + bVec * p:dV:z.
 }
 
 print "Settle in " + round(burnETA - 30, 0) + " seconds.".
@@ -34,7 +34,7 @@ local function CheckHeading
 	if HasNode and nextNode:eta < 60
 		set dV to NextNode:deltaV.
 	else if p:haskey("dV")
-		set dV to tVec * p:dV:x + nVec * pDv:y + bVec * p:dV:z.
+		set dV to tVec * p:dV:x + nVec * p:dV:y + bVec * p:dV:z.
 }
 
 LAS_Avionics("activate").

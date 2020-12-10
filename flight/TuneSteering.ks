@@ -1,25 +1,7 @@
-@lazyglobal off.
-local _0 is list().
-list rcs in _0.
-local _1 is 0.
-local _2 is Ship:ControlPart:Facing:TopVector.
-for r in _0
-{
-if r:HasSuffix("ThrustVectors")and r:Enabled
-{
-local _3 is 0.
-for t in r:ThrustVectors
-{
-set _3 to _3+max(vdot(t,_2),0).
-}
-if _3>0.01
-{
-set _1 to _1+r:AvailableThrust*min(_3,1)*r:position:mag.
-}
-}
-}
 steeringmanager:resettodefault().
-set steeringmanager:pitchtorqueadjust to _1*0.25.
-set steeringmanager:yawtorqueadjust to _1*0.25.
-set steeringmanager:pitchtorquefactor to 0.8.
-set steeringmanager:yawtorquefactor to 0.8.
+set steeringmanager:maxstoppingtime to 2.
+set steeringmanager:PitchPID:kD to 1.
+set steeringmanager:YawPID:kD to 1.
+set steeringmanager:TorqueEpsilonMin to 0.
+set steeringmanager:TorqueEpsilonMax to 1e-5.
+set steeringmanager:RollControlAngleRange to 5.

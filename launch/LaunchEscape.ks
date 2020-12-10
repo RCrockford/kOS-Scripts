@@ -18,6 +18,7 @@ set LAS_HasEscapeSystem to true.
 
 local function LAS_CrewEscapeImpl
 {
+    set kUniverse:TimeWarp:Rate to 1.
 	print "Escape system activated.".
 
 	for e in LESBoosters
@@ -28,24 +29,37 @@ local function LAS_CrewEscapeImpl
 	{
 		LAS_FireDecoupler(d).
 	}
+    
+	wait 0.1.
+
+    rcs off.
+	for p in Ship:Parts
+	{
+		if p:IsType("rcs")
+        {
+            set p:enabled to true.
+            rcs on.
+        }
+	}
+    if rcs
+        lock steering to Ship:Up.
 	
-	wait 0.2.
+    local engineStart is Time:Seconds.
 	local flamedOut is false.
 	until flamedOut
 	{
 		// Get new engine list in case any have been destroyed.
 		list engines in LESBoosters.
-		set flamedOut to true.
+		set flamedOut to Time:Seconds > engineStart + 2.
 		for e in LESBoosters
 		{
-			if e:tag:contains("les") and not e:Flameout
+			if e:tag:contains("les") and e:Thrust > e:PossibleThrust * 0.75
 				set flamedOut to false.
 		}
 		
 		wait 0.
 	}
-	print "Flameout on engines:".
-	print LESBoosters.
+	print "Booster flameout".
 	
 	for e in LESBoosters
 	{
@@ -54,16 +68,25 @@ local function LAS_CrewEscapeImpl
 	}
 	for p in Ship:PartsTaggedPattern("\blesbooster\b")
 	{
-		print "Decoupling " + p:Name.
+		print "Decoupling " + p:Title.
 		LAS_FireDecoupler(p).
 	}
 	
 	wait until Ship:VerticalSpeed < 0.
-
+    
+    if rcs
+        lock steering to SrfRetrograde.
+    
+	for p in Ship:PartsTaggedPattern("\blescover\b")
+	{
+		print "Decoupling " + p:Title.
+		LAS_FireDecoupler(p).
+	}
+    
 	local chutesArmed is false.
 	for modRealChute in Ship:ModulesNamed("RealChuteModule")
 	{
-		print "Arm chute: " + modRealChute:Part:Name.
+		print "Arm chute: " + modRealChute:Part:Title.
 		if modRealChute:HasEvent("arm parachute")
 		{
 			modRealChute:DoEvent("arm parachute").
@@ -78,7 +101,13 @@ local function LAS_CrewEscapeImpl
 	if not chutesArmed
 		chutes on.
 	print "Parachutes armed.".
-	
+    
+    if rcs
+    {
+        wait until Alt:Radar < 4000.
+        rcs off.
+    }
+    	
 	shutdown.
 }
 

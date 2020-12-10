@@ -27,7 +27,7 @@ lock steering to LookDirUp(Retrograde:Vector, Facing:UpVector).
 
 if abs(p:bLatLong) > 180
 {
-	wait until abs(SteeringManager:AngleError) < 0.2 and (Ship:AngularVel:SqrMagnitude - (vdot(Ship:Facing:Vector, Ship:AngularVel)^2) < 1e-4).
+	wait until vdot(Retrograde:Vector, Facing:Vector) > 0.9999 and (Ship:AngularVel:SqrMagnitude - (vdot(Ship:Facing:Vector, Ship:AngularVel)^2) < 1e-4).
 }
 else if abs(Ship:Obt:Inclination) > 60 and abs(Ship:Obt:Inclination) < 120
 {
@@ -76,4 +76,4 @@ if Ship:Obt:Periapsis > p:pe
 
 set Ship:Control:PilotMainThrottle to 0.
 
-runpath("/flight/ReEntryLanding").
+runpath("/reentry/ReEntryLanding").

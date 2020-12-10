@@ -1122,8 +1122,9 @@ until exitButton:TakePress
         else
         {
 			throtPid:Reset().
-			print "No speed               " at (0,1).
+			print "No speed control                 " at (0,1).
         }
+        set Ship:control:MainThrottle to Ship:Control:PilotMainThrottle.
 
 		if Ship:Status = "Landed"
 		{

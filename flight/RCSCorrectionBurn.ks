@@ -13,7 +13,7 @@ set dV to NextNode:deltaV.
 else
 {
 lock burnETA to p:eta-Time:Seconds.
-set dV to _f0*p:dV:x+_f2*pDv:y+_f1*p:dV:z.
+set dV to _f0*p:dV:x+_f2*p:dv:y+_f1*p:dV:z.
 }
 print"Settle in "+round(burnETA-30,0)+" seconds.".
 wait until burnETA<30.
@@ -25,7 +25,7 @@ local function _f3
 if HasNode and nextNode:eta<60
 set dV to NextNode:deltaV.
 else if p:haskey("dV")
-set dV to _f0*p:dV:x+_f2*pDv:y+_f1*p:dV:z.
+set dV to _f0*p:dV:x+_f2*p:dV:y+_f1*p:dV:z.
 }
 LAS_Avionics("activate").
 _f3().

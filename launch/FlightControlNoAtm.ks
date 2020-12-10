@@ -4,9 +4,11 @@
 
 // Set some fairly safe defaults
 parameter launchAzimuth is 90.
+parameter targetInclination is -1.
+parameter targetOrbitable is 0.
 
 local pitchOverSpeed is 25.
-local pitchOverAngle is 10 * Ship:MaxThrust / (Ship:Mass * Ship:Body:Mu / Body:Position:SqrMagnitude).
+local pitchOverAngle is 12 * Ship:MaxThrust / (Ship:Mass * Ship:Body:Mu / Body:Position:SqrMagnitude).
 
 local pitchOverCosine is cos(pitchOverAngle).
 
@@ -18,6 +20,7 @@ local c_PhasePitchOver      is 1.
 local c_PhaseGuidanceReady  is 2.
 local c_PhaseGuidanceActive is 3.
 local c_PhaseMECO           is 4.
+local c_PhaseCoast          is 5.
 
 local flightPhase is c_PhaseLiftoff.
 local guidanceMinV is LAS_GuidanceTargetVTheta() * 0.2.
@@ -46,7 +49,8 @@ local function checkAscent
 		if newGuidance:SqrMagnitude < 0.9
 		{
 			set flightPhase to c_PhaseLiftoff.
-			set guidanceMinV to guidanceMinV + LAS_GuidanceTargetVTheta() * 0.025.
+            until guidanceMinV > vcrs(LAS_ShipPos(), Ship:Velocity:Orbit):Mag / Body:Position:Mag
+                set guidanceMinV to guidanceMinV + LAS_GuidanceTargetVTheta() * 0.025.
 		}
         else
 		{
@@ -95,32 +99,38 @@ local function checkAscent
 
             if vTheta >= guidanceMinV
 			{
-				if LAS_StartGuidance(Stage:Number, -1, 0, launchAzimuth)
+				if LAS_StartGuidance(Stage:Number, targetInclination, targetOrbitable, launchAzimuth, launchAzimuth)
+                {
 					set flightPhase to c_PhaseGuidanceReady.
+                }
 				else
-					set guidanceMinV to guidanceMinV + LAS_GuidanceTargetVTheta() * 0.025.
+                {
+                    until guidanceMinV > vcrs(LAS_ShipPos(), Ship:Velocity:Orbit):Mag / Body:Position:Mag
+                        set guidanceMinV to guidanceMinV + LAS_GuidanceTargetVTheta() * 0.025.
+                }
 			}
         }
     }
 	
-	if flightPhase < c_PhaseGuidanceReady
+    if Ship:Maxthrust > 0
 	{
         local h is vcrs(LAS_ShipPos(), Ship:Velocity:Orbit):Mag.
 		local omega is h / Body:Position:SqrMagnitude.
 		local grav is Ship:Body:Mu / Body:Position:SqrMagnitude - (omega * omega) * Body:Position:Mag.
 		local invTWR is (Ship:Mass * grav) / Ship:MaxThrust.
-		set minPitch to arcsin(invTWR) * 1.1.
+		set minPitch to arcsin(invTWR) * 1.05.
 		set debugStat:Text to "TWR=" + round(1 / invTWR, 2) + " minPitch=" + round(minPitch, 1) + " vTh=" + round(h / Body:Position:Mag, 1) + " / " + round(guidanceMinV, 1).
 		
-		if Ship:Apoapsis > LAS_TargetPe * 1010 and Ship:Control:PilotMainThrottle > 0
+		if Ship:Apoapsis > LAS_TargetPe * 1010 and (flightPhase < c_PhaseGuidanceReady or vdot(guidance, Facing:Vector) < 0.99)
 		{
 			print "Entering coast mode".
 			set Ship:Control:PilotMainThrottle to 0.
+            set flightPhase to c_PhaseCoast.
 		}
 	}
 }
 
-until flightPhase = c_PhaseMECO
+until flightPhase >= c_PhaseMECO
 {
     checkAscent().
     wait 0.
@@ -128,3 +138,6 @@ until flightPhase = c_PhaseMECO
 
 // Release control
 set Ship:Control:Neutralize to true.
+
+if flightPhase = c_PhaseCoast
+    runpath("/flight/changeperi", LAS_TargetPe, true).

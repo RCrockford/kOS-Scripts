@@ -63,9 +63,9 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
         // Cheap version, RCS only, immediate.
         runoncepath("0:/flight/rcsperf").
         if GetRCSForePerf():Thrust < GetRCSAftPerf():Thrust * 0.5
-            fileList:Add("flight/ReEntryRCSPro.ks").
+            fileList:Add("reentry/ReEntryRCSPro.ks").
         else
-            fileList:Add("flight/ReEntryRCS.ks").
+            fileList:Add("reentry/ReEntryRCS.ks").
     }
     else
     {
@@ -73,12 +73,12 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
         burnParams:Add("bLatLong", burnLatLong).
         burnParams:Add("engines", not EM_GetEngines():empty).
         
-        fileList:Add("flight/ReEntryBurn.ks").
+        fileList:Add("reentry/ReEntryBurn.ks").
         fileList:add("FCFuncs").
         if burnParams:engines
             fileList:add("flight/EngineMgmt.ks").
     }
-    fileList:add("flight/ReEntryLanding.ks").
+    fileList:add("reentry/ReEntryLanding.ks").
 	print "Using " + fileList[0].
 
     runpath("0:/flight/SetupBurn", burnParams, fileList, "re-entry").

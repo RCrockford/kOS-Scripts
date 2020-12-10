@@ -2,12 +2,14 @@
 
 @lazyglobal off.
 
-parameter engineStart is -1.
-parameter targetOrbit is 0.
+parameter engineStart.
+parameter targetOrbitDlg.
 parameter launchButton is 0.
 parameter totalControlled is 0.
 
-local function GetAngleToAN
+local targetOrbit is targetOrbitDlg().
+
+local function GetLaunchAngleRendezvous
 {
 	// From KER / MJ2
 	local bodyAngVel is Ship:Body:AngularVel:Normalized.
@@ -37,6 +39,24 @@ local function GetAngleToAN
 		set angle2 to 360 - angle2.
 
 	return min(angle1, angle2).
+}
+
+local function GetLaunchAngleTerminator
+{
+	local sunVec is (Sun:Position - Body:Position):Normalized.
+    local sunTangVec is vxcl(Up:Vector, sunVec):Normalized.
+
+	local sunUp is vdot(sunVec, Up:Vector).
+    local sunEast is vdot(North:StarVector, sunTangVec).
+    
+    // Launch when the sun is 90° to the up vector.
+	local launchAngle is arccos(abs(vdot(sunVec, sunTangVec))).
+    
+    // If sun is up and east, or down and west then we're just past the launch window
+    if (sunUp > 0) = (sunEast > 0)
+        set launchAngle to 180 - launchAngle.
+        
+    return launchAngle.
 }
 
 local liftoffTime is -1.
@@ -89,6 +109,7 @@ print "  Engine start at T-" + round(engineStart, 2) + ".".
 local launchMass is Ship:Mass.
 local padFuelling is engineStart <= 0.5 or mainEnginesLF:empty().   // If not pre-spooling engines, then don't worry about pad fuel pumps
 local ascentTime is 0.
+local LaunchAngleFunc is 0.
 
 // Ship description dump
 {
@@ -182,10 +203,11 @@ local ascentTime is 0.
 if totalControlled > 0 and totalControlled < launchMass
 {
     print "Insufficient avionics for liftoff control (Ctrl=" + round(totalControlled, 2) + "T, M=" + round(launchMass,2) + "T).".
+    if launchButton:IsType("Button")
+        set launchButton:Enabled to false.
 }
 
 // Check for sufficient thrust
-if mainEngines:length > 0
 {
     local engineMaxThrust is 0.
     for eng in mainEngines
@@ -230,15 +252,21 @@ if defined LAS_LaunchTime
 else
 {
 	print "Ascent Time: " + round(ascentTime, 1) + " s".
+    set ascentTime to ascentTime * 0.9.
 	local waitTime is 0.
+	
+	if TargetOrbit = Sun
+		set LaunchAngleFunc to GetLaunchAngleTerminator@.
+	else if TargetOrbit:IsType("Orbit")
+		set LaunchAngleFunc to GetLaunchAngleRendezvous@.
 
-	if TargetOrbit:IsType("Orbit")
+	if LaunchAngleFunc:IsType("UserDelegate")
 	{
-		set waitTime to GetAngleToAN() * Ship:Body:RotationPeriod / 360 - ascentTime.
+		set waitTime to LaunchAngleFunc() * Ship:Body:RotationPeriod / 360 - ascentTime.
 		print "Launch window opening in approximately " + LAS_FormatTime(waitTime).
 		
 		// Assume it's the Moon
-		if TargetOrbit:SemiMajorAxis > 3e8
+		if TargetOrbit:IsType("Orbit") and TargetOrbit:SemiMajorAxis > 3e8
 		{
 			local ANAngle is mod(TargetOrbit:TrueAnomaly + TargetOrbit:ArgumentOfPeriapsis + 360 * waitTime / TargetOrbit:Period, 360).
 			local AngToAN is 360 - ANAngle.
@@ -278,6 +306,15 @@ else
 			set cmd to "l".
 		else if Terminal:Input:HasChar
 			set cmd to Terminal:Input:GetChar().
+            
+        local newOrbit is targetOrbitDlg().
+        if targetOrbit <> newOrbit
+        {
+            set targetOrbit to newOrbit.
+            set LaunchAngleFunc to GetLaunchAngleRendezvous@.
+            set waitTime to LaunchAngleFunc() * Ship:Body:RotationPeriod / 360 - ascentTime.
+            print "New target, launch window opening in approximately " + LAS_FormatTime(waitTime).
+        }
 
 		if cmd = "a"
 		{
@@ -290,6 +327,14 @@ else
 			ClearGUIs().
 			reboot.     // Direct reboot to allow for easy staging corrections.
 		}
+        if cmd = "p"
+        {
+            if TargetOrbit:IsType("Orbit")
+                print "Target Orbit: sma=" + round(TargetOrbit:SemiMajorAxis / 1000, 1) + " inc=" + round(TargetOrbit:Inclination, 2) + " lan=" + round(TargetOrbit:LAN, 2).
+            else
+                print "No target orbit".
+            set cmd to " ".
+        }
 		if cmd = "n" and TargetOrbit:IsType("Orbit")
 		{
 			// Go 5 degrees past.
@@ -350,7 +395,7 @@ else
 if cmd = "l"
 {
 
-if TargetOrbit:IsType("Orbit")
+if LaunchAngleFunc:IsType("UserDelegate")
 {
     local waitGui is GUI(200).
     local mainBox is waitGui:AddVBox().
@@ -358,7 +403,7 @@ if TargetOrbit:IsType("Orbit")
     local guiHeading is mainBox:AddLabel("Awaiting launch window").
 
     // Launch window planning, simply matches ascending nodes.
-	local waitTime is GetAngleToAN() * Ship:Body:RotationPeriod / 360 - ascentTime.
+	local waitTime is LaunchAngleFunc() * Ship:Body:RotationPeriod / 360 - ascentTime.
 
     local guiTime is mainBox:AddLabel("T-" + Time(waitTime):Clock).
     waitGui:Show().
@@ -380,7 +425,7 @@ if TargetOrbit:IsType("Orbit")
                 set t to t + 60.
         }
 
-		set kUniverse:TimeWarp:Rate to min(max(1, (waitTime - 10) / 2), 10000).
+		set kUniverse:TimeWarp:Warp to round(min(log10(max(1, waitTime - 15)), 4), 0).
 
         wait t.
 
@@ -390,7 +435,7 @@ if TargetOrbit:IsType("Orbit")
             set guiTime:Text to "T-" + Time(waitTime):Clock.
         }
 
-        set waitTime to GetAngleToAN() * Ship:Body:RotationPeriod / 360 - ascentTime.
+        set waitTime to LaunchAngleFunc() * Ship:Body:RotationPeriod / 360 - ascentTime.
     }
     kUniverse:Timewarp:CancelWarp().
 
@@ -503,7 +548,7 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
     }
 
     local engineThrust is 0.
-    until Time:Seconds - liftoffTime >= -0.1
+    until Time:Seconds - liftoffTime >= -0.5
     {
         set engineThrust to 0.
         for eng in mainEnginesLF
@@ -511,7 +556,7 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
             set engineThrust to engineThrust + eng:Thrust().
         }
 
-        if engineThrust >= engineMaxThrust * 0.98
+        if engineThrust >= engineMaxThrust * 0.998
         {
             break.
         }
@@ -539,7 +584,19 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
 }
 
 // Wait for countdown
-wait until countdown = 0 or not padFuelling.
+until countdown = 0 or not padFuelling
+{
+    for lc in Ship:ModulesNamed("LaunchClamp")
+    {
+        local tMinus is liftoffTime - Time:Seconds.
+        if LAS_GetPartParam(lc:part, "t=", -1) >= tMinus and lc:HasEvent("Release Clamp")
+        {
+            lc:DoEvent("Release Clamp").
+        }
+    }
+
+    wait 0.
+}
 
 // Check for main engine issues just before liftoff.
 local engCount is 1.
@@ -565,7 +622,7 @@ wait 0.1.
 until Ship:VerticalSpeed >= 5 and Ship:Status = "Flying"
 {
     // Check for vertical movement
-    if Ship:VerticalSpeed < -0.5
+    if Ship:VerticalSpeed < -1
     {
         GLCAbort("Failed to achieve liftoff.").
     }
