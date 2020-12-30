@@ -1,21 +1,21 @@
 @lazyglobal off.
 parameter _0.
 local _1 is 0.
-local _2 is list().
+local _2 is false.
+local _3 is list().
 runoncepath("/FCFuncs").
-local _3 is LAS_GetStageEngines(_0).
-for e in _3
+local _4 is LAS_GetStageEngines(_0).
+for e in _4
 {
 if e:Ignitions<>0 or e:Ignition
 {
-_2:Add(e).
+_3:Add(e).
 if e:Ullage
-{
-if e:PressureFed
-set _1 to max(_1,0.91).
-else
+set _2 to true.
+if not e:PressureFed
 set _1 to max(_1,2.39).
-}
+else if e:Ullage
+set _1 to max(_1,0.91).
 }
 }
 global function EM_IgDelay
@@ -24,37 +24,40 @@ return _1.
 }
 global function EM_GetEngines
 {
-return _2.
+return _3.
 }
 global function EM_CheckThrust
 {
 parameter p.
-return _2[0]:Thrust>_2[0]:PossibleThrust*p.
+return _3[0]:Thrust>_3[0]:PossibleThrust*p.
 }
 global function EM_Ignition
 {
-if not _2:empty
+if not _3:empty
 {
-for e in _2
+for e in _3
 e:Shutdown.
+if _2
+{
 rcs on.
 set Ship:Control:Fore to 1.
+}
 set Ship:Control:PilotMainThrottle to 1.
-for e in _2
+for e in _3
 wait until e:FuelStability>=0.99.
-for e in _2
+for e in _3
 e:Activate.
 local t is time:seconds+3.
-wait until EM_CheckThrust(0.5)or _2[0]:Flameout or time:seconds>t.
+wait until EM_CheckThrust(0.5)or _3[0]:Flameout or time:seconds>t.
 set Ship:Control:Fore to 0.
 }
-return not _2:empty.
+return not _3:empty.
 }
 global function EM_Shutdown
 {
-for e in _2
+for e in _3
 e:Shutdown.
-if not _2:empty
+if not _3:empty
 print"MECO".
 unlock steering.
 set Ship:Control:Neutralize to true.

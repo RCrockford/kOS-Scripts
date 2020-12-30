@@ -7,35 +7,55 @@ parameter canAbort is false.
 
 local burnThrust is 0.
 local enginesOn is Ship:Control:PilotMainThrottle > 0.
+local needUllage is false.
 
 for eng in DescentEngines
 {
     set burnThrust to burnThrust + eng:PossibleThrust.
     if not eng:Ignition
         set enginesOn to false.
+    if eng:ullage
+        set needUllage to true.
 }
 
-runoncepath("/lander/LanderThrottle", DescentEngines).
+if burnThrust = 0
+{
+    local allrcs is list().
+    list rcs in allrcs.
+    for r in allrcs
+    {
+        if r:forebythrottle
+            set burnThrust to burnThrust + r:AvailableThrust.
+    }
+    if burnThrust > 0
+    {
+        set enginesOn to false.
+        set needUllage to false.
+        print "Using RCS for descent".
+    }
+}
+
+runoncepath("/lander/LanderThrottle", DescentEngines, enginesOn).
 
 print "Descent mode active".
 
 set Ship:Type to "Lander".
 lock steering to LookDirUp(SrfRetrograde:Vector, Facing:UpVector).
 
-// Cache ship bounds
-local shipBounds is Ship:Bounds.
-
 // Touchdown speed
 local vT is 0.5.
 local abortMode is false.
+local radarHeight is Ship:Bounds:BottomAltRadar.
 
-until shipBounds:BottomAltRadar < 2
+until radarHeight < 2
 {
     local maxAccel is burnThrust / Ship:Mass.
     local localGrav is Ship:Body:Mu / LAS_ShipPos():SqrMagnitude.
     
     // Use minimal height directly below and projected forwards
-    local h is min(shipBounds:BottomAltRadar, Ship:Altitude - Body:GeopositionOf(SrfPrograde:Vector * shipBounds:BottomAltRadar):TerrainHeight).
+    set radarHeight to Ship:Bounds:BottomAltRadar.
+    local h is min(radarHeight, Ship:Altitude - Body:GeopositionOf(SrfPrograde:Vector * radarHeight):TerrainHeight) - 1.
+    set h to max(h, 0.1).
 
     // Commanded vertical acceleration is accel needed to reach vT in the height available
     local acgx is -(vT^2 - Ship:VerticalSpeed^2) / (2 * h).
@@ -49,13 +69,9 @@ until shipBounds:BottomAltRadar < 2
     if not enginesOn and reqThrottle >= 0.9
     {
         print "Ignition, rt= " + round(reqThrottle, 3).
-        if throttleClamp > 0
+        if needUllage
             EM_Ignition().
-        else
-        {
-            for eng in DescentEngines
-                eng:Activate.
-        }
+        LanderEnginesOn().
         set enginesOn to true.
     }
     LanderSetThrottle(reqThrottle).
@@ -74,6 +90,13 @@ until shipBounds:BottomAltRadar < 2
             break.
         }
     }
+    
+    if not legs and Alt:Radar <= 50
+    {
+        legs on.
+        gear on.
+        brakes on.
+    }
 
     wait 0.
 }
@@ -81,10 +104,16 @@ until shipBounds:BottomAltRadar < 2
 if not abortMode
 {
     lock steering to LookDirUp(Up:Vector, Facing:UpVector).
+    
+    local shipBounds is Ship:Bounds.
 
     until Ship:Status = "Landed" or Ship:Status = "Splashed"
     {
         LanderSetThrottle(-vT - Ship:VerticalSpeed).
+        local debugStr to "h=" + round(shipBounds:BottomAltRadar, 1) + " fr=" + round(-vT - Ship:VerticalSpeed, 3) + " f=" + round(-vT - Ship:VerticalSpeed, 3).
+        if targetPos:IsType("GeoCoordinates")
+            set debugStr to debugStr + " d=" + round(targetPos:Distance) + " m".
+        set debugStat:Text to debugStr.
         wait 0.
     }
 
@@ -92,24 +121,28 @@ if not abortMode
     if targetPos:IsType("GeoCoordinates")
     {
         if targetPos:Distance >= 1000
-            print "Waypoint distance: " + round(targetPos:Distance * 0.001, 2) + " km".
+            print "Waypoint distance: " + round((targetPos:Position - Ship:GeoPosition:Position):Mag * 0.001, 2) + " km".
         else
-            print "Waypoint distance: " + round(targetPos:Distance, 0) + " m".
+            print "Waypoint distance: " + round((targetPos:Position - Ship:GeoPosition:Position):Mag, 1) + " m".
     }
 
     set Ship:Control:PilotMainThrottle to 0.
     for eng in DescentEngines
         eng:Shutdown.
 
-    local slopeVec is vcrs(Body:GeoPositionOf(shipBounds:Extents:Mag * Facing:StarVector):Position - Body:GeoPositionOf(-shipBounds:Extents:Mag * Facing:StarVector):Position, Body:GeoPositionOf(shipBounds:Extents:Mag * Facing:ForeVector):Position - Body:GeoPositionOf(shipBounds:Extents:Mag * Facing:ForeVector):Position):Normalized.
+    local starVec is Body:GeoPositionOf(shipBounds:Extents:Mag * Facing:StarVector):Position - Body:GeoPositionOf(-shipBounds:Extents:Mag * Facing:StarVector):Position.
+    local foreVec is Body:GeoPositionOf(shipBounds:Extents:Mag * Facing:ForeVector):Position - Body:GeoPositionOf(-shipBounds:Extents:Mag * Facing:ForeVector):Position.
+    local slopeVec is vcrs(foreVec, starVec):Normalized.
+    if vdot(slopeVec, Up:Vector) < 0
+        set slopeVec to -slopeVec.
 
     lock steering to LookDirUp(slopeVec, Facing:UpVector).
     wait 0.5.
 
     // Maintain attitude control until ship settles to prevent roll overs.
-    until Ship:Velocity:Surface:Mag < 0.1 and Ship:AngularVel:Mag < 0.001
+    until Ship:Velocity:Surface:Mag < 0.1 and Ship:AngularVel:Mag < 0.01
     {
-        set debugStat:Text to "v=" + round(Ship:Velocity:Surface:Mag, 2) + " / 0.1 a=" + round(Ship:AngularVel:Mag, 4) + " / 0.001".
+        set debugStat:Text to "v=" + round(Ship:Velocity:Surface:Mag, 2) + " / 0.1 a=" + round(Ship:AngularVel:Mag, 4) + " / 0.01".
     }
 
     unlock steering.

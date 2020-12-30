@@ -52,7 +52,7 @@ print "  Duration: " + round(burnDur:duration, 1) + " s.".
 print "  Align at: T-" + round(alignMargin, 1) + " s.".
 
 local burnEta is NodeETA - burnDur:halfBurn.
-if burnEta > 300 and Addons:Available("KAC")
+if burnEta - alignMargin > 300 and Addons:Available("KAC")
 {
     // Add a KAC alarm.
     AddAlarm("Raw", burnEta - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").

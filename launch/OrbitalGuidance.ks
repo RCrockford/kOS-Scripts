@@ -4,7 +4,7 @@
 
 @lazyglobal off.
 
-parameter liftoffStage is stage:number - 1.
+parameter liftoffStage is choose stage:number - 1 if Ship:Status <> "Flying" else Stage:number.
 
 //------------------------------------------------------------------------------------------------
 
@@ -671,7 +671,8 @@ global function LAS_GetGuidanceAim
         // Calculate radial heading vector
         local fr is stageA[s] + stageB[s] * t.
         // Add gravity and centifugal force term.
-        set fr to fr + (Ship:Body:Mu / r2 - (omega * omega) * r) / accel.
+        local gravAccel is (Ship:Body:Mu / r2 - (omega * omega) * r).
+        set fr to fr + gravAccel / accel.
 
         // Yaw heading vector
         local fh is 0.
@@ -690,7 +691,8 @@ global function LAS_GetGuidanceAim
         // Construct aim vector
         if (fr * fr + fh * fh) < 0.999
         {
-			set fr to min(fr, 0.6).
+            if gravAccel < accel
+                set fr to min(fr, 0.6).
 			local fd is sqrt(1 - fr * fr - fh * fh).
 			set debugFr:text to "fr=" + round(fr,3) + " fh=" + round(fh,4) +  " fd=" + round(fd,3) + " s=" + s + "/" + GuidanceLastStage + " t=" + round(t, 2).
             return fr * rVec + fh * hVec + fd * downtrack.

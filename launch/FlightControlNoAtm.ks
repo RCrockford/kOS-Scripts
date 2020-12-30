@@ -99,7 +99,7 @@ local function checkAscent
 
             if vTheta >= guidanceMinV
 			{
-				if LAS_StartGuidance(Stage:Number, targetInclination, targetOrbitable, launchAzimuth, launchAzimuth)
+				if LAS_StartGuidance(Stage:Number, targetInclination, targetOrbitable, launchAzimuth)
                 {
 					set flightPhase to c_PhaseGuidanceReady.
                 }

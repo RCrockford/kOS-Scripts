@@ -35,20 +35,9 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 	set navmode to "surface".
     
     set debugStat:Text to "Waiting for dynamic pressure".
-
+    
     wait until Ship:Q > 1e-6.
    
-    set debugStat:Text to "Aligning retrograde".
-    
-    for rc in Ship:ModulesNamed("RealChuteModule")
-    {
-        if rc:HasEvent("disarm chute")
-        {
-            rc:DoEvent("disarm chute").
-            set chutesArmed to true.
-        }
-    }
-    
     // Switch on all tanks
     for p in Ship:Parts
     {
@@ -58,21 +47,47 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         }
     }
 
-    for a in Ship:ModulesNamed("ModuleProceduralAvionics")
+    if Ship:ModulesNamed("ProceduralFairingDecoupler"):Empty
     {
-        if a:HasEvent("activate avionics")
-            a:DoEvent("activate avionics").
+        set debugStat:Text to "Aligning retrograde".
+        
+        for rc in Ship:ModulesNamed("RealChuteModule")
+        {
+            if rc:HasEvent("disarm chute")
+            {
+                rc:DoEvent("disarm chute").
+                set chutesArmed to true.
+            }
+        }
+        
+        for a in Ship:ModulesNamed("ModuleProceduralAvionics")
+        {
+            if a:HasEvent("activate avionics")
+                a:DoEvent("activate avionics").
+        }
+
+        rcs on.
+        lock steering to LookDirUp(SrfRetrograde:Vector, Facing:UpVector).
+
+        wait until vdot(SrfRetrograde:Vector, Facing:Vector) > 0.9995 or Ship:Altitude < 50000.
+        wait 1.
+
+        unlock steering.
+        set Ship:Control:Neutralize to true.
+        rcs off.
     }
+    else
+    {
+        set debugStat:Text to "Waiting for aeroshell deployment".
 
-    rcs on.
-    lock steering to LookDirUp(SrfRetrograde:Vector, Facing:UpVector).
-
-    wait until vdot(SrfRetrograde:Vector, Facing:Vector) > 0.9995 or Ship:Altitude < 50000.
-    wait 1.
-
-    unlock steering.
-    set Ship:Control:Neutralize to true.
-    rcs off.
+        wait until Ship:Airspeed <= 1000.
+        
+        for fairing in Ship:ModulesNamed("ProceduralFairingDecoupler")
+        {
+            if fairing:HasEvent("jettison fairing")
+                fairing:DoEvent("jettison fairing").
+        }
+    }
 
     set debugStat:Text to "Waiting for chute altitude".
 
@@ -97,7 +112,27 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     set debugStat:Text to "Waiting for heatshield altitude".
 
     wait until Alt:Radar < 2500.
-    
+
+    // Drop all payload bases and heatshields
+    for hs in Ship:ModulesNamed("ModuleDecouple")
+    {
+        if hs:HasEvent("decouple")
+            hs:DoEvent("decouple").
+        else if hs:HasEvent("decouple top node")
+            hs:DoEvent("decouple top node").
+        else if hs:HasEvent("decoupler staging")
+            hs:DoEvent("decoupler staging").
+    }
+    for hs in Ship:ModulesNamed("ModuleAnchoredDecoupler")
+    {
+        if hs:HasEvent("decouple")
+            hs:DoEvent("decouple").
+        else if hs:HasEvent("decouple top node")
+            hs:DoEvent("decouple top node").
+        else if hs:HasEvent("decoupler staging")
+            hs:DoEvent("decoupler staging").
+    }
+    wait 0.
     for hs in Ship:ModulesNamed("ModuleDecouple")
     {
         if hs:HasEvent("jettison heat shield")
@@ -106,13 +141,14 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         }
     }
     
+    if stage:number > 0
+        stage.
+    
     wait 0.1.
     
     rcs on.
     local DescentEngines is list().
 	list engines in DescentEngines.
 
-	when Alt:Radar < 100 then { legs on. gear on. brakes on. }
-
-    runpath("/lander/FinalDescent", DescentEngines, debugStat, targetPos).
+    runpath("/lander/FinalDescent", DescentEngines, debugStat, 0).
 }

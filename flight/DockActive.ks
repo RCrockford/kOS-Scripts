@@ -18,15 +18,7 @@ if tShip:IsType("DockingPort")
 // Wait for unpack
 wait until Ship:Unpacked.
 
-local port is 0.
-for p in Ship:Parts
-{
-    if p:IsType("DockingPort")
-    {
-        set port to p.
-        break.
-    }
-}
+local port is choose Ship:DockingPorts[0] if Ship:DockingPorts:Length > 0 else 0.
 
 if port:IsType("DockingPort")
 {
@@ -46,7 +38,9 @@ local debugStat1 is mainBox:AddLabel("").
 local debugStat2 is mainBox:AddLabel("").
 debugGui:Show().
 
-local forePID is pidloop(2, 0, 0.5, -1, 1).
+local lock targetDist to (tPort:Position - port:Position):Mag.
+
+local forePID is pidloop(5, 0, 0.5, -1, 1).
 local starPID is pidloop(5, 0.2, 1, -1, 1).
 local topPID is pidloop(5, 0.2, 1, -1, 1).
 
@@ -56,8 +50,8 @@ runpath("/flight/TuneSteering").
 
 runoncepath("/flight/RCSPerf.ks").
 local RCSPerf is GetRCSForePerf().
-local maxSpeed is max(0.5, min(5, 5 * RCSPerf:thrust / Ship:Mass)).
-print "Setting max speed to " + round(maxSpeed, 2) + " m/s".
+local foreAccel is rcsPerf:thrust / Ship:Mass.
+print "Setting max speed to " + round(foreAccel * 16, 2) + " m/s".
 
 LAS_Avionics("activate").
 
@@ -66,13 +60,12 @@ lock steering to lookdirup(tPort:Position:Normalized, Facing:UpVector).
 
 local startElements is Ship:Elements:Length.
 
-until (port:IsType("DockingPort") and port:State <> "Ready") or Ship:Elements:Length > startElements
+until Ship:Elements:Length > startElements
 {
     local relV is (tShip:Velocity:Orbit - Ship:Velocity:Orbit).
+    local targetV is max(0.25, min(targetDist - 2, 16) * foreAccel).
     
-    local targetV is max(maxSpeed / 8, min(tPort:Position:Mag / 10, maxSpeed)).
-    
-	set debugStat1:Text to "t=" + round(targetV, 2) + " v=" + round(vdot(-relV, tPort:Position:Normalized), 2).
+	set debugStat1:Text to "t=" + round(targetV, 2) + " v=" + round(vdot(-relV, tPort:Position:Normalized), 2) + " d=" + round(targetDist, 1).
     
     if vdot(Facing:Vector, tPort:Position:Normalized) > 0.999
     {

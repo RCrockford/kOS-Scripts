@@ -9,8 +9,10 @@ parameter targetOrbit is 0.
 // Wait for unpack
 wait until Ship:Unpacked.
 
+ClearGuis().
+
 // Must be prelaunch for system to activate (allows for reboots after liftoff).
-if Ship:Status = "PreLaunch"
+if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
 {
     // Open terminal
     Core:DoEvent("Open Terminal").
@@ -74,7 +76,13 @@ if Ship:Status = "PreLaunch"
             if LAS_GuidanceDeltaV() < LAS_GuidanceTargetVTheta() + 1000
             {
                 print "Insufficient deltaV in guided stages:".
-                print "  Needs " + round(LAS_GuidanceTargetVTheta() + 1000, 0) + " m/s, has " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
+                print "  Needs >" + round(LAS_GuidanceTargetVTheta() + 1000, 0) + " m/s, has " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
+                set stagingValid to false.
+            }
+            else if LAS_GuidanceDeltaV() > LAS_GuidanceTargetVTheta() + 2500
+            {
+                print "Excessive deltaV in guided stages:".
+                print "  Needs <" + round(LAS_GuidanceTargetVTheta() + 2500, 0) + " m/s, has " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
                 set stagingValid to false.
             }
         }
@@ -182,9 +190,8 @@ if Ship:Status = "PreLaunch"
         }
 		setAzimuth().
 	}, totalControlled > 0).
-    
     set lanText:Enabled to targetOrbit:IsType("Scalar").
-    
+
     if totalControlled > 0
     {
 		local launchSouth is false.
@@ -224,7 +231,13 @@ if Ship:Status = "PreLaunch"
         set southCheckbox:Pressed to launchSouth.
         
         setAzimuth().
-		
+        
+        if defined LAS_TargetLAN
+        {
+            set lanText:Text to round(LAS_TargetLAN, 3):ToString.
+            lanText:OnConfirm(lanText:Text).
+        }
+
 		// Preset launch, just go straight into countdown.
 		if defined LAS_LaunchTime
 		{
@@ -298,6 +311,12 @@ else if Ship:Status = "Flying"
         local p is readjson("1:/launch.json").
         
         print "Resuming launch: " + round(p[3], 2) + "° inc, " + round(p[2], 2) + "° azimuth".
+        
+        runoncepath("0:/launch/LASFunctions").
+        runpath("0:/launch/Staging").
+		if defined LAS_TargetSMA or LAS_TargetAp > 100
+            runpath("0:/launch/OrbitalGuidance").
+        
         runpath("0:/launch/FlightControlPitchOver", p[0], p[1], p[2], p[3], p[4], p[5], p[6]).
     }
 }

@@ -17,10 +17,10 @@ if HasNode
 else
 {
     lock burnETA to p:eta - Time:Seconds.
-    set dV to tVec * p:dV:x + nVec * pDv:y + bVec * p:dV:z.
+    set dV to tVec * p:dV:x + nVec * p:dV:y + bVec * p:dV:z.
 }
 
-print "Align in " + round(burnETA - p:align, 0) + " seconds.".
+print "Align in " + round(burnETA - p:align, 0) + " seconds (T-" + round(p:align) + ").".
 
 wait until burnETA <= p:align.
 
@@ -49,7 +49,16 @@ local function CheckHeading
     if HasNode and nextNode:eta <= p:align
         set dV to NextNode:deltaV.
     else if p:haskey("dV")
-        set dV to tVec * p:dV:x + nVec * pDv:y + bVec * p:dV:z.
+        set dV to tVec * p:dV:x + nVec * p:dV:y + bVec * p:dV:z.
+}
+
+local function RollControl
+{
+    local rollRate is vdot(Facing:Vector, Ship:AngularVel).
+    if abs(rollRate) < 1e-3
+        set ship:control:roll to choose -0.000011 if rollRate < 0 else 0.000011.
+    else
+        set ship:control:roll to 0.
 }
 
 LAS_Avionics("activate").
@@ -88,33 +97,32 @@ if p:inertial
 }
 else
 {
-    until burnETA <= ignitionTime + min(max(p:align / 40, 2), 10).
+    until burnETA <= ignitionTime
     {
+        RollControl().
+    
         local err is vang(dV:Normalized, Facing:Vector).
-        local omega is Ship:AngularVel:Mag * 180 / Constant:Pi.
+        local omega is  vxcl(Facing:Vector, Ship:AngularVel):Mag * 180 / Constant:Pi.
 		set debugStat:Text to "Aligning ship, <color=" + (choose "#ff8000" if err > 0.5 else "#00ff00") + ">Δθ: " + round(err, 2)
-            + "°</color> <color=" + (choose "#ff8000" if err / max(omega, 1e-4) > burnETA - ignitionTime else "#00ff00") + ">ω: " + round(omega, 3) + "°/s</color>".
+            + "°</color> <color=" + (choose "#ff8000" if err / max(omega, 1e-4) > burnETA - ignitionTime else "#00ff00") + ">ω: " + round(omega, 3) + "°/s</color> roll: " + round(vdot(Facing:Vector, Ship:AngularVel), 6).
+
+        // Pre-ullage
+        if p:eng and EM_IgDelay() > 0 and burnETA <= ignitionTime + 8
+        {
+            if Ship:Control:Fore > 0
+            {
+                if EM_GetEngines()[0]:FuelStability >= 0.99
+                    set Ship:Control:Fore to 0.
+            }
+            else
+            {
+                if EM_GetEngines()[0]:FuelStability < 0.98  
+                    set Ship:Control:Fore to 1.
+            }
+        }
         wait 0.
     }
     CheckHeading().
-    
-    // Pre-ullage
-    if p:eng and EM_IgDelay() > 0
-    {
-        rcs on.
-        set Ship:Control:Fore to 1.
-        until burnETA <= ignitionTime
-        {
-            if EM_GetEngines()[0]:FuelStability >= 0.99
-            {
-                set ship:control:fore to 0.
-                break.
-            }
-            wait 0.
-        }
-    }
-	
-    wait until burnETA <= ignitionTime.
 }
 
 print "Starting burn".
@@ -159,6 +167,7 @@ if p:eng
     {
 		local prevUpdate is Time:Seconds.
         CheckHeading().
+        RollControl().
 		set debugStat:Text to "Burning, Fuel: " + round(fuelRes:Amount, 2) + " / " + round(fuelTarget, 2) + " [" + round((fuelRes:Amount - fuelTarget) / p:fFlow, 2) + "s]".
         wait 0.
 		// Break if we'll hit the target fuel in one update.
@@ -178,6 +187,7 @@ else
     {
 		set debugStat:Text to "Burning, Cutoff: " + round(stopTime - Time:Seconds, 1) + " s".
         CheckHeading().
+        RollControl().
         wait 0.
     }
 

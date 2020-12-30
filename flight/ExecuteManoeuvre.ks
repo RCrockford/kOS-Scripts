@@ -13,7 +13,7 @@ parameter burnStart is 0.
 // Wait for unpack
 wait until Ship:Unpacked.
 
-switch to 0.
+switch to scriptpath():volume.
 
 local dV is 0.
 
@@ -146,10 +146,12 @@ if massFlow > 0
 		print "  Inertial burn.".
 	}
 		
-	if burnEta > 300 and Addons:Available("KAC")
+	if burnEta - alignMargin > 300 and Addons:Available("KAC")
 	{
 		// Add a KAC alarm.
-		AddAlarm("Raw", burnEta - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+		local alrm is AddAlarm("Raw", burnEta - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+        wait 0.
+        set alrm:Action to "KillWarp".
 	}
 
 	local burnParams is lexicon(

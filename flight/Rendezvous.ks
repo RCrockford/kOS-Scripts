@@ -126,7 +126,7 @@ if activeEngines:Length > 0
         
             updateStat1().
             set debugStat3:Text to "m=" + round((relV - aimDir):Mag, 1) + " rcs_bt=" + round(brakeTime, 1) + " spd=" + round(interceptSpeed, 1).
-            wait 0.
+            set lastItTime to interceptTime.
         }
         
         EM_Shutdown().
@@ -165,7 +165,7 @@ until targetPos:Mag <= minDist and relV:Mag < 0.5
 
     if ship:control:fore < -0.1
         set debugStat2:Text to "RCS Braking".
-    else if abs(ship:control:starboard) >= 0.05 or abs(ship:control:top) >= 0.05
+    else if abs(ship:control:starboard) >= 0.1 or abs(ship:control:top) >= 0.1
         set debugStat2:Text to "Correcting course".
     else
         set debugStat2:Text to "Coasting (RCS)".

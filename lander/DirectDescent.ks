@@ -8,6 +8,7 @@
 wait until Ship:Unpacked.
 
 parameter landStage is max(Stage:Number - 1, 0).
+parameter brakingMargin is 1.5.
 
 switch to scriptpath():volume.
 
@@ -28,7 +29,7 @@ for eng in DescentEngines
 
 local shipMass is Ship:Mass.
 
-local downrangeAdjust is 0.98.
+local downrangeAdjust is 1.
 
 local function GetBrakingAim
 {
@@ -61,7 +62,7 @@ local function EstimateBrakingPosition
 		if burnDelay < tStep
 			set accel to ((tStep - burnDelay) / tStep) * GetBrakingAim(pCurrent, vCurrent) * burnThrust / mCurrent.
 		set burnDelay to max(0, burnDelay - tStep).
-		local g is -pCurrent:Normalized * Ship:Body:Mu / pCurrent:SqrMagnitude.
+		local g is -pCurrent:Normalized * Body:Mu / pCurrent:SqrMagnitude.
 
 		// Basic symplectic euler integrator
 		set vCurrent to vCurrent + (accel + g) * tStep.
@@ -85,17 +86,18 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     local debugStat is mainBox:AddLabel("").
 
 	debugGui:Show().
-	if Stage:Number > landStage
+	if Stage:Number > landStage or Ship:Velocity:Surface:Mag > 300
 	{
-		print "  Engine: " + DescentEngines[0]:Config + " Mass: " + round(shipMass * 1000, 1) + " kg".
+		print "  Engine: " + DescentEngines[0]:Config + ", Ship Mass: " + round(shipMass * 1000, 1) + " kg".
 
 		LanderSelectWP().
         local targetPos is LanderTargetPos().
 
-		local initGrav is 1.1 - shipMass * 0.05.
-		if Ship:Body:Mu / LAS_ShipPos():SqrMagnitude < initGrav
+		local initGrav is (0.7 - shipMass * 0.035) * Body:Mu / (Body:Radius^2).
+        
+		if Body:Mu / LAS_ShipPos():SqrMagnitude < initGrav and Ship:GeoPosition:TerrainHeight / Body:Radius < 0.01
 		{
-			if targetPos:IsType("GeoCoordinates") and Ship:Body:Mu / LAS_ShipPos():SqrMagnitude < initGrav * 0.25
+			if targetPos:IsType("GeoCoordinates") and Body:Mu / LAS_ShipPos():SqrMagnitude < initGrav * 0.25
 			{
 				local lock nVec to vcrs(Ship:Velocity:Surface:Normalized, -Body:Position:Normalized):Normalized.
 				print "d=" + vdot(targetPos:Position:Normalized, nVec).
@@ -125,11 +127,11 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
 			print "Waiting for initial gravity to increase to " + round(initGrav, 3) + " m/s".
 			set kUniverse:Timewarp:Rate to 10.
-			wait until Ship:Body:Mu / LAS_ShipPos():SqrMagnitude >= initGrav.
+			wait until Body:Mu / LAS_ShipPos():SqrMagnitude >= initGrav.
 		}
 		set kUniverse:Timewarp:Rate to 1.
 		
-		local targetSpeed is -10.
+		local targetSpeed is choose -10 if stage:number > landStage else -50.
 		local lastPrediction is v(0,0,0).
 
 		local function WaitBurn
@@ -137,15 +139,15 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 			parameter name.
 			parameter burnDelay.
 
-			local targetAlt to round(Ship:Velocity:Surface:Mag * 1.5).
+			local lock targetAlt to round(Ship:Velocity:Surface:Mag * brakingMargin).
 
 			local alt is LAS_ShipPos():Mag.
 			until alt < targetAlt
 			{
 				local tStart is Time:Seconds.
 				local pFinal is EstimateBrakingPosition(targetSpeed, burnDelay).
-				local geoPos is Ship:Body:GeoPositionOf(pFinal + Body:Position).
-				set alt to pFinal:Mag - Ship:Body:Radius - geoPos:TerrainHeight.
+				local geoPos is Body:GeoPositionOf(pFinal + Body:Position).
+				set alt to pFinal:Mag - Body:Radius - geoPos:TerrainHeight.
 
 				local debugStr to name + ", Target Alt: " + round(alt * 0.001, 1) + " / " + round(targetAlt * 0.001, 1) + " km".
 				if targetPos:IsType("GeoCoordinates")
@@ -153,10 +155,15 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 					
 				set debugStat:Text to debugStr.
 
-				if alt > targetAlt + Ship:Velocity:Surface:Mag * 2
+				if alt > targetAlt + Ship:Velocity:Surface:Mag * (brakingMargin * 1.4)
+                {
 					wait until Time:Seconds >= tStart + 1.
+                }
 				else
+                {
+                    set kUniverse:Timewarp:Rate to 1.
 					wait until Time:Seconds >= tStart + 0.25.
+                }
 					
 				set lastPrediction to geoPos.
 			}
@@ -224,14 +231,20 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 		if not EM_CheckThrust(0.1)
 			print "Fuel exhaustion in braking stage".
 
-		// Jettison braking stage
-		set Ship:Control:PilotMainThrottle to 0.
-		stage.
+        if stage:number > landStage
+        {
+            // Jettison braking stage
+            set Ship:Control:PilotMainThrottle to 0.
+            stage.
+        }
 	}
 	else
 	{
 		LanderSelectWP().
-	}
+
+		LAS_Avionics("activate").
+		rcs on.
+    }
 
 	wait until stage:ready.
 
@@ -260,7 +273,5 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 	for eng in DescentEngines
 		eng:Shutdown.
 
-    when Alt:Radar < 50 then { legs on. gear on. brakes on. }
-
-    runpath("/lander/FinalDescent", DescentEngines, debugStat, targetPos).
+    runpath("/lander/FinalDescent", DescentEngines, debugStat, LanderTargetPos()).
 }

@@ -19,16 +19,11 @@ global function LAS_GetStageEngines
     local allEngines is list().
     list engines in allEngines.
     
-    if Ship:Status = "PreLaunch"
-        set stageNum to min(stageNum, Stage:Number - 1).
-    
     local stageEngines is list().
     for e in allEngines
     {
-        if e:Stage = stageNum and LAS_EngineIsUllage(e) = ullage and not e:Name:Contains("vernier")
-        {
+        if e:Stage = stageNum and LAS_EngineIsUllage(e) = ullage and not e:Name:Contains("vernier") and not e:Name:Contains("lr101")
             stageEngines:Add(e).
-        }
     }
     
     return stageEngines.
@@ -43,16 +38,12 @@ global function LAS_Avionics
     for a in Ship:ModulesNamed("ModuleProceduralAvionics")
     {
         if a:HasEvent(evt)
-        {
             a:DoEvent(evt).
-        }
     }
     for a in Ship:ModulesNamed("ModuleAvionics")
     {
         if a:HasEvent(evt)
-        {
             a:DoEvent(evt).
-        }
     }
     
     if action = "shutdown"

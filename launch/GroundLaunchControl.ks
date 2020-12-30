@@ -7,6 +7,8 @@ parameter targetOrbitDlg.
 parameter launchButton is 0.
 parameter totalControlled is 0.
 
+//local launchLimits is list(26, 210).  // Limits for NZ
+
 local targetOrbit is targetOrbitDlg().
 
 local function GetLaunchAngleRendezvous
@@ -63,14 +65,22 @@ local liftoffTime is -1.
 // Initialise launch parameters
 local launchDelay is max(10, engineStart + 2).
 
-// Set launch site for range safety
-local launchSite is LAS_ShipPos().
+local launchStage is Stage:Number.
+local mainEngines is LAS_GetStageEngines(launchStage).
+if mainEngines:Empty
+{
+    set launchStage to launchStage - 1.
+    set mainEngines to LAS_GetStageEngines(launchStage).
+}
 
-local mainEngines is LAS_GetStageEngines().
 local mainEnginesLF is list().  // Liquid fuelled for pre-start.
 
 local startStagger is 0.1.
 local autoStartTime is 0.
+local engineMaxThrust is 0.
+
+for eng in mainEngines
+    set engineMaxThrust to engineMaxThrust + eng:PossibleThrust().
 
 print "Main Engines:".
 for eng in mainEngines
@@ -80,6 +90,10 @@ for eng in mainEngines
     if not eng:AllowShutdown
     {
         set engType to "Solid Fuel.".
+    }
+    else if eng:Possiblethrust() < engineMaxThrust * 0.01
+    {
+        set engType to "Vernier".
     }
     else if eng:PressureFed
     {
@@ -92,7 +106,7 @@ for eng in mainEngines
     }
 
     print "  " + eng:Config + ", " + engType.
-    if eng:AllowShutdown
+    if eng:AllowShutdown and engType <> "Vernier"
         mainEnginesLF:add(eng).
 }
 
@@ -121,13 +135,11 @@ local LaunchAngleFunc is 0.
     local stageWetMass is list().
     local stageDryMass is list().
 
-    from {local s is 0.} until s = Stage:Number step {set s to s+1.} do
+    from {local s is 0.} until s > launchStage step {set s to s+1.} do
     {
         stageWetMass:Add(0).
         stageDryMass:Add(0).
     }
-    
-    local LaunchECStage is -1.
 
     for shipPart in Ship:Parts
     {
@@ -138,43 +150,34 @@ local LaunchAngleFunc is 0.
 
             // Unstaged parts go into the top stage mass.
             set partStage to max(partStage, 0).
-            set partStage to min(partStage, Stage:Number - 1).
+            set partStage to min(partStage, launchStage).
 
             set stageWetMass[partStage] to stageWetMass[partStage] + shipPart:WetMass.
             set stageDryMass[partStage] to stageDryMass[partStage] + shipPart:DryMass.
-            
-            for r in shipPart:Resources
-            {
-                if r:Name = "Electric Charge"
-                    set LaunchECStage to max(LaunchECStage, shipPart:DecoupledIn).
-            }
         }
         else
         {
             if shipPart:HasModule("RefuelingPump")
                 set padFuelling to true.
-        }
-    }
-    
-    for shipPart in Ship:Parts
-    {
-        for r in shipPart:Resources
-        {
-            if r:Name = "Electric Charge"
-                set r:Enabled to (shipPart:DecoupledIn = LaunchECStage).
+            if shipPart:Stage < launchStage
+            {
+                print "Clamp " + shippart:title + " is incorrectly staged.".
+                if launchButton:IsType("Button")
+                    set launchButton:Enabled to false.
+            }
         }
     }
 
-    from {local s is 1.} until s = Stage:Number step {set s to s+1.} do
+    from {local s is 1.} until s > launchStage step {set s to s+1.} do
     {
         set stageWetMass[s] to stageWetMass[s] + stageWetMass[s - 1].
         set stageDryMass[s] to stageDryMass[s] + stageWetMass[s - 1].
     }
 
-	set launchMass to stageWetMass[Stage:Number-1].
+	set launchMass to stageWetMass[launchStage].
 	local stageTime is 1.
 
-    from {local s is Stage:Number - 1.} until s < 0 step {set s to s-1.} do
+    from {local s is launchStage.} until s < 0 step {set s to s-1.} do
     {
         local massFlow is 0.
         local vacThrust is 0.

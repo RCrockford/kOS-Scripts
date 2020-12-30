@@ -8,12 +8,11 @@ if not HasTarget
 }
 
 parameter minDist is 50.
+parameter portIdx is -1.
 local tShip is target.
 
 // Wait for unpack
 wait until Ship:Unpacked.
-
-wait until tShip:Position:Mag < minDist.
 
 switch to scriptpath():volume.
 runoncepath("/FCFuncs").
@@ -22,13 +21,17 @@ runpath("flight/TuneSteering").
 LAS_Avionics("activate").
 
 local port is 0.
-for p in Ship:Parts
+
+if Ship:DockingPorts:Length > 0
 {
-    if p:IsType("DockingPort")
+    if portIdx < 0 or portIdx >= Ship:DockingPorts:Length
     {
-        set port to p.
-        break.
+        print "Selecting first port from list: ".
+        for p in Ship:DockingPorts
+            print "  " + p:Title.
+        set portIdx to 0.
     }
+    set port to Ship:DockingPorts[portIdx].
 }
 
 if port:IsType("DockingPort")
@@ -41,11 +44,13 @@ else
     set port to Ship:rootpart.
 }
 
+wait until tShip:Position:Mag < minDist.
+
 rcs on.
 lock steering to lookdirup(tShip:Position:Normalized, Facing:UpVector).
 
 local startElements is Ship:Elements:Length.
-wait until (port:IsType("DockingPort") and port:State <> "Ready") or Ship:Elements:Length > startElements.
+wait until Ship:Elements:Length > startElements.
 
 unlock steering.
 set Ship:Control:Neutralize to true.

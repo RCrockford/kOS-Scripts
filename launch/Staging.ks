@@ -32,7 +32,7 @@ global function LAS_FireDecoupler
 		set modDecouple to decoup:GetModule("ModuleAnchoredDecoupler").
 	else
 		return.
-	
+
 	if modDecouple:HasEvent("decouple")
 		modDecouple:DoEvent("decouple").
 	else if modDecouple:HasEvent("decouple top node")
@@ -72,7 +72,7 @@ local function StageFlameout
 			}
 		}
     }
-    
+
     if allSpooled
         set engineSpooling to false.
 
@@ -92,7 +92,7 @@ local function DecoupleStage
                 fairing:DoEvent("jettison fairing").
         }
         NextStageFairings:Clear().
-    
+
         // Fire all decouplers
         for decoup in NextStageDecouplers
         {
@@ -100,10 +100,10 @@ local function DecoupleStage
         }
 
         NextStageDecouplers:Clear().
-        
+
         return true.
     }
-    
+
     return false.
 }
 
@@ -128,7 +128,7 @@ local function GetBatteryProportion
 			return r:Amount / r:Capacity.
 		}
 	}
-	
+
 	return 0.
 }
 
@@ -163,7 +163,7 @@ local function HotSwap
             eng:Shutdown().
         }
     }
-    
+
     return swap.
 }
 
@@ -173,7 +173,7 @@ local HotStageWarmup is 0.
 local function HotStage
 {
     local burnTime is LAS_GetStageBurnTime(stageEngines).
-    
+
     if Terminal:Input:HasChar() and Terminal:Input:GetChar() = "s"
     {
         print "Forcing separation".
@@ -191,7 +191,7 @@ local function HotStage
         }
         else
         {
-			set ShutdownEngines to StageEngines.		
+			set ShutdownEngines to StageEngines.
             set StagingFunction to HotSwap@.
         }
     }
@@ -205,7 +205,7 @@ local function UllageStageSettle
     local fuelState is 1.
     for eng in NextStageEngines
         set fuelState to min(fuelState, eng:FuelStability).
-    
+
     if fuelState >= 0.99
     {
         // Fire engines (i.e. stage).
@@ -221,7 +221,7 @@ local function UllageStageSettle
         {
             // Check ullage motor burn time
             local burnTime is LAS_GetRealEngineBurnTime(NextStageUllage[0]).
-            
+
             // If less than 0.05 seconds to go, just go for it
             if burnTime < 0.05
             {
@@ -229,7 +229,7 @@ local function UllageStageSettle
                 set ship:control:fore to 0.
                 return true.
             }
-            
+
             // Ramp up ignition chance as we get near ullage burnout
             // Allows stable (95%) igntion at ~0.235s, 75% at ~0.15s, 50% at ~0.07s
             if sqrt(4 * (burnTime - 0.01)) < fuelState
@@ -271,7 +271,7 @@ local function UllageStageFire
 			LAS_IgniteEngine(eng).
 		}
 	}
-    
+
     set StagingFunction to UllageStageSettle@.
 }
 
@@ -286,7 +286,7 @@ local function UllageStageSeparate
     {
         print "Forcing separation".
         print "  Eng FO=" + stageEngines[0]:FlameOut + ", Ig=" + stageEngines[0]:Ignition.
-        
+
         for eng in stageEngines
         {
             eng:Shutdown().
@@ -297,7 +297,7 @@ local function UllageStageSeparate
         // Wait for flame out
         if not StageFlameout(Stage:number - 1)
             return false.
-        
+
         local minHeight is LAS_GetPartParam(NextStageEngines[0], "h=", -1).
         if (Ship:Altitude < minHeight)
         {
@@ -309,7 +309,7 @@ local function UllageStageSeparate
 
             return false.
         }
-        
+
         local apoTime is LAS_GetPartParam(NextStageEngines[0], "a=", -1).
         if apoTime >= 0 and ETA:Apoapsis > apoTime
         {
@@ -321,7 +321,7 @@ local function UllageStageSeparate
 
             return false.
         }
-		
+
 		local maxPressure is LAS_GetPartParam(NextStageEngines[0], "p=", 10).   // 10 kPa is a default ignition chance of 92.5%, 100% at 5 kPA.
         if (Ship:Q * constant:AtmToKPa > maxPressure)
         {
@@ -334,14 +334,14 @@ local function UllageStageSeparate
             return false.
         }
     }
-	
+
 	set Ship:Control:Fore to 0.
 	set Ship:Control:PilotMainThrottle to 1.
-    
+
     // Detach lower stage.
     if DecoupleStage()
         print "Stage " + Stage:Number + " separation.".
-		
+
     set StagingFunction to UllageStageFire@.
 
     return false.
@@ -357,7 +357,7 @@ local function ParachuteDescent
     {
         return false.
     }
-	
+
 	set maxAltitude to max(Ship:Altitude, maxAltitude).
 	if maxAltitude < 5000
 		return false.
@@ -376,7 +376,7 @@ local function ParachuteDescent
     if Ship:Q > 1e-8 and not LAS_IsParachuting
     {
         set LAS_IsParachuting to true.
-        
+
         local chutesArmed is false.
         for chute in NextStageChutes
         {
@@ -387,9 +387,9 @@ local function ParachuteDescent
                 set chutesArmed to true.
             }
         }
-        
+
         print "Parachutes armed.".
-        
+
         // If we couldn't arm the chutes, just stage.
         return not chutesArmed.
     }
@@ -403,7 +403,7 @@ local function SpinUp
     local minHeight is LAS_GetPartParam(NextStageUllage[0], "h=", -1).
     if minHeight > 0
         return Ship:Altitude >= minHeight.
-        
+
     local burnTime is LAS_GetPartParam(NextStageUllage[0], "t=", -1).
     if burnTime > 0
         return StageFlameout(-1) or LAS_GetStageBurnTime(stageEngines) < burnTime.
@@ -461,7 +461,7 @@ local function CheckStageType
             print "Next stage: Final".
 			return.
 		}
-	
+
         if eng:AllowShutdown and not eng:Ignition
             set enginesNeedStartup to true.
     }
@@ -523,9 +523,9 @@ local function CheckStageType
 local function EnableECForStage
 {
     parameter s.
-    
+
     local ECEnabled is 0.
-    
+
     until ECEnabled >= 100 or s < -1
     {
         for p in Ship:Parts
@@ -547,10 +547,10 @@ local function EnableECForStage
 }
 
 local function CheckAbort
-{    
+{
 	local allEngines is list().
     list engines in allEngines.
-	
+
 	local doAbort is false.
 	if LAS_HasEscapeSystem
 	{
@@ -558,7 +558,7 @@ local function CheckAbort
 		for eng in allEngines
 			set shipThrust to shipThrust + eng:Thrust.
 		local twr is ShipThrust / (Ship:Mass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude).
-		
+
 		if Ship:Q > 0.1 and Ship:Q * vang(Facing:Vector, SrfPrograde:Vector) > 2
 		{
 			print "Ship violated Qα constraint (" + round(Ship:Q * vang(Facing:Vector, SrfPrograde:Vector), 2) + "), aborting launch.".
@@ -589,7 +589,7 @@ local function CheckAbort
 		{
 			eng:Shutdown().
 		}
-		
+
 		HudText("RSO: Commanded ship destruction.", 5, 2, 15, red, false).
 
 		// Tell all other CPUs to destroy themselves.
@@ -610,18 +610,18 @@ global function LAS_CheckStaging
 {
     if not Stage:Ready
         return false.
-		
+
 	CheckAbort().
 
     if StagingFunction()
     {
         EnableECForStage(Stage:Number - 1).
-    
+
         stage.
 
         set StagingFunction to CheckStageType@.
         set engineSpooling to true.
-        
+
         return true.
     }
     else
@@ -640,13 +640,18 @@ global function LAS_CheckStaging
             }
         }
     }
-    
+
     return false.
 }
 
 global function LAS_NextStageIsUllage
 {
 	return StagingFunction = UllageStageFire@.
+}
+
+global function LAS_NextStageIsBoosters
+{
+	return (StagingFunction = BoosterDrop@) or (stageEngines:Length = 1 and (not stageEngines[0]:AllowShutdown)).
 }
 
 global function LAS_FinalStage
@@ -675,6 +680,9 @@ global function LAS_EnableAllEC
 
 global function LAS_CheckPayload
 {
+    parameter fairingStatus is 0.
+    parameter equipmentStatus is 0.
+
     if not PL_FairingsJettisoned
     {
         if Ship:Q < 5e-3
@@ -687,16 +695,24 @@ global function LAS_CheckPayload
                 {
                     if NextStageFairings:Contains(fairing)
                         NextStageFairings:Remove(fairing).
-                    
+
                     fairing:DoEvent("jettison fairing").
                     set jettisoned to true.
                 }
             }
-            
+
             if jettisoned
                 print "Fairings jettisoned".
-            
+
+            if fairingStatus:IsType("Label")
+                set fairingStatus:Text to "Fairings: <color=#00ff00>jettisoned</color>".
+
             set PL_FairingsJettisoned to true.
+        }
+        else
+        {
+            if fairingStatus:IsType("Label")
+                set fairingStatus:Text to "Fairings: <color=#fff000>attached (Q > " + round(5 * Constant:AtmTokPa, 1) + " Pa)</color>".
         }
     }
     else if not PL_PanelsExtended
@@ -717,7 +733,7 @@ global function LAS_CheckPayload
                     panel:DoAction("extend solar panel", true).
                 }
             }
-			
+
 			for antenna in Ship:ModulesNamed("ModuleDeployableAntenna")
             {
                 if antenna:HasEvent("extend antenna") and not antenna:part:tag:contains("noextend")
@@ -725,8 +741,16 @@ global function LAS_CheckPayload
                     antenna:DoEvent("extend antenna").
                 }
             }
-			
+
+            if equipmentStatus:IsType("Label")
+                set equipmentStatus:Text to "Equipment: <color=#00ff00>extended</color>".
+
             set PL_PanelsExtended to true.
+        }
+        else
+        {
+            if equipmentStatus:IsType("Label")
+                set equipmentStatus:Text to "Equipment: <color=#fff000>retracted (Q > " + round(1e-2 * Constant:AtmTokPa, 2) + " Pa)</color>".
         }
     }
 }

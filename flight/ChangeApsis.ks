@@ -37,7 +37,7 @@ print "  Align at: T-" + round(alignMargin, 1) + " s.".
 
 if burnDur:duration < Ship:Orbit:Period * 0.25
 {
-	if burnETA() - burnDur:halfBurn > 300 and Addons:Available("KAC")
+	if burnETA() - burnDur:halfBurn - alignMargin > 300 and Addons:Available("KAC")
 	{
 		// Add a KAC alarm.
 		AddAlarm("Raw", (burnETA() - burnDur:halfBurn) - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").

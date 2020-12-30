@@ -145,8 +145,11 @@ local EngineStats is lexicon().
             local r is eng:ConsumedResources[k].
             if engRes:HasKey(r:Name)
             {
-                set fuelTime to min(fuelTime, engRes[r:Name] / resConsumption[r:Name]).
-				set resShare to min(resShare, r:MaxFuelFlow / resConsumption[r:Name]).
+                if resConsumption[r:Name] > 0
+                {
+                    set fuelTime to min(fuelTime, engRes[r:Name] / resConsumption[r:Name]).
+                    set resShare to min(resShare, r:MaxFuelFlow / resConsumption[r:Name]).
+                }
             }
             else
             {
@@ -297,7 +300,7 @@ global function LAS_GetStagePerformance
 	for eng in allEngines
 	{
 		local engStage is min(eng:DecoupledIn + 1, eng:stage).
-		if engStage = s and not LAS_EngineIsUllage(eng) and not eng:Tag:Contains("nostage") and not eng:Name:Contains("vernier") and not (eng:Tag:Contains("noguide") and fromGuidance)
+		if engStage = s and not LAS_EngineIsUllage(eng) and not eng:Tag:Contains("nostage") and not (eng:Tag:Contains("noguide") and fromGuidance)
 		{
 			local t is LAS_GetRealEngineBurnTime(eng).
             if t >= 10 or not fromGuidance

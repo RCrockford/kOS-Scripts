@@ -13,9 +13,9 @@ set dV to NextNode:deltaV.
 else
 {
 lock burnETA to p:eta-Time:Seconds.
-set dV to _f0*p:dV:x+_f2*pDv:y+_f1*p:dV:z.
+set dV to _f0*p:dV:x+_f2*p:dV:y+_f1*p:dV:z.
 }
-print"Align in "+round(burnETA-p:align,0)+" seconds.".
+print"Align in "+round(burnETA-p:align,0)+" seconds (T-"+round(p:align)+").".
 wait until burnETA<=p:align.
 kUniverse:Timewarp:CancelWarp().
 print"Aligning ship".
@@ -38,7 +38,15 @@ local function _f3
 if HasNode and nextNode:eta<=p:align
 set dV to NextNode:deltaV.
 else if p:haskey("dV")
-set dV to _f0*p:dV:x+_f2*pDv:y+_f1*p:dV:z.
+set dV to _f0*p:dV:x+_f2*p:dV:y+_f1*p:dV:z.
+}
+local function _f4
+{
+local _4 is vdot(Facing:Vector,Ship:AngularVel).
+if abs(_4)<1e-3
+set ship:control:roll to choose-0.000011 if _4<0 else 0.000011.
+else
+set ship:control:roll to 0.
 }
 LAS_Avionics("activate").
 _f3().
@@ -50,12 +58,12 @@ until burnETA<=_3
 {
 if vdot(dV:Normalized,Facing:Vector)>0.99
 {
-local _4 is vdot(Facing:Vector,Ship:AngularVel).
-if abs(_4)>p:spin*1.25
+local _5 is vdot(Facing:Vector,Ship:AngularVel).
+if abs(_5)>p:spin*1.25
 {
 set Ship:Control:Roll to 0.1.
 }
-else if abs(_4)>p:spin and abs(_4)<p:spin*1.2
+else if abs(_5)>p:spin and abs(_5)<p:spin*1.2
 {
 set Ship:Control:Roll to-0.1.
 }
@@ -71,49 +79,48 @@ set Ship:Control:Roll to-0.1.
 }
 else
 {
-until burnETA<=_3+min(max(p:align/40,2),10).
+until burnETA<=_3
 {
+_f4().
 local err is vang(dV:Normalized,Facing:Vector).
-local _5 is Ship:AngularVel:Mag*180/Constant:Pi.
+local _6 is vxcl(Facing:Vector,Ship:AngularVel):Mag*180/Constant:Pi.
 set _2:Text to"Aligning ship, <color="+(choose"#ff8000"if err>0.5 else"#00ff00")+">Δθ: "+round(err,2)
-+"°</color> <color="+(choose"#ff8000"if err/max(_5,1e-4)>burnETA-_3 else"#00ff00")+">ω: "+round(_5,3)+"°/s</color>".
++"°</color> <color="+(choose"#ff8000"if err/max(_6,1e-4)>burnETA-_3 else"#00ff00")+">ω: "+round(_6,3)+"°/s</color> roll: "+round(vdot(Facing:Vector,Ship:AngularVel),6).
+if p:eng and EM_IgDelay()>0 and burnETA<=_3+8
+{
+if Ship:Control:Fore>0
+{
+if EM_GetEngines()[0]:FuelStability>=0.99
+set Ship:Control:Fore to 0.
+}
+else
+{
+if EM_GetEngines()[0]:FuelStability<0.98
+set Ship:Control:Fore to 1.
+}
+}
 wait 0.
 }
 _f3().
-if p:eng and EM_IgDelay()>0
-{
-rcs on.
-set Ship:Control:Fore to 1.
-until burnETA<=_3
-{
-if EM_GetEngines()[0]:FuelStability>=0.99
-{
-set ship:control:fore to 0.
-break.
-}
-wait 0.
-}
-}
-wait until burnETA<=_3.
 }
 print"Starting burn".
 if p:eng
 {
 set _2:Text to"Ignition".
-local _6 to p:t.
+local _7 to p:t.
 if not p:inertial
-set _6 to(ship:Mass-ship:Mass/p:mRatio)/p:mFlow.
-local _7 is 0.
+set _7 to(ship:Mass-ship:Mass/p:mRatio)/p:mFlow.
 local _8 is 0.
+local _9 is 0.
 for r in Ship:Resources
 {
 if r:Name=p:fuelN
 {
-set _7 to r.
-set _8 to r:Amount-p:fFlow*_6.
+set _8 to r.
+set _9 to r:Amount-p:fFlow*_7.
 }
 }
-local _9 is _7:Amount.
+local _10 is _8:Amount.
 EM_Ignition().
 if p:inertial
 {
@@ -123,14 +130,15 @@ set Ship:Control:Neutralize to true.
 rcs off.
 stage.
 }
-local _10 is Time:Seconds.
-until _7:Amount<=_8 or not EM_CheckThrust(0.1)
-{
 local _11 is Time:Seconds.
+until _8:Amount<=_9 or not EM_CheckThrust(0.1)
+{
+local _12 is Time:Seconds.
 _f3().
-set _2:Text to"Burning, Fuel: "+round(_7:Amount,2)+" / "+round(_8,2)+" ["+round((_7:Amount-_8)/p:fFlow,2)+"s]".
+_f4().
+set _2:Text to"Burning, Fuel: "+round(_8:Amount,2)+" / "+round(_9,2)+" ["+round((_8:Amount-_9)/p:fFlow,2)+"s]".
 wait 0.
-if _7:Amount-(p:fFlow*(Time:Seconds-_11))<=_8
+if _8:Amount-(p:fFlow*(Time:Seconds-_12))<=_9
 break.
 }
 EM_Shutdown().
@@ -138,11 +146,12 @@ EM_Shutdown().
 else
 {
 set Ship:Control:Fore to 1.
-local _12 is Time:Seconds+p:t.
-until _12<=Time:Seconds
+local _13 is Time:Seconds+p:t.
+until _13<=Time:Seconds
 {
-set _2:Text to"Burning, Cutoff: "+round(_12-Time:Seconds,1)+" s".
+set _2:Text to"Burning, Cutoff: "+round(_13-Time:Seconds,1)+" s".
 _f3().
+_f4().
 wait 0.
 }
 unlock steering.

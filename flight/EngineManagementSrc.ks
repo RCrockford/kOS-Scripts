@@ -3,6 +3,7 @@
 parameter burnStage.
 
 local ignitionDelay is 0.
+local needsUllage is false.
 local activeEngines is list().
 
 runoncepath("/FCFuncs").
@@ -15,14 +16,13 @@ for e in stageEngines
     if e:Ignitions <> 0 or e:Ignition
     {
         activeEngines:Add(e).
-            
+        
         if e:Ullage
-        {
-            if e:PressureFed
-                set ignitionDelay to max(ignitionDelay, 0.91).
-            else
-                set ignitionDelay to max(ignitionDelay, 2.39).
-        }
+            set needsUllage to true.
+        if not e:PressureFed    // Assume all pumped engines have spool time (for 8096C which is pumped but not ullaged)
+            set ignitionDelay to max(ignitionDelay, 2.39).
+        else if e:Ullage
+            set ignitionDelay to max(ignitionDelay, 0.91).
     }
 }
 
@@ -52,8 +52,11 @@ global function EM_Ignition
             e:Shutdown.
 			
         // Burn forwards with RCS.
-        rcs on.
-        set Ship:Control:Fore to 1.
+        if needsUllage
+        {
+            rcs on.
+            set Ship:Control:Fore to 1.
+        }
         set Ship:Control:PilotMainThrottle to 1.
         
         for e in activeEngines

@@ -140,7 +140,7 @@ local function GetCurrentAccel
     return accel.
 }
 
-if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit"
+if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
 {
     print "Lander descent system online.".
     print "Angle gate: " + round(angleGate, 2).
@@ -153,6 +153,8 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
     // Target vel is speed at 45° angle for full throttle descent, safety margin provided by increasing TWR.
     local vT is -sqrt(rT * sqrt(2) * (GetCurrentAccel(Up:Vector):y - Body:Mu / Body:Position:SqrMagnitude)).
     print "Target velocity: " + round(vT, 2).
+    if DescentEngines[0]:MinThrottle > 0.9
+        set rT to rT * 2.
     
     {
         local fuelStatus is CurrentFuelStatus().
@@ -193,7 +195,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         local acgx is 0.
         local acgz is accel:z.
         local unclampedacgz is acgz.
-        local targetDist is 0.
+        local targetDist is 1.
 
         if targetPos:IsType("GeoCoordinates") and not (maintainH:Pressed or maintainAlt:Pressed or ignoreTarget:Pressed or bingoFuel)
         {
@@ -211,10 +213,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         if maintainAlt:Pressed and not bingoFuel
         {
             local responseT is -16.
-            local acgxA is 12 * (prevAlt - Ship:Altitude) / (responseT*responseT) + 6 * Ship:VerticalSpeed / responseT.
-            // Maintain 1km clearance from terrain
-            local acgxH is 12 * (1000 - Ship:Altitude) / (responseT*responseT) + 6 * Ship:VerticalSpeed / responseT.
-            set acgx to max(acgxA, acgxH).
+            set acgx to 12 * (prevAlt - Ship:Altitude) / (responseT*responseT) + 6 * Ship:VerticalSpeed / responseT.
         }
         else if maintainH:Pressed and not bingoFuel
         {
@@ -224,6 +223,14 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         else
         {
             set acgx to 12 * (rT - h) / (t*t) + 6 * (vT + Ship:VerticalSpeed) / t.
+        }
+        
+        if not maintainH:Pressed and not bingoFuel
+        {
+            // Maintain clearance from terrain
+            local responseT is -12.
+            local acgxH is 12 * (2 * Ship:Velocity:Surface:Mag - h) / (responseT^2) + 6 * Ship:VerticalSpeed / responseT.
+            set acgx to max(acgx, acgxH).
         }
 
         if not maintainH:Pressed
@@ -315,6 +322,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
                 if steeringControl > 0
                 {
                     print "Approach mode active".
+                    LAS_Avionics("activate").
                     rcs on.
                     lock steering to LookDirUp(f, Facing:UpVector).
                 }
@@ -342,8 +350,6 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
 
         wait 0.
     }
-
-    legs on. gear on.
     
     runpath("/lander/FinalDescent", DescentEngines, debugStat, targetPos, stage:number > 0).
     
@@ -351,6 +357,10 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         set abortMode to true.
     else
         ladders on.
+}
+else
+{
+    print "Ship status: " + Ship:Status.
 }
 
 if abortMode

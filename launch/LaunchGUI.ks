@@ -8,7 +8,8 @@ local labelBox is mainBox:AddVBox().
 set labelBox:style:width to 150.
 local controlBox is mainBox:AddVBox().
 set controlBox:style:width to 100.
-local launchButton is flightGui:AddButton("Launch").
+local buttonBox is flightGui:AddHBox().
+local launchButton is buttonBox:AddButton("Launch").
 
 global function LGUI_GetButton
 {
@@ -52,4 +53,10 @@ global function LGUI_CreateCheckbox
     local newControl is controlBox:AddCheckBox("").
     set newControl:Style:Height to 25.
     return newControl.
+}
+
+global function LGUI_CreateButton
+{
+    parameter lbl.
+    return buttonBox:AddButton(lbl).
 }
