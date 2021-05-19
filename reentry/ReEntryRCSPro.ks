@@ -1,6 +1,8 @@
 @lazyglobal off.
 wait until Ship:Unpacked.
-local p is readjson("1:/burn.json").
+local p is lexicon(open("1:/burn.csv"):readall:string:split(",")).
+for k in p:keys
+set p[k]to p[k]:ToScalar(0).
 rcs on.
 lock steering to LookDirUp(Prograde:Vector,Facing:UpVector).
 wait until vdot(Prograde:Vector,Facing:Vector)>0.99999.

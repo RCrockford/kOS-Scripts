@@ -2,7 +2,9 @@
 
 wait until Ship:Unpacked.
 
-local p is readjson("1:/burn.json").
+local p is lexicon(open("1:/burn.csv"):readall:string:split(",")).
+for k in p:keys
+    set p[k] to p[k]:ToScalar(0).
 
 if abs(p:oLatLong) <= 180
 {
@@ -42,15 +44,15 @@ if Ship:Obt:Periapsis > p:pe
 {
 	print "Commencing re-entry burn.".
 
-    if p:engines
+    if p:engines > 0
     {
         runpath("/flight/EngineMgmt", Stage:Number).
         if not EM_Ignition()
         {
-            set p:engines to false.
+            set p:engines to 0.
         }
     }
-    if not p:engines
+    if p:engines = 0
         set Ship:Control:Fore to 1.
 
 	local shipMass is Ship:mass.
@@ -59,10 +61,10 @@ if Ship:Obt:Periapsis > p:pe
 		wait 0.1.
 		if shipMass = Ship:mass
 		{
-			if p:engines
+			if p:engines > 0
 			{
 				set Ship:Control:Fore to 1.
-				set p:engines to false.
+				set p:engines to 0.
 			}
 			else
 			{

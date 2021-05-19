@@ -27,12 +27,15 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
 	rcs on.
 	lock steering to LookDirUp(aimVec, Facing:UpVector).
 
-	wait until vdot(aimVec, Facing:Vector) > 0.999998.
+	wait until vdot(aimVec, Facing:Vector) > 0.999995.
 	until Stage:Number = targetStage
 	{
 		wait until stage:ready.
 		stage.
 	}
+    
+    wait 5.
+	wait until vdot(aimVec, Facing:Vector) > 0.999995.
 	
     local fileList is list().
     local burnParams is lexicon().

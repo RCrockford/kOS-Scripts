@@ -71,11 +71,11 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
     {
         burnParams:Add("oLatLong", orientLatLong).
         burnParams:Add("bLatLong", burnLatLong).
-        burnParams:Add("engines", not EM_GetEngines():empty).
+        burnParams:Add("engines", EM_GetEngines():Length).
         
         fileList:Add("reentry/ReEntryBurn.ks").
         fileList:add("FCFuncs").
-        if burnParams:engines
+        if burnParams:engines > 0
             fileList:add("flight/EngineMgmt.ks").
     }
     fileList:add("reentry/ReEntryLanding.ks").

@@ -34,8 +34,7 @@ for a in Ship:ModulesNamed("ModuleProceduralAvionics")
 rcs on.
 lock steering to LookDirUp(SrfRetrograde:Vector, Facing:UpVector).
 
-wait until vdot(SrfRetrograde:Vector, Facing:Vector) > 0.9995.
-wait 1.
+wait until Ship:Airspeed < 2500.
 
 unlock steering.
 set Ship:Control:Neutralize to true.
