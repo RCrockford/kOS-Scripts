@@ -3,6 +3,7 @@
 parameter maxSpeed is 5.
 parameter minDist is 20.
 parameter targetPoint is 0.
+parameter stabilityFactor is 1.
 
 Core:Part:ControlFrom().
 clearGuis().
@@ -37,6 +38,16 @@ if targetPoint:IsType("Scalar")
 			}
 		}
 	}
+}
+
+local fullCharge is 1.
+for r in ship:resources
+{
+    if r:Name = "ElectricCharge"
+    {
+        set fullCharge to r:Capacity.
+        break.
+    }
 }
 
 local targetGeoPos is choose targetPoint:GeoPosition if targetPoint:IsType("WayPoint") else targetPoint.
@@ -80,7 +91,7 @@ local function createGuiInfo
 }
 
 createGuiInfo("hdg", "Heading").
-createGuiInfo("br", "Bearing").
+createGuiInfo("spd", "Drive Speed").
 createGuiInfo("dst", "Distance").
 createGuiInfo("eta", "ETA").
 
@@ -92,7 +103,7 @@ set statusBox:style:width to 100.
 
 createGuiInfo("sv", "Last Save").
 createGuiInfo("ra", "Roll Angle").
-createGuiInfo("spd", "Drive Speed").
+createGuiInfo("pwr", "Charge").
 createGuiInfo("thr", "Throttle").
 
 statusGui:Show().
@@ -132,7 +143,7 @@ set steeringmanager:maxstoppingtime to 5.
 
 local lastSaveTime is Time:Seconds - 239.95.
 
-local smoothThrottle is 0.
+local curThrottle is 0.
 
 until targetGeoPos:Distance < minDist
 {
@@ -181,17 +192,25 @@ until targetGeoPos:Distance < minDist
 	
 	set Ship:Control:WheelSteer to steerPid:update(time:seconds, targetGeoPos:Bearing).
 	
-	local reqSpeed is maxSpeed * max(1-vang(slopeVec, Up:Vector)/30, 0.5)^1.5.
+	local reqSpeed is maxSpeed * min(1, max(1-vang(slopeVec, Up:Vector)/30, 0.5)^1.5 * stabilityFactor).
 	set throttlePid:SetPoint to reqSpeed.
 	local throttleDelta is throttlePid:Update(time:seconds, Ship:GroundSpeed).
 
-	set Ship:Control:WheelThrottle to min(max(-1, Ship:Control:WheelThrottle + throttleDelta), 1).
+	set curThrottle to min(max(-1, curThrottle + throttleDelta), 1).
 
-	if Ship:Control:WheelThrottle < -0.2
+	if curThrottle < -0.2
 		brakes on.
 	else
 		brakes off.
-		
+    
+    // If low on power, freewheel
+    if Ship:ElectricCharge < fullCharge * 0.02
+        set Ship:Control:WheelThrottle to 0.
+    else if abs(targetGeoPos:Bearing) > 20
+        set Ship:Control:WheelThrottle to min(max(-0.2, curThrottle), 0.2).
+    else
+        set Ship:Control:WheelThrottle to curThrottle.
+
 	if Ship:Control:WheelThrottle > 0.95 and vdot(slopeVec, Up:Vector) < 0.965
 	{
 		rcs on.
@@ -203,8 +222,7 @@ until targetGeoPos:Distance < minDist
 		set Ship:Control:Top to 0.
 	}
 	
-	set guiStatus:hdg:text to round(targetGeoPos:Heading, 1) + "°".
-	set guiStatus:br:text to round(targetGeoPos:Bearing, 1) + "°".
+	set guiStatus:hdg:text to round(targetGeoPos:Heading, 1) + "° (" + round(targetGeoPos:Bearing, 1) + "°)".
 	if targetGeoPos:Distance > 5000
 		set guiStatus:dst:text to round(targetGeoPos:Distance / 1000, 1) + " km".
 	else if targetGeoPos:Distance > 1200
@@ -221,8 +239,9 @@ until targetGeoPos:Distance < minDist
 	set guiStatus:sv:Text to round(Time:Seconds - lastSaveTime, 0) + " / 240 s".
 	set guiStatus:ra:Text to round(vang(Facing:UpVector, slopeVec), 1) + " / 3.14°".
 	set guiStatus:spd:Text to round(reqSpeed, 2) + " m/s".
+    set guiStatus:pwr:Text to round(100 * Ship:ElectricCharge / fullCharge, 2) + "%".
 	
-	set guiStatus:thr:Text to round(Ship:Control:WheelThrottle, 2):ToString().
+	set guiStatus:thr:Text to round(curThrottle, 3) + " (" + round(Ship:Control:WheelThrottle, 3) + ")".
 
 	wait 0.
 }

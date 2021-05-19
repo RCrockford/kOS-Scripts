@@ -29,6 +29,9 @@ local DescentEngines is EM_GetEngines().
 local enginesIgnited is DescentEngines[0]:Ignition.
 local abortMode is false.
 
+if not DescentEngines[0]:Ullage and DescentEngines[0]:PressureFed
+    set enginesIgnited to false.
+
 local function GetConnectedTanks
 {
     parameter p.
@@ -153,8 +156,6 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
     // Target vel is speed at 45° angle for full throttle descent, safety margin provided by increasing TWR.
     local vT is -sqrt(rT * sqrt(2) * (GetCurrentAccel(Up:Vector):y - Body:Mu / Body:Position:SqrMagnitude)).
     print "Target velocity: " + round(vT, 2).
-    if DescentEngines[0]:MinThrottle > 0.9
-        set rT to rT * 2.
     
     {
         local fuelStatus is CurrentFuelStatus().
@@ -309,6 +310,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         if not enginesIgnited and targetPos:IsType("GeoCoordinates")
         {
             set distanceGate to unclampedacgz > accel:z * 1.1.
+            
         }
         
         // When the commanded attitude is sufficiently vertical, engage attitude control.
@@ -344,6 +346,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
                 if distanceGate
                     print "Reached distance gate".
                 EM_Ignition().
+                LanderEnginesOn().
                 set enginesIgnited to true.
             }
         }

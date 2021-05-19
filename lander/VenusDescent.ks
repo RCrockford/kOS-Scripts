@@ -9,13 +9,9 @@ wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
 
-// Setup functions
-runpath("0:/flight/EngineMgmt", Stage:Number).
-runpath("0:/flight/TuneSteering").
-
 if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escaping"
 {
-    print "Martian descent system online.".
+    print "Venusian descent system online.".
 
 	local debugGui is GUI(400, 80).
     set debugGui:X to 160.
@@ -34,16 +30,18 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
 	set navmode to "surface".
     
-    set debugStat:Text to "Waiting for dynamic pressure".
-    
-    wait until Ship:Q > 1e-6.
-   
-    // Switch on all tanks
-    for p in Ship:Parts
+    for panel in Ship:ModulesNamed("ModuleROSolar")
     {
-        for r in p:resources
+        if panel:HasAction("retract solar panel")
         {
-            set r:enabled to true.
+            panel:DoAction("retract solar panel", true).
+        }
+    }
+    for panel in Ship:ModulesNamed("ModuleDeployableSolarPanel")
+    {
+        if panel:HasAction("retract solar panel")
+        {
+            panel:DoAction("retract solar panel", true).
         }
     }
 
@@ -69,12 +67,14 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         rcs on.
         lock steering to LookDirUp(SrfRetrograde:Vector, Facing:UpVector).
 
-        wait until vdot(SrfRetrograde:Vector, Facing:Vector) > 0.9995 or Ship:Altitude < 50000.
-        wait 1.
+        wait until vdot(SrfRetrograde:Vector, Facing:Vector) > 0.9995 or Ship:Q > (0.08 * Constant:kPaToAtm).
+        wait until Ship:Q > (0.08 * Constant:kPaToAtm).
 
         unlock steering.
         set Ship:Control:Neutralize to true.
         rcs off.
+
+        stage.
     }
     else
     {
@@ -91,8 +91,26 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
     set debugStat:Text to "Waiting for chute altitude".
 
-    wait until Ship:Altitude - Ship:GeoPosition:TerrainHeight < 15000.
-
+    wait until Ship:Altitude - Ship:GeoPosition:TerrainHeight < 1000.
+    
+    for panel in Ship:ModulesNamed("ModuleROSolar")
+    {
+        if panel:HasAction("extend solar panel")
+        {
+            panel:DoAction("extend solar panel", true).
+        }
+    }
+    for panel in Ship:ModulesNamed("ModuleDeployableSolarPanel")
+    {
+        if panel:HasAction("extend solar panel")
+        {
+            panel:DoAction("extend solar panel", true).
+        }
+    }
+    
+    if stage:number > 0
+        stage.
+    
     local chutesArmed is false.
     for rc in Ship:ModulesNamed("RealChuteModule")
     {
@@ -108,7 +126,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         
     set debugStat:Text to "Waiting for heatshield altitude".
 
-    wait until Alt:Radar < 2500.
+    wait until Alt:Radar < 200.
 
     // Drop all payload bases and heatshields
     for hs in Ship:ModulesNamed("ModuleDecouple")
@@ -140,12 +158,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     
     if stage:number > 0
         stage.
-    
-    wait 0.1.
-    
-    rcs on.
-    local DescentEngines is list().
-	list engines in DescentEngines.
 
-    runpath("/lander/FinalDescent", DescentEngines, debugStat, 0).
+    legs on.
+    gear on.
 }

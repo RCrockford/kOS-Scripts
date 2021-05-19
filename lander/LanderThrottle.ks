@@ -34,6 +34,9 @@ if minThrottle >= 0.9
                 break.
             }
         }
+        
+        if unassignedEngines:Length > 0 and eng1 = unassignedEngines[0]
+            break.
     }
     
     print "Found " + throttleGroups:Length + " throttle groups and " + unassignedEngines:Length + " unassigned".
