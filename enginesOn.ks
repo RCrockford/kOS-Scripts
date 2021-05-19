@@ -27,5 +27,6 @@ for eng in EM_GetEngines()
     eng:Shutdown.
 }
 
+set ship:control:pilotmainthrottle to 0.
 unlock throttle.
 set ship:control:neutralize to true.

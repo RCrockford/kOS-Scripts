@@ -82,7 +82,9 @@ local burnParams is lexicon(
 if not HasNode
 {
     burnParams:Add("eta", burnStart).
-    burnParams:Add("dv", dV).
+    burnParams:Add("dvx", dV:X).
+    burnParams:Add("dvy", dV:Y).
+    burnParams:Add("dvz", dV:Z).
 }
 
 local fileList is list("flight/RCSCorrectionBurn.ks", "FCFuncs.ks").

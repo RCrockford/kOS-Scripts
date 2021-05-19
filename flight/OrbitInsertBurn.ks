@@ -1,5 +1,7 @@
 wait until Ship:Unpacked.
-local p is readjson("1:/burn.json").
+local p is lexicon(open("1:/burn.csv"):readall:string:split(",")).
+for k in p:keys
+set p[k]to p[k]:ToScalar(0).
 print"OrbInsWait".
 wait until Eta:Periapsis-p:t*0.5<60.
 local n is list().

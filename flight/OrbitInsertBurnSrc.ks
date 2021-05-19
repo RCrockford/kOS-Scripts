@@ -1,7 +1,9 @@
 // Minimal insertion burn - target <= 880 bytes
 wait until Ship:Unpacked.
 
-local p is readjson("1:/burn.json").
+local p is lexicon(open("1:/burn.csv"):readall:string:split(",")).
+for k in p:keys
+    set p[k] to p[k]:ToScalar(0).
 
 print "OrbInsWait".
 

@@ -2,7 +2,9 @@
 
 wait until Ship:Unpacked.
 
-local p is readjson("1:/burn.json").
+local p is lexicon(open("1:/burn.csv"):readall:string:split(",")).
+for k in p:keys
+    set p[k] to p[k]:ToScalar(0).
 
 runpath("/flight/EngineMgmt", stage:number).
 local ignitionTime is EM_IgDelay().
@@ -17,8 +19,8 @@ print "Align angle " + round(alignAngle, 2) + "°".
 print "Burn angle " + round(burnAngle, 2) + "°".
 
 local debugGui is GUI(300, 80).
-set debugGui:X to -150.
-set debugGui:Y to debugGui:Y - 480.
+set debugGui:X to 100.
+set debugGui:Y to debugGui:Y + 220.
 local mainBox is debugGui:AddVBox().
 local debugStat is mainBox:AddLabel("Liftoff").
 debugGui:Show().

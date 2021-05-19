@@ -11,7 +11,6 @@ local currentV is VelocityAt(Ship, ETA:Apoapsis + Time:Seconds):Orbit.
 local rVec is (PositionAt(Ship, ETA:Apoapsis + Time:Seconds) - Ship:Body:Position):Normalized.
 local nVec is (LatLng(90,0):Position - Ship:Body:Position):Normalized.
 local tVec is vcrs(rVec, nVec):Normalized.
-local rVec is vcrs(nVec, tVec):Normalized.
 
 local targetA is 35793171 + Ship:Body:Radius.
 local targetEcc is 0.
@@ -60,7 +59,7 @@ if burnEta - alignMargin > 300 and Addons:Available("KAC")
 
 local burnParams is lexicon(
     "t", burnDur:halfBurn,
-    "tV", targetV,
+    "tV", targetV:Mag,
     "align", alignMargin
 ).
 

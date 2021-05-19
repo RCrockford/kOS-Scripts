@@ -45,7 +45,7 @@ if burnDur:duration < Ship:Orbit:Period * 0.25
 
 	local burnParams is lexicon(
 		"sma", targetA,
-		"ap", burnAtAp,
+		"ap", choose 1 if burnAtAp else 0,
 		"t", burnDur:halfBurn,
         "align", alignMargin
 	).

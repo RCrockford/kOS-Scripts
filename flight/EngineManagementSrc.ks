@@ -45,6 +45,8 @@ global function EM_CheckThrust
     
 global function EM_Ignition
 {
+    parameter minThrust is 0.5.
+
     // If we have engines, prep them to ignite.
     if not activeEngines:empty
     {
@@ -67,7 +69,7 @@ global function EM_Ignition
 			
 		local t is time:seconds + 3.
 
-        wait until EM_CheckThrust(0.5) or activeEngines[0]:Flameout or time:seconds > t.
+        wait until EM_CheckThrust(minThrust) or activeEngines[0]:Flameout or time:seconds > t.
         
         set Ship:Control:Fore to 0.
     }

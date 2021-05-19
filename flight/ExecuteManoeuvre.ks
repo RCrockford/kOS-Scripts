@@ -56,6 +56,17 @@ else
         set burnStage to burnStage - 1.
 
     runpath("0:/flight/EngineMgmt", burnStage).
+    if EM_GetEngines():Length = 0
+    {
+        local eng is list().
+        list engines in eng.
+        if eng:Length = 1 and not eng[0]:AllowShutdown
+        {
+            set burnStage to burnStage - 1.
+            runpath("0:/flight/EngineMgmt", burnStage).
+        }
+    }
+    
     set activeEngines to EM_GetEngines().
     if activeEngines:Length = 0
     {
@@ -123,8 +134,8 @@ if massFlow > 0
 {
 	// Calc burn duration
 	set massRatio to constant:e ^ (dV:Mag * massflow / burnThrust).
-	local finalMass is Ship:Mass / massRatio.
-	set duration to (Ship:Mass - finalMass) / massflow.
+	local finalMass is shipMass / massRatio.
+	set duration to (shipMass - finalMass) / massflow.
     
     // Calc alignment time
     runpath("0:/flight/AlignTime").
@@ -135,7 +146,16 @@ if massFlow > 0
 	print "  Duration: " + round(duration, 1) + " s.".
 	print "  Align at: T-" + round(alignMargin, 1) + " s.".
 	if not rcsBurn
+    {
 		print "  Fuel Monitor: " + fuelName + " " + round(fuelTotal, 2) + " => " + round(fuelTotal - maxFuelFlow * duration, 2).
+        if activeEngines:Length > 0 and addons:available("tf")
+        {
+            local eng is activeEngines[0].
+            local burnTime is Addons:TF:RunTime(eng) + duration.
+            local ratedTime is Addons:TF:RatedBurnTime(eng).
+            print "  Reliability: " + round(100 * Addons:TF:Reliability(eng, burnTime), 2) + "% Ignition: " +  + round(100 * Addons:TF:IgnitionChance(eng), 2) + "% t: " + round(burnTime, 1) + " / " + round(ratedTime) + "s".
+        }
+    }
 	if rcsBurn
 	{
 		print "  RCS burn.".
@@ -156,8 +176,8 @@ if massFlow > 0
 
 	local burnParams is lexicon(
 		"t", duration,
-		"eng", not activeEngines:empty,
-		"inertial", spinKick,
+		"eng", activeEngines:length,
+		"int", choose 1 if spinKick else 0,
         "align", alignMargin
 	).
 
@@ -176,12 +196,21 @@ if massFlow > 0
 	if not HasNode
 	{
 		burnParams:Add("eta", burnStart).
-		burnParams:Add("dv", dV).
+		burnParams:Add("dvx", dV:X).
+		burnParams:Add("dvy", dV:Y).
+		burnParams:Add("dvz", dV:Z).
 	}
 
-	local fileList is list("flight/ExecuteManoeuvreBurn.ks", "FCFuncs.ks", "flight/TuneSteering.ks").
-	if burnParams:eng
+	local fileList is list("flight/ExecuteBurn.ks", "FCFuncs.ks", "flight/TuneSteering.ks").
+	if burnParams:eng > 0
+    {
 		fileList:add("flight/EngineMgmt.ks").
+        fileList:add("flight/ExecuteBurnEng.ks").
+    }
+    else
+    {
+        fileList:add("flight/ExecuteBurnRCS.ks").
+    }
 
 	runpath("0:/flight/SetupBurn", burnParams, fileList).
 }

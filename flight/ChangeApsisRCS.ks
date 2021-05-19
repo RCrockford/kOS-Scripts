@@ -2,9 +2,11 @@
 
 wait until Ship:Unpacked.
 
-local p is readjson("1:/burn.json").
+local p is lexicon(open("1:/burn.csv"):readall:string:split(",")).
+for k in p:keys
+    set p[k] to p[k]:ToScalar(0).
 
-local lock burnEta to choose eta:Apoapsis if p:ap else eta:periapsis.
+local lock burnEta to choose eta:Apoapsis if p:ap > 0 else eta:periapsis.
 
 print "Align in " + round(burnEta - p:t - p:align, 1) + "s to " + (choose "Prograde" if p:sma >= Ship:Orbit:SemiMajorAxis else "Retrograde").
 

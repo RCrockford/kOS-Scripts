@@ -2,23 +2,19 @@
 
 wait until Ship:Unpacked.
 
-local p is readjson("1:/burn.json").
+local p is lexicon(open("1:/burn.csv"):readall:string:split(",")).
+for k in p:keys
+    set p[k] to p[k]:ToScalar(0).
 
 local lock tVec to Prograde:Vector.
 local lock bVec to vcrs(tVec, up:vector):Normalized.
 local lock nVec to vcrs(tVec, bVec):Normalized.
 
-local dv is V(0,0,0).
+local dv is 0.
 if HasNode
-{
     lock burnETA to NextNode:eta.
-	set dV to NextNode:deltaV.
-}
 else
-{
 	lock burnETA to p:eta - Time:Seconds.
-    set dV to tVec * p:dV:x + nVec * p:dv:y + bVec * p:dV:z.
-}
 
 print "Settle in " + round(burnETA - 30, 0) + " seconds.".
 
@@ -33,8 +29,8 @@ local function CheckHeading
 {
 	if HasNode and nextNode:eta < 60
 		set dV to NextNode:deltaV.
-	else if p:haskey("dV")
-		set dV to tVec * p:dV:x + nVec * p:dV:y + bVec * p:dV:z.
+    else if p:haskey("dVx")
+        set dV to tVec * p:dVx + nVec * p:dVy + bVec * p:dVz.
 }
 
 LAS_Avionics("activate").
@@ -45,8 +41,9 @@ lock steering to "kill".
 
 wait until burnETA <= 0.
 
-local stopTime is Time:Seconds + p:t.
-until stopTime <= Time:Seconds
+local burnTime is p:t.
+local startTime is Time:Seconds.
+until burnTime <= 0
 {
 	// Set thrust vector
 	local sf is facing.
@@ -64,6 +61,11 @@ until stopTime <= Time:Seconds
 
 	CheckHeading().
 	wait 0.
+    
+    local t is Time:Seconds.
+    local dt is t - startTime.
+    set startTime to t.
+    set burnTime to burnTime - dt * ship:control:translation:mag.
 }
 
 unlock steering.

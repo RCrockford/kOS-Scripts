@@ -8,27 +8,25 @@ parameter name is "manoeuvre".
 runpath("0:/localpack/InstallPack.ks", list()).
 
 // Write to storage so it can be restored when switching to ship.
-writejson(burnParams, "1:/burn.json").
-
-if not exists("1:/burn.json")
+local burnStr is "".
+for k in burnParams:keys
 {
-	print "Unable to setup " + name + ", insufficient space on local storage".
+    set burnStr to burnStr + k + "," + burnParams[k] + ",".
+}
+create("1:/burn.csv"):write(burnStr:Substring(0, max(burnStr:Length-1, 0))).
+
+runpath("0:/localpack/InstallPack.ks", fileList).
+
+if exists("1:/" + fileList[fileList:Length-1])
+{
+    print "Waiting for " + name + " in autonomous mode".
+    set core:bootfilename to "/" + fileList[0].
+    switch to 1.
 }
 else
 {
-	runpath("0:/localpack/InstallPack.ks", fileList).
-
-	if exists("1:/" + fileList[fileList:Length-1])
-	{
-		print "Waiting for " + name + " in autonomous mode".
-		set core:bootfilename to "/" + fileList[0].
-		switch to 1.
-	}
-	else
-	{
-		print "Waiting for " + name + " in downlink mode".
-		switch to 0.
-	}
-
-	runpath(fileList[0]).
+    print "Waiting for " + name + " in downlink mode".
+    switch to 0.
 }
+
+runpath(fileList[0]).

@@ -33,6 +33,7 @@ return _3[0]:Thrust>_3[0]:PossibleThrust*p.
 }
 global function EM_Ignition
 {
+parameter _p0 is 0.5.
 if not _3:empty
 {
 for e in _3
@@ -48,7 +49,7 @@ wait until e:FuelStability>=0.99.
 for e in _3
 e:Activate.
 local t is time:seconds+3.
-wait until EM_CheckThrust(0.5)or _3[0]:Flameout or time:seconds>t.
+wait until EM_CheckThrust(_p0)or _3[0]:Flameout or time:seconds>t.
 set Ship:Control:Fore to 0.
 }
 return not _3:empty.
