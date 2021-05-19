@@ -6,7 +6,7 @@
 wait until Ship:Unpacked.
 
 // Launch to the south?
-local southerlyLaunch is true.
+local southerlyLaunch is Ship:Latitude > 0.
 
 set config:ipu to 2000.
 
@@ -41,7 +41,7 @@ local function GetPeriapsisLat
 	local firstEngineStage is -1.
 	from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
 	{
-		local stagePerf is LAS_GetStagePerformance(s).
+		local stagePerf is LAS_GetStagePerformance(s, true).
 
 		if stagePerf:eV <= 0
             break.
@@ -202,7 +202,7 @@ local function CalcLaunchTime
 		local orbitAngle is arccos(vdot(MoonLaunchVec:Normalized, MoonArrivalVec:Normalized)).
 		local targetLong is Ship:Longitude + 180 - orbitAngle + leadAngle.
 		
-		set longDiff to GetMoonLongAtTime(launchTime) - targetLong.
+		set longDiff to mod(GetMoonLongAtTime(launchTime) - targetLong + 720, 360).
 
 		//print "  T=" + LAS_FormatTime(launchTime - Time:Seconds) + " longdiff=" + round(longdiff, 1) + " orbAng=" + round(orbitAngle, 2).
 	}
@@ -342,7 +342,7 @@ if Ship:Status = "PreLaunch" or isGroundStation
 		if exists("1:/pelat.json")
 		{
 			local peLat to readjson("1:/pelat.json").
-			set estPeLat to Ship:Latitude - peLat[0].
+			set estPeLat to abs(Ship:Latitude - peLat[0]).
 		}
 		else
 			set estPeLat to 22.
@@ -351,6 +351,8 @@ if Ship:Status = "PreLaunch" or isGroundStation
 	{
 		set estPeLat to GetPeriapsisLat(LAS_TargetPe * 1000 + Ship:Body:Radius, Moon:Altitude + Ship:Body:Radius + targetPe, 4000).
 	}
+    if not southerlyLaunch
+        set estPeLat to -estPeLat.
     
 	set tweaksBox:AddLabel("Pe Lat"):style:height to 25.
 	local PeriapsisLat is tweaksBox:AddTextField(LAS_GetPartParam(Core:Part, "pelat=", Ship:Latitude - estPeLat):ToString()).
@@ -393,7 +395,7 @@ if Ship:Status = "PreLaunch" or isGroundStation
 
 		from {local s is Stage:Number - 1.} until s < 0 step {set s to s - 1.} do
 		{
-			local stagePerf is LAS_GetStagePerformance(s).
+			local stagePerf is LAS_GetStagePerformance(s, true).
 			
 			if stagePerf:eV <= 0
 				break.
@@ -592,7 +594,7 @@ if Ship:Status = "PreLaunch" or isGroundStation
 					set warpRate to 1000.
 				else if (goTime - Time:Seconds) > 90
 					set warpRate to 100.
-				else if (goTime - Time:Seconds) > 30
+				else if (goTime - Time:Seconds) > 22
 					set warpRate to 10.
 				if (goTime - Time:Seconds) < 900 and abs(nextUpdate - Time:Seconds) < 16
 					set warpRate to 1.

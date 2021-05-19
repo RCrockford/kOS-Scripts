@@ -185,8 +185,9 @@ global function LAS_GetEngineBurnTime
 global function LAS_GetRealEngineBurnTime
 {
     parameter eng.
+    parameter checkFO is true.
     
-    if eng:Flameout
+    if checkFO and eng:Flameout
         return 0.
     
     local burnTime is LAS_GetEngineBurnTime(eng).
@@ -279,10 +280,24 @@ global function LAS_FormatTimeStamp
     return fmt:remove(fmt:length-1, 1).
 }
 
+global function LAS_FormatNumber
+{
+    parameter n.
+    parameter dp.
+    
+    local s is round(n, dp):ToString.
+    local p is s:FindLast(".").
+    if p = -1
+        return s + ".0000000000":SubString(0, 1 + dp).
+    if p >= s:Length - dp
+        return s + "0000000000":SubString(0, 1 + dp - (s:Length - p)).
+    return s.
+}
+
 global function LAS_GetStagePerformance
 {
 	parameter s.
-    parameter fromGuidance is false.
+    parameter fromGuidance.
 
 	local allEngines is list().
     list engines in allEngines.
@@ -300,7 +315,10 @@ global function LAS_GetStagePerformance
 	for eng in allEngines
 	{
 		local engStage is min(eng:DecoupledIn + 1, eng:stage).
-		if engStage = s and not LAS_EngineIsUllage(eng) and not eng:Tag:Contains("nostage") and not (eng:Tag:Contains("noguide") and fromGuidance)
+        local valid is not LAS_EngineIsUllage(eng).
+        if fromGuidance and valid
+            set valid to not (eng:Tag:Contains("nostage") or eng:Tag:Contains("noguide")).
+		if engStage = s and valid
 		{
 			local t is LAS_GetRealEngineBurnTime(eng).
             if t >= 10 or not fromGuidance
@@ -310,7 +328,7 @@ global function LAS_GetStagePerformance
                 
                 set burnTime to max(burnTime, t).
 
-                set perf:guided to perf:guided or eng:HasGimbal.
+                set perf:guided to perf:guided or eng:HasGimbal or eng:HasModule("ModuleRCSFX").
 
                 set decoupler to eng:Decoupler.
                 set litPrevStage to litPrevStage or eng:Stage > s.
@@ -342,15 +360,15 @@ global function LAS_GetStagePerformance
 		
 			if decoupleStage < s and decoupleStage >= decoupler:stage
 			{
-				set stageWetMass to stageWetMass + shipPart:WetMass.
+				set stageWetMass to stageWetMass + shipPart:Mass.
 				set stageDryMass to stageDryMass + shipPart:DryMass.
 
 				set perf:guided to perf:guided or shipPart:IsType("RCS").
 			}
 			else if decoupleStage < decoupler:stage
 			{
-				set stageWetMass to stageWetMass + shipPart:WetMass.
-				set stageDryMass to stageDryMass + shipPart:WetMass.
+				set stageWetMass to stageWetMass + shipPart:Mass.
+				set stageDryMass to stageDryMass + shipPart:Mass.
 			}
 		}
 	}
@@ -370,4 +388,37 @@ global function LAS_GetStagePerformance
 	}
 	
 	return perf.
+}
+
+global function LAS_PrintEngineReliability
+{
+    if not addons:available("tf")
+        return.
+
+	local allEngines is list().
+    list engines in allEngines.
+    
+    local successRate is 1.
+	
+	from {local s is stage:number.} until s < 0 step {set s to s - 1.} do
+	{
+        for eng in allEngines
+        {
+            local engStage is min(eng:DecoupledIn + 1, eng:stage).
+            if engStage = s and not LAS_EngineIsUllage(eng) and Addons:TF:MTBF(eng) >= 0
+            {
+                local t is LAS_GetRealEngineBurnTime(eng).
+                
+                local engName is eng:Config.
+                if engName:Length > 16
+                    set engName to engName:SubString(0,16).
+                else
+                    set engName to engName:PadRight(16).
+                    
+                print engName + " Rel: " + LAS_FormatNumber(100 * Addons:TF:Reliability(eng, t), 3) + "% Ign: " +  + LAS_FormatNumber(100 * Addons:TF:IgnitionChance(eng), 3) + "% t: " + LAS_FormatNumber(t, 1):PadLeft(5) + " / " + round(Addons:TF:RatedBurnTime(eng)) + "s".
+                set successRate to successRate * Addons:TF:Reliability(eng, t) * Addons:TF:IgnitionChance(eng).
+            }
+        }
+    }
+    print "Estimated mission success rate: " + LAS_FormatNumber(100 * successRate, 3) + "%".
 }

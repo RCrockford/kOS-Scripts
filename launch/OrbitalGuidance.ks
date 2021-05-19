@@ -51,6 +51,7 @@ local debugStatYaw is mainBox:AddLabel("").
 local debugTarget is mainBox:AddLabel("").
 local debugFr is mainBox:AddLabel("").
 local debugStages is list().
+local debugReset is 0.
 
 //------------------------------------------------------------------------------------------------
 // Configure guidance
@@ -136,6 +137,7 @@ local debugStages is list().
 		debugStages:Insert(0, mainBox:AddLabel("")).
 	}
     
+    set debugReset to mainBox:AddButton("Reset").
     
     local stoppedGuidance is false.
 	// Populate lists
@@ -210,6 +212,11 @@ local function UpdateGuidance
 			kUniverse:TimeWarp:CancelWarp().
 		set stageChange to true.
         return.
+    }
+    
+    if debugReset:TakePress
+    {
+		LAS_StartGuidance(Stage:Number, incT, oTarget, mod(360 - latlng(90,0):bearing, 360)).
     }
 
     // Calc reference frame
@@ -740,7 +747,6 @@ global function LAS_StartGuidance
 				break.
 		}
     }
-    print "S=" + startStage + " Last guidance stage: " + GuidanceLastStage.
 
 	if targetObt:IsType("Orbitable")
     {
@@ -761,13 +767,14 @@ global function LAS_StartGuidance
 		set stageA[s] to 0.
 		set stageB[s] to 0.
 		set stageT[s] to stageTFull[s].
+		set stageOmegaT[s] to 0.
 	}
 
     // Converge guidance
     local ConvergeStage is startStage.
 
     local count is 0.
-    local A is stageA[ConvergeStage].
+    local A is 10.
     until ConvergeStage < GuidanceLastStage
     {
         set A to stageA[ConvergeStage].
@@ -790,9 +797,9 @@ global function LAS_StartGuidance
     }
 
     if ConvergeStage < GuidanceLastStage
-        print "Guidance converged successfully in " + count + " iterations.".
+        print METString + " Guidance converged successfully in " + count + " iterations.".
     else
-        print "Guidance failed to converge, s=" + ConvergeStage + " d=" + round(abs(stageA[ConvergeStage] - A), 4).
+        print METString + " Guidance failed to converge, s=" + startStage + "/" + ConvergeStage + " d=" + round(abs(stageA[ConvergeStage] - A), 4).
 
     return ConvergeStage < GuidanceLastStage.
 }

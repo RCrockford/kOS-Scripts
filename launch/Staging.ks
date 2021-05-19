@@ -15,11 +15,23 @@ local StagingFunction is CheckStageType@.
 
 local LAS_IsParachuting is false.
 local engineSpooling is true.
+local deployEngines is false.
 
 local PL_FairingsJettisoned is false.
 local PL_PanelsExtended is false.
 
+local CrossfeedTanks is lexicon().
+local StageTime is 0.
+
 local kscPos is Ship:GeoPosition.
+
+global function METString
+{
+    local str is "T+" + round(MissionTime, 1).
+    if not str:Contains(".")
+        return str + ".0".
+    return str.
+}
 
 global function LAS_FireDecoupler
 {
@@ -109,7 +121,7 @@ local function DecoupleStage
 
 local function IgniteNextStage
 {
-    print "Igniting stage " + (Stage:Number - 1) + " engines.".
+    print METString + " Igniting stage " + (Stage:Number - 1) + " engines.".
 
     // Ignite engines for next stage
     for eng in NextStageEngines
@@ -139,7 +151,7 @@ local function BoosterDrop
 
     if drop
     {
-        print "Stage " + Stage:Number + " separation.".
+        print METString + " Stage " + Stage:Number + " separation.".
     }
 
     return drop.
@@ -176,7 +188,7 @@ local function HotStage
 
     if Terminal:Input:HasChar() and Terminal:Input:GetChar() = "s"
     {
-        print "Forcing separation".
+        print METString + " Forcing separation".
         set burnTime to 0.
     }
 
@@ -209,7 +221,7 @@ local function UllageStageSettle
     if fuelState >= 0.99
     {
         // Fire engines (i.e. stage).
-		print "Fuel Stability: " + round(fuelState * 100, 1) + "%".
+		print METString + " Fuel Stability: " + round(fuelState * 100, 1) + "%".
 		set ship:control:fore to 0.
         return true.
     }
@@ -220,12 +232,12 @@ local function UllageStageSettle
         if Ship:Q > 0
         {
             // Check ullage motor burn time
-            local burnTime is LAS_GetRealEngineBurnTime(NextStageUllage[0]).
-
+            local burnTime is LAS_GetRealEngineBurnTime(NextStageUllage[0], false).
+            
             // If less than 0.05 seconds to go, just go for it
             if burnTime < 0.05
             {
-                print "Fuel Stability: " + round(fuelState * 100, 1) + "%".
+                print METString + " Fuel Stability: " + round(fuelState * 100, 1) + "%".
                 set ship:control:fore to 0.
                 return true.
             }
@@ -234,7 +246,7 @@ local function UllageStageSettle
             // Allows stable (95%) igntion at ~0.235s, 75% at ~0.15s, 50% at ~0.07s
             if sqrt(4 * (burnTime - 0.01)) < fuelState
             {
-                print "Fuel Stability: " + round(fuelState * 0.01, 1) + "%".
+                print METString + " Fuel Stability: " + round(fuelState * 0.01, 1) + "%".
                 set ship:control:fore to 0.
                 return true.
             }
@@ -284,7 +296,7 @@ local function UllageStageSeparate
 {
     if Terminal:Input:HasChar() and Terminal:Input:GetChar() = "s"
     {
-        print "Forcing separation".
+        print METString + " Forcing separation".
         print "  Eng FO=" + stageEngines[0]:FlameOut + ", Ig=" + stageEngines[0]:Ignition.
 
         for eng in stageEngines
@@ -340,7 +352,7 @@ local function UllageStageSeparate
 
     // Detach lower stage.
     if DecoupleStage()
-        print "Stage " + Stage:Number + " separation.".
+        print METString + " Stage " + Stage:Number + " separation.".
 
     set StagingFunction to UllageStageFire@.
 
@@ -367,7 +379,7 @@ local function ParachuteDescent
 	{
 		if DecoupleStage()
 		{
-			print "Decoupling return capsule.".
+			print METString + " Decoupling return capsule.".
 			set StageEngines to LAS_GetStageEngines().
 		}
 	}
@@ -388,7 +400,7 @@ local function ParachuteDescent
             }
         }
 
-        print "Parachutes armed.".
+        print METString + " Parachutes armed.".
 
         // If we couldn't arm the chutes, just stage.
         return not chutesArmed.
@@ -439,6 +451,7 @@ local function CheckStageType
     ShutdownEngines:Clear().
     NextStageDecouplers:Clear().
     NextStageChutes:Clear().
+    CrossfeedTanks:Clear().
 
     for p in NextStageParts
     {
@@ -450,6 +463,8 @@ local function CheckStageType
             NextStageChutes:add(p).
         if p:IsType("RCS")
             NextStageRCS:add(p).
+        if p:HasSuffix("FuelCrossfeed") and p:Tag:Contains("xf=") and p:HasModule("ModuleToggleCrossfeed")
+            CrossfeedTanks:Add(p, list(LAS_GetPartParam(p, "xf=", 0), p:GetModule("ModuleToggleCrossfeed"))).
     }
 
     local enginesNeedStartup is false.
@@ -458,7 +473,7 @@ local function CheckStageType
 		if eng:Tag:Contains("nostage")
 		{
             set StagingFunction to FinalStage@.
-            print "Next stage: Final".
+            print METString + " Next stage: Final".
 			return.
 		}
 
@@ -469,13 +484,14 @@ local function CheckStageType
     if enginesNeedStartup
     {
         // Engine staging
-        if not NextStageUllage:empty or not NextStageRCS:empty
+        if not NextStageUllage:empty or (not NextStageRCS:empty and not NextStageEngines[0]:Tag:Contains("norcs"))
         {
             set StagingFunction to UllageStageSeparate@.
-            print "Next stage: Ullage" + (choose " (rcs)" if NextStageUllage:empty else "").
+            print METString + " Next stage: Ullage" + (choose " (rcs)" if NextStageUllage:empty else "").
             set heightWarn to false.
 			set pressureWarn to false.
             set apoWarn to false.
+            set HotStageWarmup to 0.
         }
         else
         {
@@ -488,7 +504,19 @@ local function CheckStageType
                     set HotStageWarmup to max(HotStageWarmup, 2.5).
 				set HotStageWarmup to max(LAS_GetPartParam(eng, "s=", 0), HotStageWarmup).
             }
-            print "Next stage: Hot Stage (" + HotStageWarmup + ")".
+            print METString + " Next stage: Hot Stage (" + HotStageWarmup + ")".
+        }
+        
+        for eng in NextStageEngines
+        {
+            if eng:HasModule("ROEDeployableEngine")
+            {
+                if eng:GetModule("ROEDeployableEngine"):HasEvent("deploy engine")
+                {
+                    set deployEngines to true.
+                    break.
+                }
+            }
         }
     }
     else
@@ -497,27 +525,29 @@ local function CheckStageType
         {
             // Have spin motors.
             set StagingFunction to SpinUp@.
-            print "Next stage: Spin".
+            print METString + " Next stage: Spin".
         }
         else if not NextStageChutes:empty
         {
             // Have parachutes, go into descent mode.
             set StagingFunction to ParachuteDescent@.
-            print "Next stage: Parachute".
+            print METString + " Next stage: Parachute".
         }
         else if not NextStageDecouplers:empty
         {
             // Just a decoupler, assume this is a booster drop.
             set StagingFunction to BoosterDrop@.
-            print "Next stage: Booster Drop".
+            print METString + " Next stage: Booster Drop".
         }
         else
         {
             // Nothing found.
             set StagingFunction to FinalStage@.
-            print "Next stage: Final".
+            print METString + " Next stage: Final".
         }
     }
+
+    set StageTime to Time:Seconds.
 }
 
 local function EnableECForStage
@@ -561,17 +591,17 @@ local function CheckAbort
 
 		if Ship:Q > 0.1 and Ship:Q * vang(Facing:Vector, SrfPrograde:Vector) > 2
 		{
-			print "Ship violated Qα constraint (" + round(Ship:Q * vang(Facing:Vector, SrfPrograde:Vector), 2) + "), aborting launch.".
+			print METString + " Ship violated Qα constraint (" + round(Ship:Q * vang(Facing:Vector, SrfPrograde:Vector), 2) + "), aborting launch.".
 			set doAbort to true.
 		}
 		if alt:radar < 25000 and TWR < 1.05 - Alt:Radar * 1e-5
 		{
-			print "Ship violated TWR constraint (" + round(twr, 2) + "), aborting launch.".
+			print METString + " Ship violated TWR constraint (" + round(twr, 2) + "), aborting launch.".
 			set doAbort to true.
 		}
 		if Ship:VerticalSpeed < 0
 		{
-			print "Ship violated vertical speed constraint, aborting launch.".
+			print METString + " Ship violated vertical speed constraint, aborting launch.".
 			set doAbort to true.
 		}
 	}
@@ -634,10 +664,35 @@ global function LAS_CheckStaging
                 local burnTime is LAS_GetEngineBurnTime(eng).
                 if burnTime = 0
                 {
-                    print "Shutting down " + eng:Config.
+                    print METString + " Shutting down " + eng:Config.
                     eng:Shutdown().
                 }
             }
+        }
+        
+        if deployEngines
+        {
+            local burnTime is LAS_GetStageBurnTime(stageEngines).
+            if burnTime <= 5 + HotStageWarmup
+            {
+                for eng in NextStageEngines
+                {
+                    if eng:HasModule("ROEDeployableEngine")
+                    {
+                        local modEng is eng:GetModule("ROEDeployableEngine").
+                        if modEng:HasEvent("deploy engine")
+                            modEng:DoEvent("deploy engine").
+                    }
+                }
+                set deployEngines to false.
+            }
+        }
+        
+        local t is Time:Seconds - StageTime.
+        for xf in CrossfeedTanks:Keys
+        {
+            if xf:FuelCrossfeed <> (CrossfeedTanks[xf][0] > t)
+                CrossfeedTanks[xf][1]:DoAction("toggle crossfeed", true).
         }
     }
 
@@ -657,6 +712,11 @@ global function LAS_NextStageIsBoosters
 global function LAS_FinalStage
 {
 	return StagingFunction = FinalStage@.
+}
+
+global function LAS_LastPoweredStage
+{
+	return StagingFunction = FinalStage@ or StagingFunction = ParachuteDescent@.
 }
 
 global function LAS_StageReady
@@ -702,7 +762,7 @@ global function LAS_CheckPayload
             }
 
             if jettisoned
-                print "Fairings jettisoned".
+                print METString + " Fairings jettisoned".
 
             if fairingStatus:IsType("Label")
                 set fairingStatus:Text to "Fairings: <color=#00ff00>jettisoned</color>".

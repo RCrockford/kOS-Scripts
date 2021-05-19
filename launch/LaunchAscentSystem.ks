@@ -37,6 +37,7 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
 	}
 	
     runpath("0:/launch/Staging").
+    runpath("0:/launch/LaunchGUI").
 
     local totalControlled is 0.
 	for a in Ship:ModulesNamed("ModuleProceduralAvionics")
@@ -51,8 +52,11 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
     local targetInclination is -1.
     local targetOrbitable is 0.
     local maxApoapsis is -1.
-    local stagingValid is true.
+    local stagingMessage is "".
     local helioSync is false.
+    local errorColour is "#f00000".
+    
+    local launchLimits is list(26, 210).  // Limits for NZ-Mahia
 
     if totalControlled > 0
     {
@@ -73,17 +77,20 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
 		if defined LAS_TargetSMA or LAS_TargetAp > 100
         {
 			runpath("0:/launch/OrbitalGuidance").
-            if LAS_GuidanceDeltaV() < LAS_GuidanceTargetVTheta() + 1000
+            if LAS_GuidanceTargetVTheta() > 0
             {
-                print "Insufficient deltaV in guided stages:".
-                print "  Needs >" + round(LAS_GuidanceTargetVTheta() + 1000, 0) + " m/s, has " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
-                set stagingValid to false.
-            }
-            else if LAS_GuidanceDeltaV() > LAS_GuidanceTargetVTheta() + 2500
-            {
-                print "Excessive deltaV in guided stages:".
-                print "  Needs <" + round(LAS_GuidanceTargetVTheta() + 2500, 0) + " m/s, has " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
-                set stagingValid to false.
+                if LAS_GuidanceDeltaV() < LAS_GuidanceTargetVTheta() + 1000
+                {
+                    print "Insufficient ΔV in guided stages:".
+                    print "  Needs >" + round(LAS_GuidanceTargetVTheta() + 1000, 0) + " m/s, has " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
+                    set stagingMessage to "Insufficient Δv in guided stages".
+                }
+                else if LAS_GuidanceDeltaV() > LAS_GuidanceTargetVTheta() + 2500
+                {
+                    print "Excessive ΔV in guided stages:".
+                    print "  Needs <" + round(LAS_GuidanceTargetVTheta() + 2500, 0) + " m/s, has " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
+                    set stagingMessage to "Excessive Δv in guided stages".
+                }
             }
         }
         
@@ -98,14 +105,29 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
         set maxApoapsis to LAS_GetPartParam(Core:Part, "ap=", maxApoapsis).
     }
     
-    runpath("0:/launch/LaunchGUI").
-
 	local launchButton is LGUI_GetButton().
-    set launchButton:Enabled to stagingValid.
+    set launchButton:Enabled to stagingMessage:Length = 0.
+    
+    local function ValidateAzimuth
+    {
+        if launchAzimuth < launchLimits[0] or launchAzimuth > launchLimits[1]
+        {
+            set launchButton:Enabled to false.
+            LGUI_SetInfo("Azimuth exceeds limits: " + launchLimits[0] + " < az < " + launchLimits[1], errorColour).
+        }
+        else
+        {
+            set launchButton:Enabled to stagingMessage:Length = 0.
+            if stagingMessage:Length = 0
+                LGUI_SetInfo("Waiting for launch", "#ffff00").
+            else
+                LGUI_SetInfo(stagingMessage, errorColour).
+        }
+    }
     
     local speedText is LGUI_CreateTextEdit("Speed", pitchOverSpeed:ToString, { parameter str. set pitchOverSpeed to str:ToNumber(pitchOverSpeed). }, totalControlled > 0).
     local angleText is LGUI_CreateTextEdit("Angle", pitchOverAngle:ToString, { parameter str. set pitchOverAngle to str:ToNumber(pitchOverAngle). }, totalControlled > 0).
-    local azimuthText is LGUI_CreateTextEdit("Azimuth", launchAzimuth:ToString, { parameter str. set launchAzimuth to str:ToNumber(launchAzimuth). }, totalControlled > 0).
+    local azimuthText is LGUI_CreateTextEdit("Azimuth", launchAzimuth:ToString, { parameter str. set launchAzimuth to str:ToNumber(launchAzimuth). ValidateAzimuth(). }, totalControlled > 0).
     local southCheckbox is LGUI_CreateCheckbox("Launch South").
     
     local function CalcAzimuth
@@ -160,6 +182,7 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
 				set launchAzimuth to mod(360 + 180 - launchAzimuth, 360).
             
             set azimuthText:text to round(launchAzimuth, 3):ToString.
+            ValidateAzimuth().
         }
 
         set azimuthText:Enabled to targetInclination < 0.
@@ -219,11 +242,15 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
 		else if defined LAS_TargetInc
 		{
             set targetInclination to max(Ship:Latitude, min(abs(LAS_TargetInc), 180 - Ship:Latitude)).
-			set launchSouth to (defined LAS_TargetInc and LAS_TargetInc < 0).
+			set launchSouth to LAS_TargetInc < 0.
 		}
 		else
 		{
-			set launchSouth to targetInclination >= 0 and Ship:Latitude > 0 and (Ship:Longitude > -122 and Ship:Longitude < -78).	// Southerly launches by default from North America.
+            if targetInclination >= 0
+            {
+                local northAz is CalcAzimuth().
+                set launchSouth to northAz < launchLimits[0] or northAz > launchLimits[1].
+            }
             set southCheckbox:Enabled to true.
 		}
         if inclinationText:Enabled
@@ -231,6 +258,7 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
         set southCheckbox:Pressed to launchSouth.
         
         setAzimuth().
+        ValidateAzimuth().
         
         if defined LAS_TargetLAN
         {
@@ -252,7 +280,7 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
 	if totalControlled > 0
 		runpath("0:/launch/GroundLaunchControl", engineStart, { return targetOrbit. }, launchButton, totalControlled).
 	else
-		runpath("0:/launch/GroundLaunchControl", engineStart).
+		runpath("0:/launch/GroundLaunchControl", engineStart, { return 0. }).
 
     // Check if we actually lifted off
     if Ship:Status = "Flying"

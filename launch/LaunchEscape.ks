@@ -42,7 +42,7 @@ local function LAS_CrewEscapeImpl
         }
 	}
     if rcs
-        lock steering to Ship:Up.
+        lock steering to lookdirup(Ship:Up, Facing:UpVector).
 	
     local engineStart is Time:Seconds.
 	local flamedOut is false.
@@ -75,7 +75,7 @@ local function LAS_CrewEscapeImpl
 	wait until Ship:VerticalSpeed < 0.
     
     if rcs
-        lock steering to SrfRetrograde.
+        lock steering to lookdirup(SrfRetrograde:Vector, Facing:UpVector).
     
 	for p in Ship:PartsTaggedPattern("\blescover\b")
 	{
