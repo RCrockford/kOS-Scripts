@@ -1,0 +1,19 @@
+{
+    "entries": [
+        "PitchKp",
+        0.023,
+        "PitchKi",
+        0.088,
+        "PitchKd",
+        0.004,
+        "RollKp",
+        0.022,
+        "RollKi",
+        0.004,
+        "RollKd",
+        0.008,
+        "tuneSpeed",
+        160
+    ],
+    "$type": "kOS.Safe.Encapsulation.Lexicon"
+}
