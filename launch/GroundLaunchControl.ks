@@ -7,9 +7,8 @@ parameter targetOrbitDlg.
 parameter launchButton is 0.
 parameter totalControlled is 0.
 
-//local launchLimits is list(26, 210).  // Limits for NZ
-
 local targetOrbit is targetOrbitDlg().
+local errorColour is "#f00000".
 
 local function GetLaunchAngleRendezvous
 {
@@ -60,6 +59,8 @@ local function GetLaunchAngleTerminator
         
     return launchAngle.
 }
+
+LAS_PrintEngineReliability().
 
 local liftoffTime is -1.
 // Initialise launch parameters
@@ -121,6 +122,7 @@ print "Ground Launch Controller ready.".
 print "  Engine start at T-" + round(engineStart, 2) + ".".
 
 local launchMass is Ship:Mass.
+local launchMassFlow is 0.001.
 local padFuelling is engineStart <= 0.5 or mainEnginesLF:empty().   // If not pre-spooling engines, then don't worry about pad fuel pumps
 local ascentTime is 0.
 local LaunchAngleFunc is 0.
@@ -130,7 +132,7 @@ local LaunchAngleFunc is 0.
     //local logPath is "0:/logs/shipstaging.txt".
 
     //log Ship:Name to logPath.
-    //log "    mass=" + round(Ship:Mass * 1000, 1) + ", drymass=" + round(Ship:DryMass * 1000, 1) + ", wetmass=" + round(Ship:WetMass * 1000, 1) to logPath.
+    //log "    mass=" + round(Ship:Mass * 1000, 1) + ", drymass=" + round(Ship:DryMass * 1000, 1) + ", wetmass=" + round(Ship:Mass * 1000, 1) to logPath.
 
     local stageWetMass is list().
     local stageDryMass is list().
@@ -152,7 +154,7 @@ local LaunchAngleFunc is 0.
             set partStage to max(partStage, 0).
             set partStage to min(partStage, launchStage).
 
-            set stageWetMass[partStage] to stageWetMass[partStage] + shipPart:WetMass.
+            set stageWetMass[partStage] to stageWetMass[partStage] + shipPart:Mass.
             set stageDryMass[partStage] to stageDryMass[partStage] + shipPart:DryMass.
         }
         else
@@ -162,6 +164,7 @@ local LaunchAngleFunc is 0.
             if shipPart:Stage < launchStage
             {
                 print "Clamp " + shippart:title + " is incorrectly staged.".
+                LGUI_SetInfo("Clamp " + shippart:title + " is incorrectly staged", errorColour).
                 if launchButton:IsType("Button")
                     set launchButton:Enabled to false.
             }
@@ -190,7 +193,11 @@ local LaunchAngleFunc is 0.
             set vacThrust to vacThrust + eng:PossibleThrustAt(0).
             set slThrust to slThrust + eng:PossibleThrustAt(1).
         }
-        set massFlow to max(massFlow, 1e-6) * Constant:g0.
+        if s = launchStage
+        {
+            set launchMassFlow to massFlow.
+            set launchMass to launchMass - massFlow.    // Allow for 1s of burning without control.
+        }
 		
 		if stageTime > 0 and (defined LAS_TargetSMA or LAS_TargetAp > 100)
 		{
@@ -205,7 +212,9 @@ local LaunchAngleFunc is 0.
 
 if totalControlled > 0 and totalControlled < launchMass
 {
-    print "Insufficient avionics for liftoff control (Ctrl=" + round(totalControlled, 2) + "T, M=" + round(launchMass,2) + "T).".
+    print "Insufficient avionics for liftoff control".
+    print "  (Ctrl=" + round(totalControlled, 2) + "T, M=" + round(launchMass,2) + "T t=" + round((launchMass - totalControlled) / launchMassFlow + 1, 1) + "s).".
+    LGUI_SetInfo("Insufficient avionics for liftoff control", errorColour).
     if launchButton:IsType("Button")
         set launchButton:Enabled to false.
 }
@@ -224,7 +233,9 @@ if totalControlled > 0 and totalControlled < launchMass
     if twr < 1.1
     {
         print "Insufficient thrust for liftoff (TWR=" + round(twr, 2) + ", W=" + round((launchMass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude), 1) + "kN).".
-        shutdown.
+        LGUI_SetInfo("Insufficient thrust for liftoff", errorColour).
+        if launchButton:IsType("Button")
+            set launchButton:Enabled to false.
     }
 }
 
@@ -299,8 +310,12 @@ else
 		}
 	}
 
-	print "Awaiting Launch command:".
+    local prevLunarUpdate is Time:Seconds.
+    if defined LAS_CalcLunarLaunch@
+        print "Lunar window updates enabled".
 
+	print "Awaiting Launch command:".
+    
 	// Wait for command
 	until cmd = "l" or cmd = "n"
 	{
@@ -317,6 +332,19 @@ else
             set LaunchAngleFunc to GetLaunchAngleRendezvous@.
             set waitTime to LaunchAngleFunc() * Ship:Body:RotationPeriod / 360 - ascentTime.
             print "New target, launch window opening in approximately " + LAS_FormatTime(waitTime).
+        }
+        
+        if defined LAS_CalcLunarLaunch@
+        {
+            if Time:Seconds - prevLunarUpdate > 60
+            {
+                LAS_CalcLunarLaunch().
+                set LGUI_GetControl("Launch South"):Pressed to LAS_TargetInc < 0.
+                local incCtrl is LGUI_GetControl("inclination").
+                set incCtrl:Text to round(max(Ship:Latitude, min(abs(LAS_TargetInc), 180 - Ship:Latitude)), 2):ToString.
+                incCtrl:OnConfirm(incCtrl:Text).
+                set prevLunarUpdate to Time:Seconds.
+            }
         }
 
 		if cmd = "a"
@@ -489,11 +517,14 @@ local function GLCAbort
     Shutdown.
 }
 
+local infoText is "Countdown started".
+
 // Setup countdown trigger
 on ceiling(liftoffTime - Time:Seconds)
 {
     set countdown to ceiling(liftoffTime - Time:Seconds).
     print countdown.
+    LGUI_SetInfo("T-" + countdown + " " + infoText, "#" + min(countdown, 9) + "fff00").
     if countdown > 0
         return true.
     else
@@ -520,6 +551,7 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
 
 	kUniverse:TimeWarp:CancelWarp().
     print "Ignition sequence start.".
+    set infoText to "Ignition sequence start".
 
     // Throttle up to maximum
     set Ship:Control:PilotMainThrottle to 1.
@@ -568,6 +600,7 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
     }
 
     print "Main engines report " + round(100 * engineThrust / max(engineMaxThrust, 0.01), 1) + "% thrust".
+    set infoText to "Main engines firing".
 
     if engineThrust < engineMaxThrust * 0.98
     {
@@ -615,7 +648,14 @@ lock Steering to liftoffHeading.
 
 // Stage any boosters and launch clamps
 if mainEngines:length() > mainEnginesLF:length()
+{
     print "Booster Ignition".
+    LGUI_SetInfo("T+0 Booster ignition", "#00ff00").
+}
+else
+{
+    LGUI_SetInfo("T+0 Liftoff!", "#00ff00").
+}
 
 set Ship:Control:PilotMainThrottle to 1.
 stage.

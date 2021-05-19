@@ -19,7 +19,7 @@ local function checkMaxQ
 {
 	if maxQ > Ship:Q and Ship:Altitude > 5000
 	{
-		print "Max Q: " + round(maxQ * constant:AtmToKPa, 2) + " kPa.".
+		print METString + " Max Q: " + round(maxQ * constant:AtmToKPa, 2) + " kPa.".
 		set maxQ to -1.
 	}
 	else
@@ -42,7 +42,7 @@ until False
 
 	if Ship:Control:PilotMainThrottle > 0 and maxApoapsis > 0 and Ship:Orbit:Apoapsis > maxApoapsis * 1000
 	{
-        print "Sustainer engine cutoff".
+        print METString + " Sustainer engine cutoff".
         set Ship:Control:PilotMainThrottle to 0.
 
 		local mainEngines is LAS_GetStageEngines().

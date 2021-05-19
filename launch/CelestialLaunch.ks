@@ -32,9 +32,10 @@ local planningSMA is Body:Radius + 200000.
 local bodyText is LGUI_CreateTextEdit("Target Body", "", {}).
 local minFlightTimeText is LGUI_CreateTextEdit("Min Flight Time (days)", minFlightTime:ToString, { parameter str. set minFlightTime to str:ToNumber(minFlightTime). }).
 local maxFlightTimeText is LGUI_CreateTextEdit("Max Flight Time (days)", maxFlightTime:ToString, { parameter str. set maxFlightTime to str:ToNumber(maxFlightTime). }).
-local minimiseEjection is LGUI_CreateCheckbox("Minimal ejection cost").
-local minimiseInsertion is LGUI_CreateCheckbox("Minimal insertion cost").
 local maxEjectionΔVText is LGUI_CreateTextEdit("Max Ejection ΔV", maxEjectionΔV:ToString, { parameter str. set maxEjectionΔV to str:ToNumber(maxEjectionΔV). }).
+local minimiseEjection is LGUI_CreateCheckbox("Minimal ejection cost"). set minimiseEjection:Exclusive to true.
+local minimiseInsertion is LGUI_CreateCheckbox("Minimal insertion cost"). set minimiseInsertion:Exclusive to true.
+local minimiseTime is LGUI_CreateCheckbox("Minimal flight time"). set minimiseTime:Exclusive to true.
 
 local function SelectNewTarget
 {
@@ -154,7 +155,7 @@ local function FindBestFlightTime
     {
         set bestSolveVInf to V(1e6,0,0).
         set bestSolveVIns to 1e6.
-        set bestSolveFT to 0.
+        set bestSolveFT to maxTime.
         from { local ft to minTime. } until ft > maxTime step { set ft to ft + timeStep. } do
         {
             from { local invert to 0. } until invert > 1 step { set invert to invert + 1. } do
@@ -168,9 +169,13 @@ local function FindBestFlightTime
                 {
                     set newSolution to reqV:Mag < bestSolveVInf:Mag.
                 }
-                else if minimiseInsertion:Pressed
+                else if minimiseInsertion:Pressed or minimiseTime:Pressed
                 {
-                    set newSolution to vIns < bestSolveVIns.
+                    if minimiseInsertion:Pressed
+                        set newSolution to vIns < bestSolveVIns.
+                    else
+                        set newSolution to ft < bestSolveFT.
+
                     if newSolution and maxEjectionΔV > 0
                     {
                         local ejectV is reqV:Normalized * sqrt(reqV:SqrMagnitude + (2 * Body:Mu / planningSMA)).
@@ -243,13 +248,12 @@ until false
     print "Flyby velocity: " + round(flightTime[2], 1) + " m/s".
 
     local ejectV is flightTime[1]:Normalized * sqrt(flightTime[1]:SqrMagnitude + (2 * Body:Mu / planningSMA)).
-    local ejectInc is (90 - vang(ejectV:Normalized, Body:AngularVel:Normalized)).
-    if ejectInc < 0
-        set ejectInc to -ejectInc.
+    local ejectInc is 90 - vang(ejectV:Normalized, Body:AngularVel:Normalized).
+    set ejectInc to max(abs(ejectInc), abs(Ship:Latitude)).
 
-    print "Launch inclination: " + round(max(ejectInc, abs(Ship:Latitude)), 2) + "°".
+    print "Launch inclination: " + round(ejectInc, 2) + "°".
 
-    local BestLAN is FindBestLaunchLAN(max(ejectInc, abs(Ship:Latitude)), ejectV).
+    local BestLAN is FindBestLaunchLAN(ejectInc, ejectV).
     print "Launch LAN: " + round(BestLAN[0], 2) + "°, Ejection ΔV: " + round(BestLAN[1], 1) + " m/s, Angle: " + round(BestLAN[2], 2) + "°".
 
     set launchLAN to BestLAN[0].

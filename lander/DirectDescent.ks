@@ -13,7 +13,7 @@ parameter brakingMargin is 1.5.
 switch to scriptpath():volume.
 
 // Setup functions
-runpath("0:/flight/EngineMgmt", Stage:Number).
+runpath("0:/flight/EngineMgmt", min(Stage:Number, landStage + 1)).
 runpath("0:/flight/TuneSteering").
 runoncepath("0:/lander/LanderSteering").
 
@@ -28,8 +28,8 @@ for eng in DescentEngines
 }
 
 local shipMass is Ship:Mass.
-
 local downrangeAdjust is 1.
+local spinBrake is false.
 
 local function GetBrakingAim
 {
@@ -74,6 +74,37 @@ local function EstimateBrakingPosition
 	return pCurrent.
 }
 
+local function RollControl
+{
+    if spinBrake and vdot(SrfRetrograde:Vector, Facing:Vector) > 0.999
+    {
+        // spin up
+        local rollRate is vdot(Facing:Vector, Ship:AngularVel).
+        if abs(rollRate) > 1
+        {
+            set ship:control:roll to -0.1.
+        }
+        else
+        {
+            set ship:control:roll to -1.
+        }
+    }
+    
+    if EM_IgDelay() > 0
+    {
+        if Ship:Control:Fore > 0
+        {
+            if EM_GetEngines()[0]:FuelStability >= 0.99
+                set Ship:Control:Fore to 0.
+        }
+        else
+        {
+            if EM_GetEngines()[0]:FuelStability < 0.98  
+                set Ship:Control:Fore to 1.
+        }
+    }
+}
+
 if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escaping"
 {
     print "Direct descent system online.".
@@ -83,11 +114,27 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     set debugGui:Y to debugGui:Y + 240.
     local mainBox is debugGui:AddVBox().
 
-    local debugStat is mainBox:AddLabel("").
+    local debugStat is mainBox:AddLabel("Ready").
 
 	debugGui:Show().
 	if Stage:Number > landStage or Ship:Velocity:Surface:Mag > 300
 	{
+        set spinBrake to landStage < Stage:Number - 1.
+        if spinBrake
+        {
+            print "Using unguided braking stage".
+            set shipMass to 0.
+            for shipPart in Ship:Parts
+            {
+                local decoupleStage is shipPart:DecoupledIn.
+
+                if shipPart:DecoupledIn < Stage:Number - 1
+                {
+                    set shipMass to shipMass + shipPart:Mass.
+                }
+            }
+        }
+
 		print "  Engine: " + DescentEngines[0]:Config + ", Ship Mass: " + round(shipMass * 1000, 1) + " kg".
 
 		LanderSelectWP().
@@ -138,6 +185,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 		{
 			parameter name.
 			parameter burnDelay.
+            parameter callback.
 
 			local lock targetAlt to round(Ship:Velocity:Surface:Mag * brakingMargin).
 
@@ -155,6 +203,8 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 					
 				set debugStat:Text to debugStr.
 
+                callback().
+
 				if alt > targetAlt + Ship:Velocity:Surface:Mag * (brakingMargin * 1.4)
                 {
 					wait until Time:Seconds >= tStart + 1.
@@ -171,7 +221,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 		set kUniverse:Timewarp:Rate to 10.
 
 		// 60 second alignment margin
-		WaitBurn("Align", 60).
+		WaitBurn("Align", choose 120 if spinBrake else 60, {}).
 		set kUniverse:Timewarp:Rate to 1.
 		wait until kUniverse:Timewarp:Rate = 1.
 
@@ -185,10 +235,19 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
 		set navmode to "surface".
 
-		WaitBurn("Ignition", EM_IgDelay()).
+		WaitBurn("Ignition", EM_IgDelay(), RollControl@).
 
         print "Beginning braking burn".
-        EM_Ignition().
+        EM_Ignition(choose 0.1 if spinBrake else 0.5).
+        
+        if spinBrake
+        {
+            // Jettison alignment stage.
+            wait until Stage:Ready.
+            stage.
+            set Ship:Control:Neutralize to true.
+            unlock steering.
+        }
         
         if targetPos:IsType("GeoCoordinates")
         {
@@ -225,6 +284,9 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
             set debugStat:Text to debugStr.
             
+            if spinBrake and vdot(Facing:Vector, SrfRetrograde:Vector) < 0.4
+                break.
+            
             wait 0.
         }
         
@@ -244,6 +306,13 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
 		LAS_Avionics("activate").
 		rcs on.
+    }
+    
+    if spinBrake and vdot(Facing:Vector, Ship:AngularVel) > 0.25
+    {
+        set ship:control:roll to 1.
+        wait vdot(Facing:Vector, Ship:AngularVel) < 0.25.
+        set ship:control:roll to 0.
     }
 
 	wait until stage:ready.

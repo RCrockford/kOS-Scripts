@@ -16,15 +16,16 @@ local maxQset is false.
 
 local kscPos is Ship:GeoPosition.
 local coastMode is false.
+local coastSteer is false.
 local engineSpool is false.
 local spoolTimer is 0.
 
-local minPitch is choose 85 if pitchOverAngle < 1e-4 else 38.
+local minPitch is choose 85 if pitchOverAngle < 1e-4 else 70.
 local maxPitch is 90.
 local lock velocityPitch to max(min(maxPitch, 90 - vang(Ship:up:vector, Ship:Velocity:Surface)), minPitch).
 local lock shipPitch to 90 - vang(Ship:up:vector, Ship:facing:forevector).
 
-if minPitch > 60
+if minPitch > 80
     set canLoft to true.
 
 // Flight phases
@@ -41,7 +42,7 @@ local c_PhaseSuborbCoast    is 8.
 local flightPhase is c_PhaseLiftoff.
 local flightGuidance is V(0,0,0).
 local guidanceThreshold is 0.995.
-local guidanceMinV is 900.     // Minimum tangental speed
+local guidanceMinV is choose 100 if defined LAS_TargetAp and LAS_TargetAp < 100 else 900.     // Minimum tangental speed
 local lock nextStageIsGuided to LAS_StageIsGuided(Stage:Number-1).
 
 local debugGui is GUI(300, 80).
@@ -68,6 +69,20 @@ local function angle_off
 	return ret_val.
 }
 
+local function currentTWR
+{
+    // Calculate current peformance
+    local StageEngines is LAS_GetStageEngines().
+    local currentThrust is 0.
+    for eng in StageEngines
+    {
+        if eng:Thrust > 0
+            set currentThrust to currentThrust + eng:Thrust.
+    }
+    // Must have 1.5 TWR before guidance
+    return currentThrust / (Ship:Mass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude).
+}
+
 local function checkAscent
 {
 	if flightPhase = c_PhaseGuidanceKick
@@ -81,8 +96,8 @@ local function checkAscent
 		if navmode <> "surface"
 			set navmode to "surface".
 	
-		if Ship:Orbit:Apoapsis > 250000
-		{
+		if Ship:Orbit:Apoapsis > 250000 and not canLoft
+		{ 
 			local r is LAS_ShipPos():Mag.
 			local r2 is LAS_ShipPos():SqrMagnitude.
 			local rVec is LAS_ShipPos():Normalized.
@@ -120,8 +135,10 @@ local function checkAscent
                 set flightStatus:Text to "Downrange Boost, D=" + round((Ship:GeoPosition:Position - kscPos:Position):Mag * 0.001, 0) + "km".
             }
 		}
-		else			
+		else
+        {
 			set flightStatus:Text to "Downrange Flight, Q=" + round(1000 * Ship:Q * constant:AtmToKPa, 2) + " Pa D=" + round((Ship:GeoPosition:Position - kscPos:Position):Mag * 0.001, 0) + "km".
+        }
 	}
     else if flightPhase >= c_PhaseGuidanceReady
     {
@@ -129,11 +146,21 @@ local function checkAscent
         
         local guidance is LAS_GetGuidanceAim(guidanceStage).
 		
-		if Stage:Number > LAS_GuidanceLastStage() or (Ship:GroundSpeed < 4000 and guidance:SqrMagnitude > 0.9)
-		{
-			// Just fly along launch azimuth until 4 km ground speed, then use guidance yaw steering
-			set guidance to Heading(launchAzimuth, 90 - arccos(vdot(guidance, Ship:Up:Vector))):Vector.
-		}
+        if guidance:SqrMagnitude > 0.9
+        {
+            local targetPitch is 90 - arccos(vdot(guidance, Ship:Up:Vector)).
+            if Ship:Q > 0.001
+            {
+                // Limit Qα to 0.5
+                local maxPitchDiff is 0.5 / Ship:Q.
+                set targetPitch to min(max(targetPitch, velocityPitch - maxPitchDiff), velocityPitch + maxPitchDiff).
+            }
+            if Stage:Number > LAS_GuidanceLastStage() or (Ship:GroundSpeed < 4000 and guidance:SqrMagnitude > 0.9)
+            {
+                // Just fly along launch azimuth until 4 km ground speed, then use guidance yaw steering
+                set guidance to Heading(launchAzimuth, targetPitch):Vector.
+            }
+        }
         
         // Make sure dynamic pressure is low enough to start manoeuvres
         if flightPhase = c_PhaseGuidanceReady
@@ -145,14 +172,20 @@ local function checkAscent
             {
                 // Check guidance pitch, when guidance is saying pitch down relative to open loop, engage guidance.
                 // Alternatively, if Q is at ~3 kPa, engage guidance.
-                if fr <= vdot(Ship:Up:Vector, Ship:Facing:Vector) or Ship:Q < 0.075
+                if (fr <= vdot(Ship:Up:Vector, Ship:Facing:Vector) or Ship:Q < 0.075) and (fr >= 0.1 or Stage:Number = LAS_GuidanceLastStage())
                 {
                     set flightPhase to c_PhaseGuidanceActive.
                     set flightGuidance to guidance.
                     set guidanceThreshold to 0.995.
                     lock Steering to flightGuidance.
 					set kUniverse:TimeWarp:Rate to 2.
-                    print "Orbital guidance mode active".
+                    print METString + " Orbital guidance active".
+                }
+                else if fr < 0.1 and not coastSteer
+                {
+                    set coastSteer to true.
+					set minPitch to -5.
+					lock Steering to Heading(launchAzimuth, choose (velocityPitch - 2) if (Ship:Orbit:Apoapsis < LAS_TargetPe * 900) else Ship:VerticalSpeed * max(-0.004, (1 - Ship:Orbit:Apoapsis / (LAS_TargetPe * 1000)) * 0.01), 0).
                 }
             }
         }
@@ -182,7 +215,7 @@ local function checkAscent
 			{
 				local stageEngines is LAS_GetStageEngines().
 				if stageEngines:Length >= 1
-					set flightStatus:Text to "Guidance Inactive: G=" + nextStageIsGuided + " F=" + stageEngines[0]:FlameOut + " N=" + stageEngines[0]:Name.
+					set flightStatus:Text to "Guidance Inactive: G=" + nextStageIsGuided + " F=" + stageEngines[0]:FlameOut + " N=" + stageEngines[0]:Config.
 				else
 					set flightStatus:Text to "Guidance Inactive: G=" + nextStageIsGuided + " No engine".
 
@@ -191,7 +224,7 @@ local function checkAscent
 					local nextStageEngines is LAS_GetStageEngines(Stage:Number-1).
 					if nextStageEngines:Length >= 1
 					{
-						print "Setting up unguided kick".
+						print METString + " Setting up unguided kick".
 						set flightPhase to c_PhaseGuidanceKick.
 						local kickPitch is LAS_GetPartParam(LAS_GetStageEngines(Stage:Number-1)[0], "p=", 0).
 						lock Steering to Heading(mod(360 - latlng(90,0):bearing, 360), kickPitch, 0).
@@ -217,7 +250,7 @@ local function checkAscent
             {
 				set kUniverse:TimeWarp:Rate to 1.
 				set flightStatus:Text to "Pitch and roll program: " + round(pitchOverAngle, 2) + "° heading " + round(launchAzimuth, 2) + "°".
-                print flightStatus:Text.
+                print METString + " " + flightStatus:Text.
                 set flightPhase to c_PhasePitchOver.
                 local steerAngle is 90 - pitchOverAngle.
                 if vang(Ship:SrfPrograde:ForeVector, LAS_ShipPos():Normalized) > pitchOverAngle
@@ -230,7 +263,7 @@ local function checkAscent
             if flightPhase < c_PhaseAeroFlight
             {
 				set kUniverse:TimeWarp:Rate to 2.
-                print "Minimal AoA flight mode active".
+                print METString + " Minimal AoA flight active".
 				lock Steering to Heading(launchAzimuth, min(90 - pitchOverAngle, velocityPitch), 0).
                 set flightPhase to c_PhaseAeroFlight.
             }
@@ -244,16 +277,23 @@ local function checkAscent
 				if not coastMode and canCoast and Ship:Q < 0.12
 				{
 					set coastMode to true.
+                    set coastSteer to true.
 					set minPitch to -5.
-					lock Steering to Heading(launchAzimuth, choose (velocityPitch - 2) if (Ship:Orbit:Apoapsis < LAS_TargetPe * 800) else Ship:VerticalSpeed * max(-0.004, (1 - Ship:Orbit:Apoapsis / (LAS_TargetPe * 1000)) * 0.01), 0).
-				}
-				else
-                {
-                    if Ship:Q < 0.3 and not LAS_HasEscapeSystem and not canLoft
-                        set maxPitch to 60.
-                    set minPitch to 38 - 3.6 * ((Ship:Altitude / 1000 - 10) / 16) ^ 2.6.
+					lock Steering to Heading(launchAzimuth, choose (velocityPitch - 2) if (Ship:Orbit:Apoapsis < LAS_TargetPe * 900) else Ship:VerticalSpeed * max(-0.004, (1 - Ship:Orbit:Apoapsis / (LAS_TargetPe * 1000)) * 0.01), 0).
 				}
 			}
+            if minPitch < 80 and minPitch > 0
+            {
+                if Ship:altitude >= 18266
+                    set minPitch to 38 - 3.6 * ((Ship:Altitude / 1000 - 10) / 16) ^ 2.6.
+                else
+                    set minPitch to 72 - 32 * (Ship:Altitude / 16000) ^ 0.6.
+            }
+            if Ship:Altitude >= 2400 and Ship:Altitude <= 48000 and not canLoft
+            {
+                local targetMaxPitch is 90 - 36 * (Ship:Altitude / 16000) ^ 0.5.
+                set maxPitch to max(targetMaxPitch, velocityPitch - 1 / Ship:Q).    // Cap Qα at 1
+            }
 
 			if coastMode
 			{
@@ -268,14 +308,14 @@ local function checkAscent
 			}
 			else
 			{
-				set flightStatus:Text to "Aero Flight, Q=" + round(Ship:Q * constant:AtmToKPa, 2) + " kPa vT=" + round(vTheta, 0) + "/" + round(guidanceMinV, 0).
+				set flightStatus:Text to "Aero, Q=" + round(Ship:Q * constant:AtmToKPa, 2) + " kPa vT=" + round(vTheta, 0) + "/" + round(guidanceMinV, 0) + " Qα=" + round(Ship:Q * vang(Facing:Vector, SrfPrograde:Vector), 3).
 			}
             
-			local startGuidance is vTheta > guidanceMinV.
-            if LAS_NextStageIsBoosters
+			local startGuidance is vTheta >= guidanceMinV.
+            if LAS_NextStageIsBoosters() or not LAS_StageReady()
                 set startGuidance to false.
             if coastMode and startGuidance
-                set startGuidance to LAS_GuidanceLastStage() and (Ship:Altitude > LAS_TargetPe * 800 or Eta:Apoapsis < 60).
+                set startGuidance to Stage:Number = LAS_GuidanceLastStage() and (Ship:Altitude > LAS_TargetPe * 800 or Eta:Apoapsis < 60).
 			
 			if maxQset and Ship:Q < 0.1
 			{
@@ -323,7 +363,7 @@ local function checkAscent
     
     if cutoff
     {
-        print "Sustainer engine cutoff".
+        print METString + " Sustainer engine cutoff".
         set Ship:Control:PilotMainThrottle to 0.
 
         local mainEngines is LAS_GetStageEngines().
@@ -343,7 +383,7 @@ local function checkMaxQ
     {
         if maxQ > Ship:Q and Ship:Altitude > 5000
         {
-            print "Max Q " + round(maxQ * constant:AtmToKPa, 2) + " kPa, pitch: " + round((90 - vang(SrfPrograde:ForeVector, LAS_ShipPos():Normalized)), 2) + "°".
+            print METString + " Max Q " + round(maxQ * constant:AtmToKPa, 2) + " kPa, pitch: " + round((90 - vang(SrfPrograde:ForeVector, LAS_ShipPos():Normalized)), 2) + "°".
             set maxQset to true.
         }
         else
@@ -357,6 +397,7 @@ local function checkMaxQ
 lock Steering to LookDirUp(Ship:Up:Vector, Ship:Facing:TopVector).
 
 set steeringmanager:rollts to 1.
+set steeringmanager:maxstoppingtime to 1.
 
 set kUniverse:TimeWarp:Mode to "Physics".
 if vdot(Ship:Up:Vector, SrfPrograde:Vector) > 0.9998
@@ -368,7 +409,8 @@ local flameoutTimer is MissionTime + 5.
 until false
 {
     checkMaxQ().
-    checkAscent().
+    if flightPhase < c_PhaseSECO
+        checkAscent().
     if maxQSet
         LAS_CheckPayload(fairingStatus, equipmentStatus).
     if flightPhase = c_PhaseSECO
@@ -377,7 +419,8 @@ until false
 	if (not coastMode or Ship:Altitude > LAS_TargetPe * 800 or Eta:Apoapsis < 60) and LAS_CheckStaging()
     {
         set stageChecked to false.
-        set flameoutTimer to MissionTime + 5.
+        if Ship:Control:PilotMainThrottle > 0
+            set flameoutTimer to MissionTime + 5.
         
         if flightPhase = c_PhaseGuidanceActive
         {
@@ -417,7 +460,7 @@ until false
                 list rcs in allRCS.
 				for r in allRCS
 				{
-					if r:Enabled
+					if r:IsType("Engine") or r:Enabled
 					{
 						set haveControl to true.
 						rcs on.
@@ -428,7 +471,7 @@ until false
 			
 			if not haveControl and flightPhase < c_PhaseGuidanceKick
 			{
-				print "No attitude control, aborting guidance.".
+				print METString + " No attitude control, aborting guidance.".
 				break.
 			}
 			set SteeringManager:RollTorqueFactor to 2.
@@ -457,7 +500,7 @@ until false
         set stageChecked to true.
 	}
     
-    if LAS_TargetPe < 100 and MissionTime > flameoutTimer
+    if LAS_TargetPe < 100 and MissionTime > flameoutTimer and LAS_LastPoweredStage()
     {
    		local mainEngines is LAS_GetStageEngines().
         local flamedOut is true.
@@ -473,14 +516,15 @@ until false
         if flamedOut
         {
             set flightPhase to c_PhaseSuborbCoast.
-            print "Sustainer engine burnout".
+            print METString + " Sustainer engine burnout".
             set Ship:Control:PilotMainThrottle to 0.
             unlock Steering.
             set Ship:Control:Neutralize to true.
             rcs off.
+            set flameoutTimer to MissionTime + 1e10.
         }
-        
-        set flameoutTimer to MissionTime + 0.5.
+        else
+            set flameoutTimer to MissionTime + 0.5.
     }
     
     // Reduce power consumption when coasting
@@ -501,7 +545,7 @@ set Ship:Control:Neutralize to true.
 steeringmanager:resettodefault().
 
 if defined LAS_TargetSMA
-	print "Final latitude: " + round(Ship:Latitude, 2).
+	print METString + " Final latitude: " + round(Ship:Latitude, 2).
     
 LAS_EnableAllEC().
 

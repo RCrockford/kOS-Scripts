@@ -42,10 +42,12 @@ print "Descent mode active".
 set Ship:Type to "Lander".
 lock steering to LookDirUp(SrfRetrograde:Vector, Facing:UpVector).
 
+local shipBounds is Ship:Bounds.
+
 // Touchdown speed
 local vT is 0.5.
 local abortMode is false.
-local radarHeight is Ship:Bounds:BottomAltRadar.
+local radarHeight is shipBounds:BottomAltRadar.
 
 until radarHeight < 2
 {
@@ -53,7 +55,7 @@ until radarHeight < 2
     local localGrav is Ship:Body:Mu / LAS_ShipPos():SqrMagnitude.
     
     // Use minimal height directly below and projected forwards
-    set radarHeight to Ship:Bounds:BottomAltRadar.
+    set radarHeight to shipBounds:BottomAltRadar.
     local h is min(radarHeight, Ship:Altitude - Body:GeopositionOf(SrfPrograde:Vector * radarHeight):TerrainHeight) - 1.
     set h to max(h, 0.1).
 
@@ -66,9 +68,9 @@ until radarHeight < 2
     
     local f is fr / vdot(Facing:Vector, Up:Vector).
     local reqThrottle is max(0, min(f, 1)).
-    if not enginesOn and reqThrottle >= 0.9
+    if not enginesOn and reqThrottle >= 0.9 and vdot(Facing:Vector, SrfRetrograde:Vector) > 0.8
     {
-        print "Ignition, rt= " + round(reqThrottle, 3).
+        print "Ignition, rt: " + round(reqThrottle, 3).
         if needUllage
             EM_Ignition().
         LanderEnginesOn().
@@ -91,11 +93,16 @@ until radarHeight < 2
         }
     }
     
-    if not legs and Alt:Radar <= 50
+    if not legs and Alt:Radar <= 100
     {
         legs on.
         gear on.
         brakes on.
+        local checkBounds is time:seconds + 3.
+        when checkBounds >= time:seconds then
+        {
+            set shipBounds to Ship:Bounds.
+        }
     }
 
     wait 0.
@@ -104,8 +111,7 @@ until radarHeight < 2
 if not abortMode
 {
     lock steering to LookDirUp(Up:Vector, Facing:UpVector).
-    
-    local shipBounds is Ship:Bounds.
+    set shipBounds to Ship:Bounds.
 
     until Ship:Status = "Landed" or Ship:Status = "Splashed"
     {
