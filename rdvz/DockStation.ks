@@ -1,72 +1,34 @@
 // Docking active side
 @lazyglobal off.
 
+if not HasTarget
+{
+    print "Waiting for target.".
+    wait until hastarget.
+}
+
+local tShip is target.
+local tPort is target.
+
+if tShip:IsType("DockingPort")
+{
+    set tShip to tShip:Ship.
+}
+
 // Wait for unpack
-if not Ship:Unpacked
-{
-    print "Wait for Unpack".
-    wait until Ship:Unpacked.
-}
+wait until Ship:Unpacked.
 
-parameter stageToDecouple is true.
-
-local tPort is 0.
-local portList is Ship:DockingPorts.
-
-if Ship:PartsTagged("transpos"):Length > 0
-{
-    local decoupler is Ship:PartsTagged("transpos")[0].
-    print "Decoupling " + decoupler:title.
-
-    if stageToDecouple
-    {
-        stage.
-    }
-    else if decoupler:HasModule("ModuleDecouple")
-    {
-        decoupler:GetModule("ModuleDecouple"):DoEvent("decouple").
-        wait 0.
-    }
-}
-
-for p in portList
-{
-    if p:Ship <> ship
-    {
-        set tPort to p.
-        break.
-    }
-}
-
-local port is choose Ship:DockingPorts[0] if Ship:DockingPorts:Length > 0 else Ship:rootpart.
+local port is choose Ship:DockingPorts[0] if Ship:DockingPorts:Length > 0 else 0.
 
 if port:IsType("DockingPort")
 {
     print "Controlling from " + port:Title.
     port:ControlFrom().
 }
-
-if not (tPort:IsType("Part") or tPort:IsType("Vessel"))
-{
-    if not HasTarget
-    {
-        print "Waiting for target.".
-        wait until hastarget.
-    }
-    set tPort to target.
-}
 else
 {
-    set target to tPort.
+    set port to Ship:rootpart.
 }
-
-local tShip is tPort.
-if tShip:IsType("Part")
-{
-    set tShip to tPort:Ship.
-}
-
-print "Detached from Lander".
 
 clearguis().
 local debugGui is GUI(300, 80).
@@ -86,7 +48,6 @@ runoncepath("/FCFuncs").
 runpath("flight/TuneSteering").
 
 LAS_Avionics("activate").
-
 rcs on.
 
 lock steering to lookdirup(-tPort:Position:Normalized, Facing:UpVector).
@@ -124,19 +85,6 @@ local function UpdateLateral
 
 if vdot(Facing:Vector, tPort:Position:Normalized) < 0.999
 {
-    set debugStat2:Text to "Thrusting clear".
-    set forePID:SetPoint to foreAccel * 10.
-
-    until targetDist >= clearDist
-    {
-        set debugStat1:Text to "t=" + round(forePID:SetPoint, 2) + " v=" + round(vdot(relV, tPort:Position:Normalized), 2) + " d=" + round(targetDist, 1) + "/" + round(clearDist, 1) + " m=" + round(movePos():Mag, 2).
-        
-        set ship:control:fore to forePID:Update(Time:Seconds, vdot(-relV, tPort:Position:Normalized)).
-        UpdateLateral().
-        
-        wait 0.
-    }
-
     set forePID:SetPoint to -0.05.
 
     until abs(vdot(relV, tPort:Position:Normalized)) < 0.05 and movePos():Mag < 0.1

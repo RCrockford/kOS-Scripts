@@ -7,7 +7,7 @@ if not HasTarget
     wait until hastarget.
 }
 
-parameter minDist is 50.
+parameter minDist is 100.
 parameter portIdx is -1.
 local tShip is target.
 
