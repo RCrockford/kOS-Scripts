@@ -8,7 +8,12 @@ wait until hastarget.
 local targetOrbit is Target:Orbit.
 
 // Orbital matching with target.
-global LAS_TargetPe is (targetOrbit:SemiMajorAxis - Ship:Body:Radius) * 0.8 / 1000.
+global LAS_TargetPe is (targetOrbit:SemiMajorAxis - Ship:Body:Radius) / 1000.
+if vdot(vcrs(Body:AngularVel:Normalized, -Body:Position:Normalized), (Target:Position - Body:Position):Normalized) > 0
+    set LAS_TargetPe to LAS_TargetPe * 0.8.
+else
+    set LAS_TargetPe to LAS_TargetPe * 1.1.
+
 set LAS_TargetPe to max(LAS_TargetPe, 150).
 global LAS_TargetAp is LAS_TargetPe.
 
