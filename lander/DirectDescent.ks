@@ -9,13 +9,15 @@ wait until Ship:Unpacked.
 
 parameter landStage is max(Stage:Number - 1, 0).
 parameter brakingMargin is 1.5.
+parameter forceCC is false.
+parameter manualTarget is 0.
 
 switch to scriptpath():volume.
 
 // Setup functions
-runpath("0:/flight/EngineMgmt", min(Stage:Number, landStage + 1)).
-runpath("0:/flight/TuneSteering").
-runoncepath("0:/lander/LanderSteering").
+runpath("/flight/EngineMgmt", min(Stage:Number, landStage + 1)).
+runpath("/flight/TuneSteering").
+runoncepath("/lander/LanderSteering").
 
 local DescentEngines is EM_GetEngines().
 
@@ -36,10 +38,10 @@ local function GetBrakingAim
 	parameter pCurrent is LAS_ShipPos().
 	parameter vCurrent is Ship:Velocity:Surface.
 
-	local horizVec is LanderSteering(pCurrent, vCurrent).
+	local horizVec is LanderSteering(pCurrent, vCurrent, 0.2).
 	
 	local vertComp is -vdot(vCurrent:Normalized, Up:Vector) * downrangeAdjust.
-	local thrustVec is (vertComp * Up:Vector + sqrt(1 - vertComp ^ 2) * horizVec):Normalized.
+	local thrustVec is (vertComp * Up:Vector + sqrt(1 - vertComp ^ 2) * horizVec:vec):Normalized.
 	
 	return thrustVec.
 }
@@ -49,18 +51,19 @@ local function EstimateBrakingPosition
 {
 	parameter vTarget.
 	parameter burnDelay.
-	parameter tStep is 0.5.
+	parameter tStep is 0.25.
 
 	local vCurrent is Ship:Velocity:Surface.
 	local mCurrent is shipMass.
 	local pCurrent is LAS_ShipPos().
-
+    
 	until vdot(vCurrent, Up:Vector) > vTarget or mCurrent < massFlow * 2
 	{
 		// Assume thrust is constant magntiude and retrograde
-		local accel is v(0,0,0).
+        local throt is 0.
 		if burnDelay < tStep
-			set accel to ((tStep - burnDelay) / tStep) * GetBrakingAim(pCurrent, vCurrent) * burnThrust / mCurrent.
+			set throt to ((tStep - burnDelay) / tStep).
+		local accel is throt * GetBrakingAim(pCurrent, vCurrent) * burnThrust / mCurrent.
 		set burnDelay to max(0, burnDelay - tStep).
 		local g is -pCurrent:Normalized * Body:Mu / pCurrent:SqrMagnitude.
 
@@ -68,21 +71,23 @@ local function EstimateBrakingPosition
 		set vCurrent to vCurrent + (accel + g) * tStep.
 		set pCurrent to pCurrent + vCurrent * tStep.
 
-		set mCurrent to mCurrent - massFlow * tStep.
+		set mCurrent to mCurrent - massFlow * throt * tStep.
 	}
 
 	return pCurrent.
 }
 
-local function RollControl
+local function RC
 {
-    if spinBrake and vdot(SrfRetrograde:Vector, Facing:Vector) > 0.999
+    parameter close.
+
+    if spinBrake and abs(SteeringManager:AngleError) < 1
     {
         // spin up
         local rollRate is vdot(Facing:Vector, Ship:AngularVel).
-        if abs(rollRate) > 1
+        if abs(rollRate) > 1.2
         {
-            set ship:control:roll to -0.1.
+            set ship:control:roll to -0.01.
         }
         else
         {
@@ -90,7 +95,7 @@ local function RollControl
         }
     }
     
-    if EM_IgDelay() > 0
+    if close and EM_IgDelay() > 0
     {
         if Ship:Control:Fore > 0
         {
@@ -109,14 +114,31 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 {
     print "Direct descent system online.".
 
-	local debugGui is GUI(400, 80).
-    set debugGui:X to 160.
-    set debugGui:Y to debugGui:Y + 240.
-    local mainBox is debugGui:AddVBox().
+    if HasTarget and manualTarget:IsType("Scalar")
+        set manualTarget to Target.
 
-    local debugStat is mainBox:AddLabel("Ready").
+    runoncepath("/mgmt/ReadoutGUI").
+    local readoutGui is ReadoutGUI_Create().
+    readoutGui:SetColumnCount(80, 3).
 
-	debugGui:Show().
+    local Readouts is lexicon().
+
+    Readouts:Add("height", readoutGui:AddReadout("Height")).
+    Readouts:Add("acgx", readoutGui:AddReadout("Acgx")).
+    Readouts:Add("fr", readoutGui:AddReadout("fr")).
+
+    Readouts:Add("throt", readoutGui:AddReadout("Throttle")).
+    Readouts:Add("thrust", readoutGui:AddReadout("Thrust")).
+    Readouts:Add("status", readoutGui:AddReadout("Status")).
+
+    Readouts:Add("dist", readoutGui:AddReadout("Distance")).
+    Readouts:Add("bearing", readoutGui:AddReadout("Bearing")).
+    Readouts:Add("eta", readoutGui:AddReadout("ETA")).
+    
+	readoutGui:Show().
+
+    ReadoutGUI_SetText(Readouts:status, "Ready", ReadoutGUI_ColourNormal).
+
 	if Stage:Number > landStage or Ship:Velocity:Surface:Mag > 300
 	{
         set spinBrake to landStage < Stage:Number - 1.
@@ -137,15 +159,20 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
 		print "  Engine: " + DescentEngines[0]:Config + ", Ship Mass: " + round(shipMass * 1000, 1) + " kg".
 
-		LanderSelectWP().
+		LanderSelectWP(manualTarget).
         local targetPos is LanderTargetPos().
 
 		local initGrav is (0.7 - shipMass * 0.035) * Body:Mu / (Body:Radius^2).
         
 		if Body:Mu / LAS_ShipPos():SqrMagnitude < initGrav and Ship:GeoPosition:TerrainHeight / Body:Radius < 0.01
 		{
-			if targetPos:IsType("GeoCoordinates") and Body:Mu / LAS_ShipPos():SqrMagnitude < initGrav * 0.25
+			if targetPos:IsType("GeoCoordinates") and Body:Mu / LAS_ShipPos():SqrMagnitude < initGrav * (choose 0.8 if forceCC else 0.25)
 			{
+                print "Waiting for gravity to increase to " + round(initGrav * 0.2, 3) + " m/s for CCM".
+                set kUniverse:Timewarp:Rate to 10.
+                wait until Body:Mu / LAS_ShipPos():SqrMagnitude >= initGrav * 0.2.
+                set kUniverse:Timewarp:Rate to 1.
+            
 				local lock nVec to vcrs(Ship:Velocity:Surface:Normalized, -Body:Position:Normalized):Normalized.
 				print "d=" + vdot(targetPos:Position:Normalized, nVec).
 				if abs(vdot(targetPos:Position:Normalized, nVec)) > 2e-4
@@ -157,13 +184,14 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 					lock steering to LookDirUp(steerVec, Facing:UpVector).
 					until vdot(Facing:Vector, steerVec) > 0.999
 					{
-						set debugStat:Text to "f=" + vdot(Facing:Vector, steerVec).
+                        ReadoutGUI_SetText(Readouts:fr, round( vdot(Facing:Vector, steerVec), 3), ReadoutGUI_ColourNormal).
 						wait 0.
 					}
 					set Ship:Control:Fore to 1.
 					until abs(vdot(targetPos:Position:Normalized, nVec)) < 1e-4 or vdot(Facing:Vector, steerVec) < 0.995
 					{
-						set debugStat:Text to "d=" + vdot(targetPos:Position:Normalized, nVec) + " f=" + vdot(Facing:Vector, steerVec).
+                        ReadoutGUI_SetText(Readouts:dist, round(vdot(targetPos:Position:Normalized, nVec), 6), ReadoutGUI_ColourNormal).
+                        ReadoutGUI_SetText(Readouts:fr, round( vdot(Facing:Vector, steerVec), 3), ReadoutGUI_ColourNormal).
 						wait 0.
 					}
 					unlock steering.
@@ -172,7 +200,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 				}
 			}
 
-			print "Waiting for initial gravity to increase to " + round(initGrav, 3) + " m/s".
+			print "Waiting for gravity to increase to " + round(initGrav, 3) + " m/s for braking".
 			set kUniverse:Timewarp:Rate to 10.
 			wait until Body:Mu / LAS_ShipPos():SqrMagnitude >= initGrav.
 		}
@@ -183,62 +211,82 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
 		local function WaitBurn
 		{
-			parameter name.
 			parameter burnDelay.
             parameter callback.
 
 			local lock targetAlt to round(Ship:Velocity:Surface:Mag * brakingMargin).
 
-			local alt is LAS_ShipPos():Mag.
-			until alt < targetAlt
+			local alt is Ship:Altitude.
+			until alt < targetAlt - Ship:VerticalSpeed * 0.5
 			{
 				local tStart is Time:Seconds.
 				local pFinal is EstimateBrakingPosition(targetSpeed, burnDelay).
 				local geoPos is Body:GeoPositionOf(pFinal + Body:Position).
-				set alt to pFinal:Mag - Body:Radius - geoPos:TerrainHeight.
-
-				local debugStr to name + ", Target Alt: " + round(alt * 0.001, 1) + " / " + round(targetAlt * 0.001, 1) + " km".
-				if targetPos:IsType("GeoCoordinates")
-					set debugStr to debugStr + " Dist=" + round(vxcl(Up:Vector, targetPos:Position - geoPos:Position):Mag * 0.001, 1) + " km".
-					
-				set debugStat:Text to debugStr.
-
-                callback().
-
-				if alt > targetAlt + Ship:Velocity:Surface:Mag * (brakingMargin * 1.4)
+                set alt to pFinal:Mag - Body:Radius - geoPos:TerrainHeight.
+                
+                ReadoutGUI_SetText(Readouts:height, round(alt * 0.001, 1) + " km", ReadoutGUI_ColourNormal).
+                ReadoutGUI_SetText(Readouts:acgx, round(targetAlt * 0.001, 1) + " km", ReadoutGUI_ColourNormal).
+                if targetPos:IsType("GeoCoordinates")
                 {
-					wait until Time:Seconds >= tStart + 1.
+                    local wpBearing is vang(vxcl(up:vector, TargetPos:Position), vxcl(up:vector, Ship:Velocity:Surface)).
+                    ReadoutGUI_SetText(Readouts:dist, round(targetPos:Distance * 0.001, 1) + " km", ReadoutGUI_ColourNormal).
+                    ReadoutGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", ReadoutGUI_ColourNormal).
+                }
+
+                local close is alt < targetAlt - Ship:VerticalSpeed * 8.
+				if close
+                {
+                    if kUniverse:Timewarp:Rate <> 1
+                        set kUniverse:Timewarp:Rate to 1.
+					wait until Time:Seconds >= tStart + 0.2.
                 }
 				else
                 {
-                    set kUniverse:Timewarp:Rate to 1.
-					wait until Time:Seconds >= tStart + 0.25.
+                    if not rcs and kUniverse:Timewarp:Rate <> 10
+                        set kUniverse:Timewarp:Rate to 10.
+					wait until Time:Seconds >= tStart + 1.
                 }
-					
+
+                callback(close).
+
 				set lastPrediction to geoPos.
 			}
 		}
-		set kUniverse:Timewarp:Rate to 10.
-
+        
 		// 60 second alignment margin
-		WaitBurn("Align", choose 120 if spinBrake else 60, {}).
+        ReadoutGUI_SetText(Readouts:status, "Wait Align", ReadoutGUI_ColourNormal).
+		WaitBurn(choose 90 if spinBrake else 60, {parameter c.}).
 		set kUniverse:Timewarp:Rate to 1.
 		wait until kUniverse:Timewarp:Rate = 1.
 
 		// Full retrograde burn until vertical velocity is under 30 (or fuel exhaustion).
 		print "Aligning for burn".
+        ReadoutGUI_SetText(Readouts:status, "Aligning", ReadoutGUI_ColourNormal).
 
 		LAS_Avionics("activate").
 		rcs on.
+
+        if spinBrake
+        {            
+            local massRatio is constant:e ^ (Velocity:Surface:Mag * massflow / burnThrust).
+            local finalMass is shipMass / massRatio.
+            local duration is (shipMass - finalMass) / massflow.
+            set downrangeAdjust to Ship:VerticalSpeed / (Ship:VerticalSpeed + duration * 0.8 * (Body:Mu / LAS_ShipPos():SqrMagnitude)).
+        }
 
 		lock steering to LookDirUp(GetBrakingAim(), Facing:UpVector).
 
 		set navmode to "surface".
 
-		WaitBurn("Ignition", EM_IgDelay(), RollControl@).
+        ReadoutGUI_SetText(Readouts:status, "Wait Ignition", ReadoutGUI_ColourNormal).
+        WaitBurn(EM_IgDelay(), RC@).
 
         print "Beginning braking burn".
-        EM_Ignition(choose 0.1 if spinBrake else 0.5).
+        ReadoutGUI_SetText(Readouts:status, "Braking", ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(Readouts:throt, "100%", ReadoutGUI_ColourNormal).
+        
+        until DescentEngines[0]:Ignitions = 0 or EM_CheckThrust(0.1)
+            EM_Ignition(0.1).
         
         if spinBrake
         {
@@ -255,54 +303,68 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
             set downrangeAdjust to 1 + max(-0.02, min((drPred - 2500) / 20000, 0.02)).
         }
 
-        until Ship:VerticalSpeed >= targetSpeed or not EM_CheckThrust(0.1)
+        until (Ship:VerticalSpeed >= targetSpeed and Ship:Velocity:Surface:Mag < -targetSpeed) or not EM_CheckThrust(0.1)
         {
-            local debugStr to "Braking".
             local t is Ship:Velocity:Surface:Mag * Ship:Mass / burnThrust.
             if targetPos:IsType("GeoCoordinates")
             {
                 local wpBearing is vang(vxcl(up:vector, TargetPos:Position), vxcl(up:vector, Ship:Velocity:Surface)).
-                set debugStr to debugStr + ", Dist=" + round(targetPos:Distance * 0.001, 1) + " km" + " Bearing=" + round(wpBearing, 2) + "°".
+                ReadoutGUI_SetText(Readouts:dist, round(targetPos:Distance * 0.001, 1) + " km", ReadoutGUI_ColourNormal).
+                ReadoutGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", ReadoutGUI_ColourNormal).
                 if t < 100
                 {
                     local hDot is 1 - vdot(Up:Vector, Ship:Velocity:Surface:Normalized)^2.
                     local hAccel is hDot * burnThrust / Ship:Mass.
                     local dist is Ship:GroundSpeed * t - 0.5 * hAccel * t^2.
                     local drEst is targetPos:Distance - (hDot * -targetSpeed * 30 + dist).
-                    set debugStr to debugStr + " Est=" + round(drEst, 1) + " t=" + round(t,1).
                     
-                    if t <= 60 and abs(wpBearing) < 1
+                    if t <= 60 and abs(wpBearing) < 2
                     {
                         set downrangeAdjust to 1 + max(-0.1, min((drEst - 1500) / 10000, 0.1)).
                     }
                 }
             }
-            else
-            {
-                set debugStr to debugStr + ", t=" + round(t,1).
-            }
-
-            set debugStat:Text to debugStr.
             
-            if spinBrake and vdot(Facing:Vector, SrfRetrograde:Vector) < 0.4
+            local h is Ship:Altitude - Ship:GeoPosition:TerrainHeight.
+            local acgx is -(targetSpeed^2 - Ship:VerticalSpeed^2) / (2 * h).
+            local fr is (acgx + Body:Mu / Body:Position:SqrMagnitude) * Ship:Mass / burnThrust.
+            
+            ReadoutGUI_SetText(Readouts:height, round(h) + " m", ReadoutGUI_ColourNormal).
+            ReadoutGUI_SetText(Readouts:acgx, round(acgx, 3), ReadoutGUI_ColourNormal).
+            ReadoutGUI_SetText(Readouts:fr, round(fr, 3), ReadoutGUI_ColourNormal).
+
+            local nomThrust is Ship:AvailableThrust.
+            ReadoutGUI_SetText(Readouts:thrust, round(100 * min(Ship:Thrust / max(Ship:AvailableThrust, 0.001), 2), 2) + "%", 
+                choose ReadoutGUI_ColourGood if Ship:Thrust > nomThrust * 0.75 else (choose ReadoutGUI_ColourNormal if Ship:Thrust > nomThrust * 0.25 else ReadoutGUI_ColourFault)).
+
+            ReadoutGUI_SetText(Readouts:eta, round(t, 2) + " s", ReadoutGUI_ColourNormal).
+            
+            if spinBrake and vdot(Facing:Vector, SrfRetrograde:Vector) < 0.3
+                break.
+                
+            if stage:number = landStage and fr < 0.8 and Ship:VerticalSpeed >= targetSpeed * 2
                 break.
             
             wait 0.
         }
         
-		if not EM_CheckThrust(0.1)
+        if not EM_CheckThrust(0.1).
 			print "Fuel exhaustion in braking stage".
 
         if stage:number > landStage
         {
-            // Jettison braking stage
             set Ship:Control:PilotMainThrottle to 0.
+
+            // Use braking stage RCS to reorient
+            wait until (Ship:VerticalSpeed <= targetSpeed * 2).
+
+            // Jettison braking stage
             stage.
         }
 	}
 	else
 	{
-		LanderSelectWP().
+		LanderSelectWP(manualTarget).
 
 		LAS_Avionics("activate").
 		rcs on.
@@ -342,5 +404,5 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 	for eng in DescentEngines
 		eng:Shutdown.
 
-    runpath("/lander/FinalDescent", DescentEngines, debugStat, LanderTargetPos()).
+    runpath("/lander/FinalDescent", DescentEngines, Readouts, LanderTargetPos()).
 }

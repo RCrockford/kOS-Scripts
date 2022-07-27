@@ -13,11 +13,28 @@ wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
 
+local liftoffTime is MissionTime.
+
+global function METString
+{
+    local str is "T+" + round(MissionTime - liftoffTime, 1).
+    if not str:Contains(".")
+        return str + ".0".
+    return str.
+}
+
 // Setup functions
 runoncepath("/launch/LASFunctions").
 
 if Ship:Status = "Landed" or Ship:Status = "Splashed"
 {
+    if stage:number > ascentStage + 1
+	{
+        print "Fixing staging".
+		wait until stage:ready.
+		stage.
+	}
+
     print "Lifting off".
     
     LAS_Avionics("activate").
@@ -29,6 +46,8 @@ if Ship:Status = "Landed" or Ship:Status = "Splashed"
     set Ship:Control:PilotMainThrottle to 1.
 
     local stageEngines is LAS_GetStageEngines(ascentStage).
+    if stageEngines:Empty
+        print "No engines found for stage " + ascentStage.
     for eng in stageEngines
     {
         if not eng:Ignition
@@ -38,10 +57,10 @@ if Ship:Status = "Landed" or Ship:Status = "Splashed"
     for eng in stageEngines
     {
         if eng:Ignition
-            wait until eng:Thrust > (Ship:Mass * Ship:Body:Mu / Body:Position:SqrMagnitude).
+            wait until eng:Thrust > eng:PossibleThrust * 0.5.
     }
 	
-	until stage:number <= ascentStage
+	if stage:number > ascentStage
 	{
 		wait until stage:ready.
 		stage.
@@ -53,7 +72,6 @@ if Ship:Status = "Landed" or Ship:Status = "Splashed"
 if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
 {
     legs off. gear off.
-
 
     if defined LAS_TargetPe
         set LAS_TargetPe to targetPe.

@@ -8,9 +8,12 @@
 wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
+Core:Part:ControlFrom().
 
 parameter angleGate is 0.1.
 parameter heightGate is 8000.
+parameter distanceFactor is 0.92.
+parameter manualTarget is 0.
 
 set angleGate to max(0.001, min(angleGate, 0.5)).
 set heightGate to max(heightGate, 1000).
@@ -20,14 +23,13 @@ ClearGUIs().
 // Setup functions
 runoncepath("/FCFuncs").
 runoncepath("/flight/TuneSteering").
-set steeringmanager:TorqueEpsilonMin to 0.
-set steeringmanager:TorqueEpsilonMax to 1e-6.
 runpath("/flight/EngineMgmt", Stage:Number).
 runoncepath("/lander/LanderSteering").
 
 local DescentEngines is EM_GetEngines().
 local enginesIgnited is DescentEngines[0]:Ignition.
 local abortMode is false.
+local hasGimbal is false.
 
 if not DescentEngines[0]:Ullage and DescentEngines[0]:PressureFed
     set enginesIgnited to false.
@@ -70,13 +72,15 @@ local monitorFuel is 0.
 local engMassflow is 0.
 local burnThrust is 0.
 
-local function GatherFuelStatus
+global function GatherFuelStatus
 {
+    parameter engList.
+
     local resStats is lexicon().
     set engMassflow to 0.
     set burnThrust to 0.
 
-    for eng in DescentEngines
+    for eng in engList
     {
         for k in eng:ConsumedResources:keys
         {
@@ -91,9 +95,10 @@ local function GatherFuelStatus
         }
         set engMassflow to engMassflow + eng:MaxMassFlow.
         set burnThrust to burnThrust + eng:PossibleThrust.
+        set hasGimbal to hasGimbal or eng:HasGimbal and eng:Gimbal:Range > 0.
     }
     
-    GetConnectedTanks(DescentEngines[0], resStats, uniqueset()).
+    GetConnectedTanks(engList[0], resStats, uniqueset()).
     
     local minBurnTime is 1e6.
     for k in resStats:Keys
@@ -108,8 +113,10 @@ local function GatherFuelStatus
     }
 }
 
-local function CurrentFuelStatus
+global function CurrentFuelStatus
 {
+    parameter engList.
+
     local fuelAmount is 0.
     local fuelCapacity is 0.
     
@@ -125,8 +132,9 @@ local function CurrentFuelStatus
             }
 		}
     }
-
-    local t is fuelAmount / monitorFuel:MaxFlow.
+    
+    local residuals is engList[0]:Residuals * fuelCapacity.
+    local t is (fuelAmount - residuals) / monitorFuel:MaxFlow.
     local ΔV is (burnThrust / engMassflow) * ln(Ship:Mass / (Ship:Mass - engMassflow * t)).
     
     return list(fuelAmount / fuelCapacity, ΔV, t).
@@ -148,17 +156,21 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
     print "Lander descent system online.".
     print "Angle gate: " + round(angleGate, 2).
     print "Height gate: " + round(heightGate, 0).
+    
+    GatherFuelStatus(DescentEngines).
 
-    GatherFuelStatus().
+    print "Distance gate: " + round((burnThrust / Ship:Mass) / distanceFactor, 3).
 
     // Target height and vertical velocity at approach terminus
     local rT is 50.
     // Target vel is speed at 45° angle for full throttle descent, safety margin provided by increasing TWR.
-    local vT is -sqrt(rT * sqrt(2) * (GetCurrentAccel(Up:Vector):y - Body:Mu / Body:Position:SqrMagnitude)).
-    print "Target velocity: " + round(vT, 2).
+    local vT is -sqrt(max(rT * sqrt(2) * (GetCurrentAccel(Up:Vector):y - Body:Mu / Body:Position:SqrMagnitude), 4)).
+    if core:tag:contains("skycrane")
+        set rT to 100.
+    print "Target velocity: " + round(-vT, 2).
     
     {
-        local fuelStatus is CurrentFuelStatus().
+        local fuelStatus is CurrentFuelStatus(DescentEngines).
         print "Monitor Fuel: " + monitorFuel:Name + " Δv=" + round(fuelStatus[1], 1) + " fuel=" + round(fuelStatus[0] * 100, 1) + "% t=" + round(fuelStatus[2], 2).
     }
 
@@ -171,24 +183,51 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
     local bingoFuel is false.
     local ΔVmargin is 2 * sqrt(2 * rT / (Body:Mu / Body:Position:SqrMagnitude)) * (Body:Mu / Body:Position:SqrMagnitude).
     
-    runoncepath("/lander/LanderThrottle", DescentEngines).
+    runpath("/lander/LanderThrottle", DescentEngines).
 
-    LanderSelectWP().
+    if HasTarget and manualTarget:IsType("Scalar")
+        set manualTarget to Target.
+
+    LanderSelectWP(manualTarget).
     local targetPos is LanderTargetPos().
+    
+    runoncepath("/mgmt/ReadoutGUI").
+    local readoutGui is ReadoutGUI_Create().
+    readoutGui:SetColumnCount(80, 3).
 
-    local debugGui is GUI(400, 80).
-    set debugGui:X to 160.
-    set debugGui:Y to debugGui:Y + 240.
-    local mainBox is debugGui:AddVBox().
-    local debugStat is mainBox:AddLabel("Init").
-    local debugStat2 is mainBox:AddLabel("").
-    local debugStat3 is choose mainBox:AddLabel("") if targetPos:IsType("GeoCoordinates") else 0.
-    local maintainAlt is mainBox:AddCheckBox("Maintain Altitude", false).
-    local maintainH is mainBox:AddCheckBox("Maintain Height", false).
-    local ignoreTarget is mainBox:AddCheckBox("Ignore target", false).
-	debugGui:Show().
+    local Readouts is lexicon().
 
-    until Ship:GroundSpeed < -vT
+    Readouts:Add("height", readoutGui:AddReadout("Height")).
+    Readouts:Add("acgx", readoutGui:AddReadout("Acgx")).
+    Readouts:Add("fr", readoutGui:AddReadout("Fr")).
+
+    Readouts:Add("acgz", readoutGui:AddReadout("Acgz")).
+    Readouts:Add("accz", readoutGui:AddReadout("Accz")).
+    Readouts:Add("eta", readoutGui:AddReadout("ETA")).
+
+    Readouts:Add("throt", readoutGui:AddReadout("Throttle")).
+    Readouts:Add("thrust", readoutGui:AddReadout("Thrust")).
+    Readouts:Add("status", readoutGui:AddReadout("Engines")).
+
+    Readouts:Add("Δv", readoutGui:AddReadout("Δv")).
+    Readouts:Add("margin", readoutGui:AddReadout("Margin")).
+    Readouts:Add("fuel", readoutGui:AddReadout("Fuel")).
+
+    Readouts:Add("dist", readoutGui:AddReadout("Distance")).
+    Readouts:Add("bearing", readoutGui:AddReadout("Bearing")).
+    Readouts:Add("steermul", readoutGui:AddReadout("Steer")).
+
+    local maintainAlt is readoutGui:AddToggle("Maintain Altitude").
+    local maintainH is readoutGui:AddToggle("Maintain Height").
+    local ignoreTarget is readoutGui:AddToggle("Ignore target").
+    
+	readoutGui:Show().
+    
+    local engFailTime is 0.
+    local targetDist is 1.
+    local wpBearing is 180.
+
+    until Ship:GroundSpeed < -vT * (2 - vdot(Facing:Vector, Up:Vector))
     {
         local accel is GetCurrentAccel(f).
 
@@ -196,20 +235,23 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         local acgx is 0.
         local acgz is accel:z.
         local unclampedacgz is acgz.
-        local targetDist is 1.
-
-        if targetPos:IsType("GeoCoordinates") and not (maintainH:Pressed or maintainAlt:Pressed or ignoreTarget:Pressed or bingoFuel)
-        {
-            local wpBearing is vang(vxcl(up:vector, TargetPos:Position), vxcl(up:vector, Ship:Velocity:Surface)).
-            set targetDist to max(targetPos:AltitudePosition(Ship:Altitude):Mag + vT, 1).
-            set unclampedacgz to Ship:GroundSpeed^2 / (2 * targetDist).
-            if abs(wpBearing) < 1 and enginesIgnited
-                set acgz to min(unclampedacgz, accel:z).
-        }
 
         // Predicted terminal time
         local t is -Ship:GroundSpeed / acgz.
         local h is Ship:Altitude - Ship:GeoPosition:TerrainHeight.
+        
+        if targetPos:IsType("GeoCoordinates")
+        {
+            set wpBearing to vang(vxcl(up:vector, TargetPos:Position), vxcl(up:vector, Ship:Velocity:Surface)).
+            if not (maintainH:Pressed or maintainAlt:Pressed or ignoreTarget:Pressed or bingoFuel)
+            {
+                set targetDist to max(targetPos:AltitudePosition(Ship:Altitude):Mag + vT, 1).
+                set unclampedacgz to Ship:GroundSpeed^2 / (2 * targetDist).
+                if abs(wpBearing) < 2 and enginesIgnited
+                    set acgz to min(unclampedacgz, accel:z).
+                set h to Ship:Altitude - max(Ship:GeoPosition:TerrainHeight, TargetPos:TerrainHeight).
+            }
+        }
 
         if maintainAlt:Pressed and not bingoFuel
         {
@@ -223,7 +265,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         }
         else
         {
-            set acgx to 12 * (rT - h) / (t*t) + 6 * (vT + Ship:VerticalSpeed) / t.
+            set acgx to 12 * (rT - h) / (t*t) + 6 * (-vT + Ship:VerticalSpeed) / t.
         }
         
         if not maintainH:Pressed and not bingoFuel
@@ -233,7 +275,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
             local acgxH is 12 * (2 * Ship:Velocity:Surface:Mag - h) / (responseT^2) + 6 * Ship:VerticalSpeed / responseT.
             set acgx to max(acgx, acgxH).
         }
-
+        
         if not maintainH:Pressed
         {
             set prevH to max(h, rT).
@@ -245,7 +287,11 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
             set maintainAlt:Text to "Maintain Altitude: " + round(prevAlt, 0).
         }
         
-        local steerVec is LanderSteering(-Body:Position, Ship:Velocity:Surface, min(25 / sqrt(targetDist), 1)).
+        local steerMul is max(0.05, min(25 / sqrt(targetDist), 0.6)).
+        if bingoFuel or abs(wpBearing) > 20 or targetDist < 500
+            set steerMul to 0.
+        local steerData is LanderSteering(-Body:Position, Ship:Velocity:Surface, steerMul).
+        local steerVec is steerData:vec.
 
         // Calcuate new facing
         local omega is vcrs(-Body:Position, Ship:Velocity:Orbit):Mag / Body:Position:SqrMagnitude.
@@ -254,7 +300,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         if acgz < accel:z
             set acg to min(sqrt((acgx + localGrav)^2 + acgz^2), accel:y).
         local fr is (acgx + localGrav) / acg.
-        set fr to min(max(fr, 0), 0.999).
+        set fr to min(max(fr, 0), 0.9).
 
         // No horizontal throttling while in glide modes.
         if (maintainH:Pressed or maintainAlt:Pressed) and enginesIgnited
@@ -268,12 +314,20 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
             if enginesIgnited
                 LanderSetThrottle(acg / accel:y).
         }
+        
+        ReadoutGUI_SetText(Readouts:height, round(h, 1) + " m", ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(Readouts:acgx, round(acgx, 3), ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(Readouts:fr, round(fr, 3), ReadoutGUI_ColourNormal).
 
-        set debugStat:Text to "h=" + round(h, 1) + " t=" + round(-t, 2) + " acgx=" + round(acgx, 3) + " fr=" + round(fr, 3) + " f=" + round(vdot(f, Ship:Facing:ForeVector), 4).
-        
-        local fuelStatus is CurrentFuelStatus().
-        local debugStr is "acgz=" + round(unclampedacgz, 3) + " / " + round(accel:z, 3) + " thr=" + round(acg / accel:y, 3) + " Δv=" + round(fuelStatus[1], 1) + " fuel=" + round(fuelStatus[0] * 100, 1) + "%".
-        
+        ReadoutGUI_SetText(Readouts:acgz, round(unclampedacgz, 3), ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(Readouts:accz, round(accel:z, 3), ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(Readouts:eta, round(-t, 1) + " s", ReadoutGUI_ColourNormal).
+
+        local fuelStatus is CurrentFuelStatus(DescentEngines).
+
+        ReadoutGUI_SetText(Readouts:Δv, round(fuelStatus[1], 1) + " m/s", ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(Readouts:margin, round(fuelStatus[1]  - (Ship:Velocity:Surface:Mag + ΔVmargin), 1) + " m/s", ReadoutGUI_ColourNormal).
+
         if not bingoFuel and fuelStatus[1] < Ship:Velocity:Surface:Mag + ΔVmargin
         {
             set bingoFuel to true.
@@ -283,41 +337,62 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
             set ignoreTarget:enabled to false. set ignoreTarget:pressed to true.
         }
         
-        if enginesIgnited and Ship:Control:PilotMainThrottle > 0 and not EM_CheckThrust(0.25 * Ship:Control:PilotMainThrottle)
+        if bingoFuel
+            ReadoutGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "% Bingo", ReadoutGUI_ColourFault).
+        else
+            ReadoutGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "%", ReadoutGUI_ColourGood).
+
+        ReadoutGUI_SetText(Readouts:throt, round(100 * acg / accel:y, 1) + "%", ReadoutGUI_ColourNormal).
+        
+        local nomThrust is Ship:AvailableThrust * (LanderMinThrottle() + Ship:Control:PilotMainThrottle * (1 - LanderMinThrottle())).
+        ReadoutGUI_SetText(Readouts:thrust, round(100 * min(Ship:Thrust / max(Ship:AvailableThrust, 0.001), 2), 2) + "%", 
+            choose ReadoutGUI_ColourGood if Ship:Thrust > nomThrust * 0.75 else (choose ReadoutGUI_ColourNormal if Ship:Thrust > nomThrust * 0.25 else ReadoutGUI_ColourFault)).
+        
+        if enginesIgnited and Ship:Thrust < nomThrust * 0.25
         {
-            if stage:number > 0
+            if Time:Seconds - engFailTime > 1
             {
-                set abortMode to true.
-                print "Detected engine failure, aborting!".
-                break.
-            }
-            else
-            {
-                set debugStr to debugStr + " <color=#ff8000>Engine Failure!</color>".
+                ReadoutGUI_SetText(Readouts:status, "Failed", ReadoutGUI_ColourFault).
+                if stage:number > 0
+                {
+                    set abortMode to true.
+                    print "Detected engine failure, aborting!".
+                    break.
+                }
             }
         }
-
-        set debugStat2:Text to debugStr.
+        else if enginesIgnited
+        {
+            ReadoutGUI_SetText(Readouts:status, "Nominal", ReadoutGUI_ColourGood).
+            set engFailTime to Time:Seconds.
+        }
+        else
+        {
+            ReadoutGUI_SetText(Readouts:status, "Inactive", ReadoutGUI_ColourNormal).
+        }
 
         if targetPos:IsType("GeoCoordinates")
         {
-            local wpBearing is vang(vxcl(up:vector, TargetPos:Position), vxcl(up:vector, Ship:Velocity:Surface)).
-            local dist is targetPos:AltitudePosition(Ship:Altitude):Mag.
-            set debugStat3:Text to "Dist=" + round(dist * 0.001, 2) + " km" + " Bearing=" + round(wpBearing, 2) + "° (" + round(sin(wpBearing) * dist, 1)  + " m)".
+            set targetDist to targetPos:AltitudePosition(Ship:Altitude):Mag.
+            ReadoutGUI_SetText(Readouts:dist, round(targetDist * 0.001, 2) + " km", ReadoutGUI_ColourNormal).
+            ReadoutGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", choose ReadoutGUI_ColourNormal if wpBearing < 2 else ReadoutGUI_ColourFault).
+            ReadoutGUI_SetText(Readouts:steermul, round(steerData:f, 4), ReadoutGUI_ColourNormal).
         }
         
         local distanceGate is false.
         if not enginesIgnited and targetPos:IsType("GeoCoordinates")
         {
-            set distanceGate to unclampedacgz > accel:z * 1.1.
-            
+            if steeringControl > 0
+                set distanceGate to unclampedacgz > accel:z / distanceFactor.
+            else
+                set distanceGate to unclampedacgz > accel:z / (distanceFactor * 1.05).
         }
         
         // When the commanded attitude is sufficiently vertical, engage attitude control.
         // Allowing a free float before this reduces thruster propellant consumption.
         if steeringControl <= 0
         {
-            if fr >= angleGate or h <= heightGate or distanceGate
+            if fr > max(angleGate - 0.04, 0) or h <= heightGate * 1.25 or distanceGate
             {
                 set kUniverse:Timewarp:Rate to 1.
                 set steeringControl to steeringControl + 1.
@@ -326,7 +401,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
                     print "Approach mode active".
                     LAS_Avionics("activate").
                     rcs on.
-                    lock steering to LookDirUp(f, Facing:UpVector).
+                    lock steering to f.
                 }
             }
             else
@@ -354,12 +429,26 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         wait 0.
     }
     
-    runpath("/lander/FinalDescent", DescentEngines, debugStat, targetPos, stage:number > 0).
+    print "Ground Speed: " + round(ship:GroundSpeed, 3).
+    print "Vertical Speed: " + round(ship:VerticalSpeed, 3).
     
-    if Ship:VerticalSpeed < -5
-        set abortMode to true.
+    if core:tag:contains("skycrane")
+    {
+        set maintainAlt:enabled to false.
+        set maintainH:enabled to false.
+        set ignoreTarget:enabled to false.
+        runpath("/lander/SkyCrane", DescentEngines, targetPos).
+        set abortMode to false.
+    }
     else
-        ladders on.
+    {
+        runpath("/lander/FinalDescent", DescentEngines, Readouts, targetPos, stage:number > 0).
+
+        if Ship:VerticalSpeed < -5
+            set abortMode to true.
+        else
+            ladders on.
+    }
 }
 else
 {

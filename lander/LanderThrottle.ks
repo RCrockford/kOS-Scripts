@@ -3,15 +3,29 @@
 parameter DescentEngines.
 parameter enginesActive is false.
 
+if exists("/mgmt/DiffThrottle.ks")
+    runoncepath("/mgmt/DiffThrottle").
+
 local minThrottle is 0.
 local throttleClamp is 0.
 
+local minThrust is 0.
+local maxThrust is 0.
+
 for eng in DescentEngines
 {
-    set minThrottle to max(eng:MinThrottle, minThrottle).
+    set minThrust to minThrust + eng:MinThrottle * eng:PossibleThrust.
+    set maxThrust to maxThrust + eng:PossibleThrust.
     if eng:ullage or eng:Ignitions >= 0
         set throttleClamp to 0.01.  // Prevent shutdown
 }
+for eng in Ship:RCS
+{
+    if eng:ForeByThrottle
+        set maxThrust to maxThrust + eng:AvailableThrust.
+}
+
+set minThrottle to minThrust / maxThrust.
 
 local throttleGroups is list().
 local unassignedEngines is DescentEngines:Copy().
@@ -49,48 +63,106 @@ if minThrottle >= 0.9
     
     set Ship:Control:PilotMainThrottle to 0.
 }
+else
+{
+    print "Min throttle: " + round(minThrottle * 100, 1) + "%".
+}
 
 global function LanderEnginesOn
 {
     set enginesActive to true.
+    if minThrottle < 0.9
+        for eng in DescentEngines
+            eng:Activate.
+}
+
+global function LanderEnginesOff
+{
+    set enginesActive to false.
+    for eng in DescentEngines
+        eng:Shutdown.
+}
+
+global function LanderMaxThrust
+{
+    return maxThrust.
+}
+
+local diffEngines is list().
+
+global function LanderSetupDiffThrottle
+{
+    set diffEngines to SetupDiffThrottle(DescentEngines).
+}
+
+global function LanderCanThrottle
+{
+    return minThrottle < 0.9.
+}
+
+global function LanderMinThrottle
+{
+    return minThrottle.
 }
 
 global function LanderSetThrottle
 {
     parameter reqThrottle.
 
-    if minThrottle < 0.9
+    if enginesActive
     {
-        local newThrottle to max(throttleClamp, min((reqThrottle - minThrottle) / (1 - minThrottle), 1)).
-        set Ship:Control:PilotMainThrottle to newThrottle.
-    }
-    else if enginesActive
-    {
-        // 2 Hz PWM
-        local t is Time:Seconds * 2.
-        for eng in unassignedEngines
+        if minThrottle < 0.9
         {
-            if reqThrottle >= (t - floor(t))
-                eng:Activate.
-            else
-                eng:Shutdown.
-        }
-        local minReq is 0.
-        for grp in throttleGroups
-        {
-            if reqThrottle >= (t - floor(t)) / throttleGroups:Length + minReq
+            local newThrottle to max(throttleClamp, min((reqThrottle - minThrottle) / (1 - minThrottle), 1)).
+            if diffEngines:Length > 0
             {
-                for eng in grp
-                    eng:Activate.
+                local reqPitch is SteeringManager:Actuation:X * 0.5.
+                local reqYaw is SteeringManager:Actuation:Z * 0.5.
+                
+                for eng in diffEngines
+                {
+                    local limit is newThrottle + eng:pitch * reqPitch + eng:yaw * reqYaw.
+                    set eng:eng:ThrustLimit to sqrt(max(limit, 0)) * 100.
+                }
+                set Ship:Control:PilotMainThrottle to 1.
             }
             else
             {
-                for eng in grp
+               set Ship:Control:PilotMainThrottle to newThrottle.
+            }
+        }
+        else
+        {
+            // 2 Hz PWM
+            local t is Time:Seconds * 2.
+            for eng in unassignedEngines
+            {
+                if reqThrottle >= (t - floor(t))
+                    eng:Activate.
+                else
                     eng:Shutdown.
             }
-            set minReq to minReq + 1 / throttleGroups:Length.
+            local minReq is 0.
+            for grp in throttleGroups
+            {
+                if reqThrottle >= (t - floor(t)) / throttleGroups:Length + minReq
+                {
+                    for eng in grp
+                        eng:Activate.
+                }
+                else
+                {
+                    for eng in grp
+                        eng:Shutdown.
+                }
+                set minReq to minReq + 1 / throttleGroups:Length.
+            }
+            set Ship:Control:PilotMainThrottle to 1.
         }
-        set Ship:Control:PilotMainThrottle to 1.
+    }
+    else
+    {
+        set Ship:Control:PilotMainThrottle to throttleClamp.
     }
 }
 
