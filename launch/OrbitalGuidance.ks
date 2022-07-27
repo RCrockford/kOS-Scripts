@@ -6,6 +6,8 @@
 
 parameter liftoffStage is choose stage:number - 1 if Ship:Status <> "Flying" else Stage:number.
 
+runoncepath("/mgmt/ReadoutGUI").
+
 //------------------------------------------------------------------------------------------------
 
 local rT is 0.      // Target radial distance
@@ -41,17 +43,23 @@ local tStart is 0.   // Time since last guidance update
 
 local orbitalEnergy is 0.   // Current orbital energy
 
-local debugGui is GUI(320).
-set debugGui:X to -150.
-set debugGui:Y to debugGui:Y - 420.
-local mainBox is debugGui:AddVBox().
+local readoutGui is ReadoutGUI_Create(-560, -380).
+readoutGui:SetColumnCount(60, 4).
 
-local debugStat is mainBox:AddLabel("Inactive").
-local debugStatYaw is mainBox:AddLabel("").
-local debugTarget is mainBox:AddLabel("").
-local debugFr is mainBox:AddLabel("").
-local debugStages is list().
+local statusReadout is readoutGui:AddReadout("Status").
+local thrustReadout is readoutGui:AddReadout("Thrust").
+local IspReadout is readoutGui:AddReadout("Isp").
+local vθReadout is readoutGui:AddReadout("vθ").
+
+local frReadout is readoutGui:AddReadout("fr").
+local fhReadout is readoutGui:AddReadout("fh").
+local fdReadout is readoutGui:AddReadout("fd").
+local tReadout is readoutGui:AddReadout("t").
+
 local debugReset is 0.
+local stageReadouts is lexicon().
+
+ReadoutGUI_SetText(statusReadout, "Inactive", ReadoutGUI_ColourNormal).
 
 //------------------------------------------------------------------------------------------------
 // Configure guidance
@@ -119,10 +127,6 @@ local debugReset is 0.
         set ET to -Ship:Body:Mu / (2 * a).
 	}
 
-	set debugTarget:Text to "rT = " + round((rT - Ship:Body:Radius) / 1000, 1) + " km, rvT = " + round(rvT, 1) + " m/s vTh=" + round(omegaT * rT, 1) + " m/s".
-	
-	//log "Stage,Alt,vTh,Lat,Anom,dAnom" to "0:/logs/lat.csv".
-
 	// Size lists
 	from {local s is liftoffStage.} until s < 0 step {set s to s - 1.} do
 	{
@@ -134,10 +138,9 @@ local debugReset is 0.
 		stageExhaustV:add(0).
 		stageAccel:add(0).
 		stageGuided:add(false).
-		debugStages:Insert(0, mainBox:AddLabel("")).
 	}
     
-    set debugReset to mainBox:AddButton("Reset").
+    set debugReset to readoutGui:AddButton("Reset").
     
     local stoppedGuidance is false.
 	// Populate lists
@@ -160,15 +163,28 @@ local debugReset is 0.
         if s > GuidanceLastStage and not stoppedGuidance
         {
             if stagePerf:eV > 0
+            {
                 set guidanceDeltaV to guidanceDeltaV + stagePerf:eV * ln(stagePerf:WetMass / stagePerf:DryMass).
+
+                stageReadouts:Add(s, lexicon()).
+                stageReadouts[s]:Add("A", readoutGui:AddReadout("S" + s + ": A")).
+                stageReadouts[s]:Add("B", readoutGui:AddReadout("B")).
+                stageReadouts[s]:Add("T", readoutGui:AddReadout("T")).
+                stageReadouts[s]:Add("margin", readoutGui:AddReadout("vθ")).
+                ReadoutGUI_SetText(stageReadouts[s]:A, round(stageExhaustV[s] / constant:g0, 1) + "s", ReadoutGUI_ColourNormal).
+                ReadoutGUI_SetText(stageReadouts[s]:B, round(stageAccel[s], 2) + "m/s", ReadoutGUI_ColourNormal).
+                ReadoutGUI_SetText(stageReadouts[s]:T, round(stageT[s], 1) + "s", ReadoutGUI_ColourNormal).
+                ReadoutGUI_SetText(stageReadouts[s]:margin, stageGuided[s], ReadoutGUI_ColourNormal).
+            }
             else
+            {
                 set stoppedGuidance to true.
+                set GuidanceLastStage to s + 1.
+            }
         }
-		
-		set debugStages[s]:Text to "S" + s + ": Ev=" + round(stageExhaustV[s], 1) + " a=" + round(stageAccel[s], 2) + " T=" + round(stageT[s], 1) + " G=" + stageGuided[s].
 	}
 
-	debugGui:Show().
+	readoutGui:Show().
 }
 
 local function GetYawSteer
@@ -204,16 +220,6 @@ local function UpdateGuidance
     // Clamp s incase we run off the end (just keep running final stage guidance).
     local s is max(startStage, GuidanceLastStage).
 
-    // Don't update during final few seconds of stage as divergence will cause issues.
-    if stageT[s] < 10
-    {
-        set debugStat:Text to "T < 10 for s=" + s.
-		if kUniverse:TimeWarp:Rate > 1
-			kUniverse:TimeWarp:CancelWarp().
-		set stageChange to true.
-        return.
-    }
-    
     if debugReset:TakePress
     {
 		LAS_StartGuidance(Stage:Number, incT, oTarget, mod(360 - latlng(90,0):bearing, 360)).
@@ -228,8 +234,19 @@ local function UpdateGuidance
     local omega is h / r2.
     local deltaT is MissionTime - tStart.
 
+    // Don't update during final few seconds of stage as divergence will cause issues.
+    if stageT[s] < 10
+    {
+        ReadoutGUI_SetText(statusReadout, "T < 10 s=" + s, ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(vθReadout, round(omega * r, 0) + " / " + round(omegaT * rT, 0), ReadoutGUI_ColourNormal).
+        if kUniverse:TimeWarp:Rate > 1
+			kUniverse:TimeWarp:CancelWarp().
+		set stageChange to true.
+        return.
+    }
+
     // Calculate current performance
-    local currentMassFlow is 0.
+    local maxMassFlow is 0.
     local currentThrust is 0.
     local ratedThrust is 0.
     local engCount is 0.
@@ -238,31 +255,36 @@ local function UpdateGuidance
 	{
 		set currentThrust to stageAccel[startStage] * Ship:Mass.
 		set ratedThrust to currentThrust.
-		set currentMassFlow to ratedThrust / stageExhaustV[startStage].
+		set maxMassFlow to ratedThrust / stageExhaustV[startStage].
 		set engCount to 1.
 	}
 	else
 	{
 		local StageEngines is LAS_GetStageEngines().
+        local currentMassFlow is 0.
 		for eng in StageEngines
 		{
 			if eng:Thrust > 0
 			{
 				set currentMassFlow to currentMassFlow + eng:MassFlow.
+				set maxMassFlow to maxMassFlow + eng:MaxMassFlow.
 				set currentThrust to currentThrust + eng:Thrust.
-				set ratedThrust to ratedThrust + eng:PossibleThrust.
+				set ratedThrust to ratedThrust + eng:MaxThrust.
 				set engCount to engCount + 1.
 			}
 		}
 		
 		local thrustReq is 0.4.
 		if stageChange
-			set thrustReq to 0.98.
+			set thrustReq to 0.8.
 
 		// Engines off? No guidance.
 		if engCount < 1 or currentThrust < ratedThrust * thrustReq or currentMassFlow <= 0
 		{
-			set debugStat:Text to "No Thrust: eng=" + engCount + " Thr=" + round(100 * currentThrust / max(ratedThrust, 0.001), 1) + "% Isp=" + round(currentThrust / (max(currentMassFlow, 1e-6) * Constant:g0), 1) + " vTh=" + round(omega * r, 1).
+            ReadoutGUI_SetText(statusReadout, "No Thrust", ReadoutGUI_ColourFault).
+            ReadoutGUI_SetText(thrustReadout, round(100 * currentThrust / max(ratedThrust, 0.001), 1) + "%", ReadoutGUI_ColourFault).
+            ReadoutGUI_SetText(ispReadout, round(currentThrust / (max(currentMassFlow, 1e-6) * Constant:g0), 1) + " s", ReadoutGUI_ColourNormal).
+            ReadoutGUI_SetText(vθReadout, round(omega * r, 0) + " / " + round(omegaT * rT, 0), ReadoutGUI_ColourNormal).
 			set guidanceValid to false.
 			return.
 		}
@@ -277,11 +299,14 @@ local function UpdateGuidance
 	}
 
     // Setup current stage
-    local exhaustV is currentThrust / currentMassFlow.
-    local accel is currentThrust / Ship:Mass.
+    local exhaustV is ratedThrust / maxMassFlow.
+    local accel is ratedThrust / Ship:Mass.
     local tau is exhaustV / accel.
 
-    set debugStat:Text to "Nominal: Thr=" + round(100 * currentThrust / ratedThrust, 1) + "% Isp=" + round(exhaustV / constant:g0, 1) + " vTh=" + round(omega * r, 1).
+    ReadoutGUI_SetText(statusReadout, "Nominal", ReadoutGUI_ColourGood).
+    ReadoutGUI_SetText(thrustReadout, round(100 * currentThrust / max(ratedThrust, 0.001), 1) + "%", ReadoutGUI_ColourNormal).
+    ReadoutGUI_SetText(ispReadout, round(exhaustV / Constant:g0, 1) + "s", ReadoutGUI_ColourNormal).
+    ReadoutGUI_SetText(vθReadout, round(omega * r, 0) + " / " + round(omegaT * rT, 0), ReadoutGUI_ColourNormal).
 
     local lastStage is GuidanceLastStage + 1.
 
@@ -344,7 +369,7 @@ local function UpdateGuidance
 
 			set fh to hdot * d1 / yawK.
 			set fdh to fh * d2 / d1.
-
+            
             if s = startStage
             {
                 set newYawK to newYawK + (d1*d1*b0 + 2*d1*d2*b1 + d2*d2*b2).
@@ -442,7 +467,13 @@ local function UpdateGuidance
             set stageB[s] to (stageB[s] + newB) * 0.5.
         }
 
-        set debugStages[s]:text to "S" + s + ": A=" + round(stageA[s],3) + " B=" + round(stageB[s],3) + " T=" + round(stageT[s],1).
+        if stageReadouts:HasKey(s)
+        {
+            ReadoutGUI_SetText(stageReadouts[s]:A, round(stageA[s],3), ReadoutGUI_ColourNormal).
+            ReadoutGUI_SetText(stageReadouts[s]:B, round(stageB[s],3), ReadoutGUI_ColourNormal).
+            ReadoutGUI_SetText(stageReadouts[s]:T, round(stageT[s],1), ReadoutGUI_ColourNormal).
+            ReadoutGUI_SetText(stageReadouts[s]:margin, round(omegaS * rS,0), ReadoutGUI_ColourNormal).
+        }
 
         // Update next stage guidance using staging state at start
         set stageA[nextStage] to deltaA + stageA[s] + stageB[s] * T.
@@ -628,8 +659,14 @@ local function UpdateGuidance
 			}
 		}
 		
-		local extraTime is choose " [+" + round(TFull - stageT[s],1) + "]" if TFull >= stageT[s] else " [" + round(TFull - stageT[s],1) + "]".
-        set debugStages[s]:text to "S" + s + ": A=" + round(stageA[s],3) + " B=" + round(stageB[s],3) + " T=" + round(stageT[s],1) + extraTime.
+        if stageReadouts:HasKey(s)
+        {
+            ReadoutGUI_SetText(stageReadouts[s]:A, round(stageA[s],3), ReadoutGUI_ColourNormal).
+            ReadoutGUI_SetText(stageReadouts[s]:B, round(stageB[s],3), ReadoutGUI_ColourNormal).
+            ReadoutGUI_SetText(stageReadouts[s]:T, round(stageT[s],1), ReadoutGUI_ColourNormal).
+            local margin is (choose "+" if TFull >= stageT[s] else "") + round(TFull - stageT[s],1).
+            ReadoutGUI_SetText(stageReadouts[s]:margin, margin, choose ReadoutGUI_ColourGood if TFull >= stageT[s] else ReadoutGUI_ColourFault).
+        }
 
 		set tStart to MissionTime.
     }
@@ -662,18 +699,18 @@ global function LAS_GetGuidanceAim
 
     // Calculate current peformance
     local StageEngines is LAS_GetStageEngines().
-    local currentThrust is 0.
+    local ratedThrust is 0.
     for eng in StageEngines
     {
         if eng:Thrust > 0
         {
-            set currentThrust to currentThrust + eng:Thrust.
+            set ratedThrust to ratedThrust + eng:MaxThrust.
         }
     }
-    local accel is currentThrust / Ship:Mass.
+    local accel is ratedThrust / Ship:Mass.
 
     // Engines off? No guidance.
-    if currentThrust > 1e-4
+    if ratedThrust > 1e-4
     {
         // Calculate radial heading vector
         local fr is stageA[s] + stageB[s] * t.
@@ -692,8 +729,12 @@ global function LAS_GetGuidanceAim
 			local d is hdot_d[1].
 			
 			set fh to hdot * d / (vtheta * yawK).
-			set debugStatYaw:Text to "hdot=" + round(hdot, 4) + " d=" + round(d, 4) + " yawK=" + round(yawK, 4).
+            set fh to max(-0.1, min(fh, 0.1)).
         }
+
+        ReadoutGUI_SetText(frReadout, round(fr,4), ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(fhReadout, round(fh,4), ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(tReadout, round(t, 2) + "s", ReadoutGUI_ColourNormal).
 
         // Construct aim vector
         if (fr * fr + fh * fh) < 0.999
@@ -701,18 +742,23 @@ global function LAS_GetGuidanceAim
             if gravAccel < accel
                 set fr to min(fr, 0.6).
 			local fd is sqrt(1 - fr * fr - fh * fh).
-			set debugFr:text to "fr=" + round(fr,3) + " fh=" + round(fh,4) +  " fd=" + round(fd,3) + " s=" + s + "/" + GuidanceLastStage + " t=" + round(t, 2).
+
+            ReadoutGUI_SetText(fdReadout, round(fd,4), ReadoutGUI_ColourNormal).
+            
             return fr * rVec + fh * hVec + fd * downtrack.
         }
 		else
 		{
-			set debugFr:text to "fr=" + round(fr,3) + " fh=" + round(fh,4) + " fd=0 s=" + s + "/" + GuidanceLastStage + " t=" + round(t, 2).
+            ReadoutGUI_SetText(fdReadout, "0", ReadoutGUI_ColourNormal).
 		}
     }
 	else
 	{
-		set debugFr:text to "fr=No Thrust" + " s=" + s + "/" + GuidanceLastStage.
-	}
+        ReadoutGUI_SetText(frReadout, "", ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(fhReadout, "", ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(fdReadout, "", ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(tReadout, "", ReadoutGUI_ColourNormal).
+    }
 
     return V(0,0,0).
 }
@@ -788,7 +834,7 @@ global function LAS_StartGuidance
 		if abs(stageA[ConvergeStage]) > 50 or stageT[ConvergeStage] <= 0
 			break.
 
-        if abs(stageA[ConvergeStage] - A) < 0.01 and abs(stageA[ConvergeStage]) < 2
+        if abs(stageA[ConvergeStage] - A) < 0.01 and abs(stageA[ConvergeStage]) < 2.5
             set ConvergeStage to ConvergeStage - 1.
 
         set count to count + 1.

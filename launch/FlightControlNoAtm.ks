@@ -7,7 +7,7 @@ parameter launchAzimuth is 90.
 parameter targetInclination is -1.
 parameter targetOrbitable is 0.
 
-local pitchOverSpeed is 25.
+local pitchOverSpeed is 20.
 local pitchOverAngle is 12 * Ship:MaxThrust / (Ship:Mass * Ship:Body:Mu / Body:Position:SqrMagnitude).
 
 local pitchOverCosine is cos(pitchOverAngle).
@@ -54,7 +54,12 @@ local function checkAscent
 		}
         else
 		{
-			set guidance to Heading(launchAzimuth, min(minPitch, 90 - arccos(vdot(newGuidance, Ship:Up:Vector)))):Vector.
+            local east is vcrs(up:vector, north:vector).
+
+            local trig_x is vdot(north:vector, newGuidance).
+            local trig_y is vdot(east, newGuidance).
+
+			set guidance to Heading(mod(arctan2(trig_y, trig_x) + 360, 360), min(minPitch, 90 - vang(newGuidance, Ship:Up:Vector))):Vector.
 			if flightPhase = c_PhaseGuidanceReady
 			{
 				set flightPhase to c_PhaseGuidanceActive.
@@ -105,6 +110,8 @@ local function checkAscent
                 }
 				else
                 {
+                    if guidanceMinV > LAS_GuidanceTargetVTheta() * 0.4
+                        set guidanceMinV to LAS_GuidanceTargetVTheta().
                     until guidanceMinV > vcrs(LAS_ShipPos(), Ship:Velocity:Orbit):Mag / Body:Position:Mag
                         set guidanceMinV to guidanceMinV + LAS_GuidanceTargetVTheta() * 0.025.
                 }

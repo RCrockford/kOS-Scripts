@@ -19,7 +19,7 @@ set LAS_HasEscapeSystem to true.
 local function LAS_CrewEscapeImpl
 {
     set kUniverse:TimeWarp:Rate to 1.
-	print "Escape system activated.".
+	print METString() + " Escape system activated.".
 
 	for e in LESBoosters
 	{
@@ -42,7 +42,7 @@ local function LAS_CrewEscapeImpl
         }
 	}
     if rcs
-        lock steering to lookdirup(Ship:Up, Facing:UpVector).
+        lock steering to lookdirup(Up:Vector, Facing:UpVector).
 	
     local engineStart is Time:Seconds.
 	local flamedOut is false.
@@ -59,7 +59,7 @@ local function LAS_CrewEscapeImpl
 		
 		wait 0.
 	}
-	print "Booster flameout".
+	print METString() + " Booster flameout".
 	
 	for e in LESBoosters
 	{
@@ -68,7 +68,7 @@ local function LAS_CrewEscapeImpl
 	}
 	for p in Ship:PartsTaggedPattern("\blesbooster\b")
 	{
-		print "Decoupling " + p:Title.
+		print METString() + " Decoupling " + p:Title.
 		LAS_FireDecoupler(p).
 	}
 	
@@ -79,14 +79,14 @@ local function LAS_CrewEscapeImpl
     
 	for p in Ship:PartsTaggedPattern("\blescover\b")
 	{
-		print "Decoupling " + p:Title.
+		print METString() + " Decoupling " + p:Title.
 		LAS_FireDecoupler(p).
 	}
     
 	local chutesArmed is false.
 	for modRealChute in Ship:ModulesNamed("RealChuteModule")
 	{
-		print "Arm chute: " + modRealChute:Part:Title.
+		print METString() + " Arm chute: " + modRealChute:Part:Title.
 		if modRealChute:HasEvent("arm parachute")
 		{
 			modRealChute:DoEvent("arm parachute").
@@ -100,7 +100,7 @@ local function LAS_CrewEscapeImpl
 	}
 	if not chutesArmed
 		chutes on.
-	print "Parachutes armed.".
+	print METString() + " Parachutes armed.".
     
     if rcs
     {
@@ -113,7 +113,7 @@ local function LAS_CrewEscapeImpl
 
 local function LAS_EscapeJetissonImpl
 {
-	print "Escape system jetissoned.".
+	print METString() + " Escape system jetissoned.".
 	for e in LESBoosters
 	{
 		e:Activate.		

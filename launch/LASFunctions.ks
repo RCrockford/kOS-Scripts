@@ -42,75 +42,13 @@ global function LAS_GetPartParam
     return value.
 }
 
-local ResourceAliases is lexicon("LqdHydrogen", list("LH2")).
-
-local function GetConnectedResources
-{
-    parameter p.
-    parameter res.
-    parameter seen.
-	parameter eng.
-
-    if p:FuelCrossfeed or seen:Length = 1	// ignore crossfeed if directly connected
-    {
-		for r in p:resources
-		{
-			if r:Enabled
-			{
-				local nameList is list(r:Name).
-				if ResourceAliases:HasKey(r:Name)
-				{
-					for a in ResourceAliases[r:Name]
-						nameList:Add(a).
-				}
-				
-				for name in nameList
-				{
-					if res:HasKey(name)
-						set res[name] to res[name] + r:amount.
-					else
-						res:Add(name, r:amount).
-				}
-			}
-		}
-	}	
-	
-    seen:Add(p).
-	
-	// Connected engines
-	if p:IsType("Engine")
-	{
-		if res:HasKey("eng")
-			res["eng"]:add(p).
-		else
-			res:Add("eng", list(p)).
-	}	
-	
-    // Don't consider crossfeed for solid fuel engines
-	if p:FuelCrossfeed and eng:AllowShutdown
-	{
-        if p:HasParent and not seen:contains(p:parent)
-        {
-            set res to GetConnectedResources(p:parent, res, seen, eng).
-        }
-        for c in p:children
-        {
-            if not seen:contains(c)
-                set res to GetConnectedResources(c, res, seen, eng).
-        }
-    }
-    
-    return res.
-}
+runoncepath("/mgmt/ResourceWalk").
 
 local EngineStats is lexicon().
 
 // Auto configure on run
 {
-    local allEngines is list().
-    list engines in allEngines.
-
-    for eng in allEngines
+    for eng in ship:engines
     {
         EngineStats:Add(eng, lexicon()).
     
@@ -118,7 +56,7 @@ local EngineStats is lexicon().
         EngineStats[eng]:Add("burnTime", burnTime).
         EngineStats[eng]:Add("igniteTime", -1).
 
-        local engRes is GetConnectedResources(eng, lexicon(), uniqueset(), eng).
+        local engRes is GetConnectedResources(eng).
 		
 		local resConsumption is lexicon().
         for k in engRes:keys
@@ -138,6 +76,8 @@ local EngineStats is lexicon().
 			}
 		}
         
+        local burnProp is 1 - eng:Residuals.
+        
         local fuelTime is 1e6.
 		local resShare is 1.
         for k in eng:ConsumedResources:keys
@@ -147,7 +87,7 @@ local EngineStats is lexicon().
             {
                 if resConsumption[r:Name] > 0
                 {
-                    set fuelTime to min(fuelTime, engRes[r:Name] / resConsumption[r:Name]).
+                    set fuelTime to min(fuelTime, (engRes[r:Name]:amount * burnProp) / resConsumption[r:Name]).
                     set resShare to min(resShare, r:MaxFuelFlow / resConsumption[r:Name]).
                 }
             }
@@ -170,7 +110,7 @@ global function LAS_GetEngineBurnTime
 {
     parameter eng.
     
-    if EngineStats[eng]:burnTime > 0
+    if EngineStats:HasKey(eng) and EngineStats[eng]:burnTime > 0
     {
         // If engine has been ignited, return remaining time to burn.
         if EngineStats[eng]:IgniteTime >= 0
@@ -199,7 +139,8 @@ global function LAS_GetRealEngineBurnTime
             for k in eng:ConsumedResources:keys
             {
                 local r is eng:ConsumedResources[k].
-                set burnTime to min(burnTime, r:Amount * EngineStats[eng]:resShare / r:MaxFuelFlow).
+                local residuals is eng:Residuals * r:Capacity.
+                set burnTime to min(burnTime, (r:Amount - residuals) * EngineStats[eng]:resShare / r:MaxFuelFlow).
             }
         }
         else
@@ -298,9 +239,7 @@ global function LAS_GetStagePerformance
 {
 	parameter s.
     parameter fromGuidance.
-
-	local allEngines is list().
-    list engines in allEngines.
+    parameter debug is false.
 
 	local decoupler is Ship:RootPart.
 
@@ -311,32 +250,51 @@ global function LAS_GetStagePerformance
 	local litPrevStage is false.
 	
 	local perf is lexicon("guided", false, "eV", 0, "BurnTime", 0, "Accel", 0, "MassFlow", 0, "litPrevStage", false).
+    
+    if debug
+        print "Stage " + s + " Debug".
 
-	for eng in allEngines
+	for eng in ship:engines
 	{
-		local engStage is min(eng:DecoupledIn + 1, eng:stage).
-        local valid is not LAS_EngineIsUllage(eng).
-        if fromGuidance and valid
-            set valid to not (eng:Tag:Contains("nostage") or eng:Tag:Contains("noguide")).
-		if engStage = s and valid
-		{
-			local t is LAS_GetRealEngineBurnTime(eng).
-            if t >= 10 or not fromGuidance
+		local engStage is choose min(eng:DecoupledIn + 1, eng:stage) if eng:DecoupledIn >= 0 else eng:stage.
+        if engStage = s
+        {
+            local valid is not LAS_EngineIsUllage(eng).
+            if debug and (not valid)
+                print "  Engine " + eng:Config + " flagged as ullage".
+            if fromGuidance and valid
             {
-                set massFlow to massFlow + eng:MaxMassFlow.
-                set stageThrust to stageThrust + eng:PossibleThrustAt(0).
-                
-                set burnTime to max(burnTime, t).
-
-                set perf:guided to perf:guided or eng:HasGimbal or eng:HasModule("ModuleRCSFX").
-
-                set decoupler to eng:Decoupler.
-                set litPrevStage to litPrevStage or eng:Stage > s.
+                set valid to not (eng:Tag:Contains("nostage") or eng:Tag:Contains("noguide")).
+                if debug and (not valid)
+                    print "  Engine " + eng:Config + " tagged for no guidance".
             }
-		}
+            if valid
+            {
+                local t is LAS_GetRealEngineBurnTime(eng).
+                if t >= 10 or not fromGuidance
+                {
+                    set massFlow to massFlow + eng:MaxMassFlow.
+                    set stageThrust to stageThrust + eng:PossibleThrustAt(0).
+                    
+                    set burnTime to max(burnTime, t).
+
+                    set perf:guided to perf:guided or eng:HasGimbal or eng:HasModule("ModuleRCSFX").
+
+                    set decoupler to eng:Decoupler.
+                    set litPrevStage to litPrevStage or eng:Stage > s.
+
+                    if debug
+                        print "  Engine " + eng:Config + " added to stage".
+                }
+                else if debug
+                    print "  Engine " + eng:Config + " burn time < 10s".
+            }
+        }
         
         if fromGuidance and engStage > s and eng:Tag:Contains("lastguide")
         {
+            if debug
+                print "  Engine " + eng:Config + " tagged last guide, skipping others".
             set massFlow to 0.
             set stageThrust to 0.
             break.
@@ -347,7 +305,6 @@ global function LAS_GetStagePerformance
 		set decoupler to Ship:RootPart.
 
 	local stageWetMass is 0.
-	local stageDryMass is 0.
 
 	for shipPart in Ship:Parts
 	{
@@ -361,20 +318,17 @@ global function LAS_GetStagePerformance
 			if decoupleStage < s and decoupleStage >= decoupler:stage
 			{
 				set stageWetMass to stageWetMass + shipPart:Mass.
-				set stageDryMass to stageDryMass + shipPart:DryMass.
-
 				set perf:guided to perf:guided or shipPart:IsType("RCS").
 			}
 			else if decoupleStage < decoupler:stage
 			{
 				set stageWetMass to stageWetMass + shipPart:Mass.
-				set stageDryMass to stageDryMass + shipPart:Mass.
 			}
 		}
 	}
 	
-	perf:Add("DryMass", stageDryMass).
 	perf:Add("WetMass", stageWetMass).
+	perf:Add("DryMass", stageWetMass - massFlow * burnTime).
 
 	if stageThrust > 0 and massFlow > 0
 	{
@@ -386,39 +340,53 @@ global function LAS_GetStagePerformance
 		set perf:eV to stageThrust / massFlow.
 		set perf:Accel to stageThrust / max(stageWetMass, 1e-6).
 	}
+    
+    if debug
+        print "  Stage thrust=" + round(stageThrust, 2) + ", massflow=" + round(massFlow, 4).
 	
 	return perf.
 }
 
 global function LAS_PrintEngineReliability
 {
+    parameter launchStage is Stage:Number.
+
     if not addons:available("tf")
         return.
 
-	local allEngines is list().
-    list engines in allEngines.
-    
     local successRate is 1.
+    local postLaunchSuccess is 1.
 	
 	from {local s is stage:number.} until s < 0 step {set s to s - 1.} do
 	{
-        for eng in allEngines
+        local prevEngine is "".
+        for eng in ship:engines
         {
             local engStage is min(eng:DecoupledIn + 1, eng:stage).
-            if engStage = s and not LAS_EngineIsUllage(eng) and Addons:TF:MTBF(eng) >= 0
+            if engStage = s and not LAS_EngineIsUllage(eng) and Addons:TF:MTBF(eng) >= 0 and not eng:Name:Contains("vernier") and not eng:Name:Contains("lr101")
             {
                 local t is LAS_GetRealEngineBurnTime(eng).
                 
-                local engName is eng:Config.
-                if engName:Length > 16
-                    set engName to engName:SubString(0,16).
+                if eng:Config <> prevEngine
+                {
+                    set prevEngine to eng:Config.
+                    local engName is eng:Config.
+                    if engName:Length > 16
+                        set engName to engName:SubString(0,16).
+                    else
+                        set engName to engName:PadRight(16).
+                        
+                    print engName + " Rel: " + LAS_FormatNumber(100 * Addons:TF:Reliability(eng, t), 3) + "% Ign: " +  + LAS_FormatNumber(100 * Addons:TF:IgnitionChance(eng), 3) + "% t: " + LAS_FormatNumber(t, 1):PadLeft(5) + " / " + round(Addons:TF:RatedBurnTime(eng)) + "s".
+                }
+                local reliability is Addons:TF:Reliability(eng, t) * Addons:TF:IgnitionChance(eng).
+                set successRate to successRate * reliability.
+                if s < launchStage
+                    set postLaunchSuccess to postLaunchSuccess * reliability.
                 else
-                    set engName to engName:PadRight(16).
-                    
-                print engName + " Rel: " + LAS_FormatNumber(100 * Addons:TF:Reliability(eng, t), 3) + "% Ign: " +  + LAS_FormatNumber(100 * Addons:TF:IgnitionChance(eng), 3) + "% t: " + LAS_FormatNumber(t, 1):PadLeft(5) + " / " + round(Addons:TF:RatedBurnTime(eng)) + "s".
-                set successRate to successRate * Addons:TF:Reliability(eng, t) * Addons:TF:IgnitionChance(eng).
+                    set postLaunchSuccess to postLaunchSuccess * Addons:TF:Reliability(eng, t).
             }
         }
     }
-    print "Estimated mission success rate: " + LAS_FormatNumber(100 * successRate, 3) + "%".
+    print "Estimated mission success rate: " + LAS_FormatNumber(100 * successRate, 2) + "%".
+    print "Estimated post launch success rate: " + LAS_FormatNumber(100 * postLaunchSuccess, 2) + "%".
 }

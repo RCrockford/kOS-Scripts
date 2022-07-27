@@ -52,7 +52,7 @@ local function SelectNewTarget
             local minTime is Max(hohmannTransferTime - targetBody:Orbit:Period, hohmannTransferTime / 2).
             set minFlightTimeText:Text to round(minTime / 86400, 1):ToString.
             minFlightTimeText:OnConfirm(minFlightTimeText:Text).
-            set maxFlightTimeText:Text to round((minTime + Min(2 * targetBody:Orbit:Period, hohmannTransferTime)) / 86400, 1):ToString.
+            set maxFlightTimeText:Text to round((minTime + Min(2 * targetBody:Orbit:Period, hohmannTransferTime * 1.5)) / 86400, 1):ToString.
             maxFlightTimeText:OnConfirm(maxFlightTimeText:Text).
         }
 
@@ -214,6 +214,17 @@ local function FindBestFlightTime
     return list(BestSolveFT, BestSolveVInf, bestSolveVIns).
 }
 
+local function FormatFlightTime
+{
+    parameter flightTime.
+    
+    if flightTime > 400
+    {
+        return floor(flightTime / 365) + " years, " + round(mod(flightTime, 365) / 30, 0) + " months".
+    }
+    return round(mod(flightTime, 365) / 30, 1) + " months".
+}
+
 LGUI_Show().
 
 from {local s is stage:number.} until s < 0 step {set s to s - 1.} do
@@ -244,7 +255,7 @@ until false
     print "Calculating optimum flight time to " + targetBody:Name.
 
     local flightTime is FindBestFlightTime().
-    print "Optimum flight time: " + round(flightTime[0], 2) + " days".
+    print "Optimum flight time: " + round(flightTime[0], 2) + " days (" + FormatFlightTime(flightTime[0]) + ")".
     print "Flyby velocity: " + round(flightTime[2], 1) + " m/s".
 
     local ejectV is flightTime[1]:Normalized * sqrt(flightTime[1]:SqrMagnitude + (2 * Body:Mu / planningSMA)).

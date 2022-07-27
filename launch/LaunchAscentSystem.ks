@@ -11,6 +11,14 @@ wait until Ship:Unpacked.
 
 ClearGuis().
 
+switch to 0.
+
+global function dummy_func {}
+
+global LAS_CrewEscape is dummy_func@.
+global LAS_EscapeJetisson is dummy_func@.
+global LAS_HasEscapeSystem is false.
+
 // Must be prelaunch for system to activate (allows for reboots after liftoff).
 if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
 {
@@ -24,12 +32,7 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
    
     // Setup functions
     runoncepath("0:/launch/LASFunctions").
-	
-	global function dummy_func {}
-	
-	global LAS_CrewEscape is dummy_func@.
-	global LAS_EscapeJetisson is dummy_func@.
-	global LAS_HasEscapeSystem is false.
+
 	if not Ship:Crew:Empty
 	{
 		print "Crew found, setting up escape system.".
@@ -45,6 +48,11 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
 		local controllable is choose a:GetField("controllable") if a:HasField("Controllable") else 0.
 		set totalControlled to totalControlled + controllable.
     }
+	for a in Ship:ModulesNamed("ModuleAvionics")
+    {
+		local controllable is choose a:GetField("controllable") if a:HasField("Controllable") else 0.
+		set totalControlled to totalControlled + controllable.
+    }
     
     local pitchOverSpeed is 50.
     local pitchOverAngle is 4.
@@ -56,7 +64,8 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
     local helioSync is false.
     local errorColour is "#f00000".
     
-    local launchLimits is list(26, 210).  // Limits for NZ-Mahia
+    //list(26, 210).  // Limits for NZ-Mahia
+    local launchLimits is list(list(0,150), list(340,360)).  // Limits for CA-Churchill
 
     if totalControlled > 0
     {
@@ -85,11 +94,15 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
                     print "  Needs >" + round(LAS_GuidanceTargetVTheta() + 1000, 0) + " m/s, has " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
                     set stagingMessage to "Insufficient Δv in guided stages".
                 }
-                else if LAS_GuidanceDeltaV() > LAS_GuidanceTargetVTheta() + 2500
+                else if (LAS_GuidanceDeltaV() > LAS_GuidanceTargetVTheta() + 2500) and LAS_GuidanceLastStage() <= Stage:Number - 3
                 {
                     print "Excessive ΔV in guided stages:".
                     print "  Needs <" + round(LAS_GuidanceTargetVTheta() + 2500, 0) + " m/s, has " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
                     set stagingMessage to "Excessive Δv in guided stages".
+                }
+                else
+                {
+                    print "Launch ΔV: " + round(LAS_GuidanceDeltaV(), 0) + " m/s".
                 }
             }
         }
@@ -110,18 +123,35 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
     
     local function ValidateAzimuth
     {
-        if launchAzimuth < launchLimits[0] or launchAzimuth > launchLimits[1]
+        local azimuthValid is launchLimits:Empty.
+        local azimuthMessage is "Azimuth exceeds limits: ".
+        
+        for limitPair in launchLimits
         {
-            set launchButton:Enabled to false.
-            LGUI_SetInfo("Azimuth exceeds limits: " + launchLimits[0] + " < az < " + launchLimits[1], errorColour).
+            if launchAzimuth >= limitPair[0] and launchAzimuth <= limitPair[1]
+            {
+                set azimuthValid to true.
+                break.
+            }
+            else
+            {
+                set azimuthMessage to azimuthMessage + limitPair[0] + " < az < " + limitPair[1] + ", ".
+            }
         }
-        else
+        set azimuthMessage to azimuthMessage:SubString(0, azimuthMessage:Length - 2).
+        
+        if azimuthValid
         {
             set launchButton:Enabled to stagingMessage:Length = 0.
             if stagingMessage:Length = 0
                 LGUI_SetInfo("Waiting for launch", "#ffff00").
             else
                 LGUI_SetInfo(stagingMessage, errorColour).
+        }
+        else
+        {
+            set launchButton:Enabled to false.
+            LGUI_SetInfo(azimuthMessage, errorColour).
         }
     }
     
@@ -249,7 +279,22 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
             if targetInclination >= 0
             {
                 local northAz is CalcAzimuth().
-                set launchSouth to northAz < launchLimits[0] or northAz > launchLimits[1].
+                local southAz is  mod(360 + 180 - launchAzimuth, 360).
+                local northValid is launchLimits:Empty.
+                local southValid is launchLimits:Empty.
+                for limitPair in launchLimits
+                {
+                    if northAz >= limitPair[0] and northAz <= limitPair[1]
+                    {
+                        set northValid to true.
+                        break.
+                    }
+                    if southAz >= limitPair[0] and southAz <= limitPair[1]
+                    {
+                        set southValid to true.
+                    }
+                }
+                set launchSouth to (not northValid) and southValid.
             }
             set southCheckbox:Enabled to true.
 		}
@@ -285,8 +330,10 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
     // Check if we actually lifted off
     if Ship:Status = "Flying"
     {
-		local canCoast is core:tag:contains("coast").
-		local canLoft is core:tag:contains("loft").
+        local launchParams is lexicon("coast", core:tag:contains("coast"), "loft", core:tag:contains("loft")).
+        
+        if not (defined LAS_TargetSMA) and LAS_TargetAp < 100
+            launchParams:Add("minSpeed", lanText:Text:ToNumber(0)).
 	
         // Clear tag and boot file So they don't affect ships in flight / orbit.
         Set Core:Tag to "".
@@ -323,13 +370,9 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
         
             LGUI_Hide().
             
-            writejson(list(pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, canCoast, canLoft), "1:/launch.json").
-            runpath("0:/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, canCoast, canLoft).
+            writejson(list(pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, launchParams), "1:/launch.json").
+            runpath("0:/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, launchParams).
         }
-    }
-    else
-    {
-        print "Ship not flying: " + Ship:Status.
     }
 }
 else if Ship:Status = "Flying"
@@ -345,6 +388,6 @@ else if Ship:Status = "Flying"
 		if defined LAS_TargetSMA or LAS_TargetAp > 100
             runpath("0:/launch/OrbitalGuidance").
         
-        runpath("0:/launch/FlightControlPitchOver", p[0], p[1], p[2], p[3], p[4], p[5], p[6]).
+        runpath("0:/launch/FlightControlPitchOver", p[0], p[1], p[2], p[3], p[4], p[5]).
     }
 }

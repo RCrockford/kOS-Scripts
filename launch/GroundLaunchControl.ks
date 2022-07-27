@@ -60,8 +60,6 @@ local function GetLaunchAngleTerminator
     return launchAngle.
 }
 
-LAS_PrintEngineReliability().
-
 local liftoffTime is -1.
 // Initialise launch parameters
 local launchDelay is max(10, engineStart + 2).
@@ -76,6 +74,8 @@ if mainEngines:Empty
 
 local mainEnginesLF is list().  // Liquid fuelled for pre-start.
 
+LAS_PrintEngineReliability(launchStage).
+
 local startStagger is 0.1.
 local autoStartTime is 0.
 local engineMaxThrust is 0.
@@ -83,7 +83,8 @@ local engineMaxThrust is 0.
 for eng in mainEngines
     set engineMaxThrust to engineMaxThrust + eng:PossibleThrust().
 
-print "Main Engines:".
+local engDisplayList is lexicon().
+
 for eng in mainEngines
 {
     local engType is "Liquid Fuel, pumped.".
@@ -96,19 +97,26 @@ for eng in mainEngines
     {
         set engType to "Vernier".
     }
-    else if eng:PressureFed
+    else 
     {
-        set engType to "Liquid Fuel, pressure fed.".
-        set autoStartTime to max(autoStartTime, 2).
-    }
-    else
-    {
-        set autoStartTime to max(autoStartTime, 5).
+        if eng:PressureFed
+            set engType to "Liquid Fuel, pressure fed.".
+        if not eng:Name:Contains("Aerobee")
+            set autoStartTime to max(autoStartTime, LAS_CalcFullSpoolTime(eng) * 1.4 + 1).
     }
 
-    print "  " + eng:Config + ", " + engType.
+    if engDisplayList:HasKey(eng:Config)
+        set engDisplayList[eng:Config]:Count to engDisplayList[eng:Config]:Count + 1.
+    else
+        engDisplayList:Add(eng:Config, lexicon("count", 1, "type", engType)).
     if eng:AllowShutdown and engType <> "Vernier"
         mainEnginesLF:add(eng).
+}
+
+print "Main Engines:".
+for k in engDisplayList:keys
+{
+    print "  " + engDisplayList[k]:Count + "x " + k + ", " + engDisplayList[k]:Type.
 }
 
 if engineStart < 0
@@ -119,7 +127,7 @@ if engineStart < 0
 set startStagger to min(startStagger, engineStart * 0.1).
 
 print "Ground Launch Controller ready.".
-print "  Engine start at T-" + round(engineStart, 2) + ".".
+print "  Engine start at T-" + round(engineStart, 1) + ".".
 
 local launchMass is Ship:Mass.
 local launchMassFlow is 0.001.
@@ -210,6 +218,16 @@ local LaunchAngleFunc is 0.
     }
 }
 
+local allRCS is list().
+list rcs in allRCS.
+for r in allRCS
+{
+    if not r:IsType("Engine")
+    {
+        set r:Enabled to false.
+    }
+}
+
 if totalControlled > 0 and totalControlled < launchMass
 {
     print "Insufficient avionics for liftoff control".
@@ -278,39 +296,10 @@ else
 	{
 		set waitTime to LaunchAngleFunc() * Ship:Body:RotationPeriod / 360 - ascentTime.
 		print "Launch window opening in approximately " + LAS_FormatTime(waitTime).
-		
-		// Assume it's the Moon
-		if TargetOrbit:IsType("Orbit") and TargetOrbit:SemiMajorAxis > 3e8
-		{
-			local ANAngle is mod(TargetOrbit:TrueAnomaly + TargetOrbit:ArgumentOfPeriapsis + 360 * waitTime / TargetOrbit:Period, 360).
-			local AngToAN is 360 - ANAngle.
-			local AngToDN is mod(AngToAN + 180, 360).
-			local NodeTime is 0.
-			print "AN=" + round(AngToAN,2) + " DN=" + round(AngToDN,2) + " Ang=" + round(ANAngle,2).
-			if AngToAN < AngToDN
-			{
-				set NodeTime to AngToAN / 360 * TargetOrbit:Period.
-				print "  Time to AN: " + LAS_FormatTime(NodeTime).
-			}
-			else
-			{
-				set NodeTime to AngToDN / 360 * TargetOrbit:Period.
-				print "  Time to DN: " + LAS_FormatTime(NodeTime).
-			}
-			
-			// ~3 day flight time
-			if NodeTime > 2 * 86400 and NodeTime < 4 * 86400
-				print "  Launch window quality: Excellent".
-			else if NodeTime > 1 * 86400 and NodeTime < 5 * 86400
-				print "  Launch window quality: Good".
-			else if NodeTime > 0 * 86400 and NodeTime < 6 * 86400
-				print "  Launch window quality: Acceptable".
-			else
-				print "  Launch window quality: Poor".
-		}
 	}
 
     local prevLunarUpdate is Time:Seconds.
+    local prevLunarWarp is 1.
     if defined LAS_CalcLunarLaunch@
         print "Lunar window updates enabled".
 
@@ -336,15 +325,20 @@ else
         
         if defined LAS_CalcLunarLaunch@
         {
-            if Time:Seconds - prevLunarUpdate > 60
+            if Time:Seconds - prevLunarUpdate > 60 or (kUniverse:TimeWarp:Rate = 1 and prevLunarWarp > 1) or cmd = "u"
             {
+                local prevLunarInc is LAS_TargetInc.
                 LAS_CalcLunarLaunch().
                 set LGUI_GetControl("Launch South"):Pressed to LAS_TargetInc < 0.
                 local incCtrl is LGUI_GetControl("inclination").
                 set incCtrl:Text to round(max(Ship:Latitude, min(abs(LAS_TargetInc), 180 - Ship:Latitude)), 2):ToString.
                 incCtrl:OnConfirm(incCtrl:Text).
                 set prevLunarUpdate to Time:Seconds.
+                set cmd to " ".
+                if abs(Ship:Latitude - abs(prevLunarInc)) > 0.04 and abs(Ship:Latitude - abs(LAS_TargetInc)) <= 0.04
+                    kUniverse:Timewarp:CancelWarp().
             }
+            set prevLunarWarp to kUniverse:TimeWarp:Rate.
         }
 
 		if cmd = "a"
@@ -366,10 +360,11 @@ else
                 print "No target orbit".
             set cmd to " ".
         }
-		if cmd = "n" and TargetOrbit:IsType("Orbit")
+		if (cmd = "n" or cmd = "c") and TargetOrbit:IsType("Orbit")
 		{
 			// Go 5 degrees past.
-			set waitTime to waitTime + 5 * Ship:Body:RotationPeriod / 360.
+            if cmd = "n"
+                set waitTime to waitTime + 5 * Ship:Body:RotationPeriod / 360.
 			
 			local waitGui is GUI(220).
 			local mainBox is waitGui:AddVBox().
@@ -396,7 +391,10 @@ else
 						set t to t + 60.
 				}
 
-				set kUniverse:TimeWarp:Rate to choose 10000 if t > 100 else 1000.
+                if cmd = "n"
+                    set kUniverse:TimeWarp:Rate to choose 10000 if t > 100 else 1000.
+                else
+                    set kUniverse:TimeWarp:Warp to round(min(log10(max(1, waitTime - 15)), 4), 0).
 
 				wait t.
 
@@ -405,6 +403,9 @@ else
 					set waitTime to waitTime - t.
 					set guiTime:Text to "T-" + Time(waitTime):Clock.
 				}
+                
+                if cmd = "c"
+                    set waitTime to LaunchAngleFunc() * Ship:Body:RotationPeriod / 360 - (ascentTime + 120).
 			}
 			kUniverse:Timewarp:CancelWarp().
 			ClearGUIs().
@@ -478,6 +479,15 @@ if LaunchAngleFunc:IsType("UserDelegate")
 local countdown is launchDelay.
 set liftoffTime to Time:Seconds + launchDelay.
 
+local function TMinusString
+{
+    local tMinus is liftoffTime - Time:Seconds.
+    local str is (choose "T-" if tMinus > 0 else "T+") + round(abs(tMinus), 1).
+    if not str:Contains(".")
+        return str + ".0".
+    return str.
+}
+
 local function GLCAbort
 {
     local parameter reason.
@@ -491,8 +501,8 @@ local function GLCAbort
         eng:Shutdown().
     }
 
-    print reason.
-    print "Aborting launch.".
+    print TMinusString + " " + reason.
+    print TMinusString + " Aborting launch.".
 
     if Ship:Status = "Flying"
     {
@@ -525,10 +535,7 @@ on ceiling(liftoffTime - Time:Seconds)
     set countdown to ceiling(liftoffTime - Time:Seconds).
     print countdown.
     LGUI_SetInfo("T-" + countdown + " " + infoText, "#" + min(countdown, 9) + "fff00").
-    if countdown > 0
-        return true.
-    else
-        return false.
+    return countdown > 0.
 }
 
 when Terminal:Input:HasChar() then
@@ -544,13 +551,53 @@ print "Liftoff in T-" + countdown + ".".
 if kUniverse:TimeWarp:Mode = "Rails"
 	kUniverse:TimeWarp:CancelWarp().
 
+local armModules is Ship:ModulesNamed("ModuleAnimateGeneric").
+for arm in Ship:ModulesNamed("ModuleAnimateGenericExtra")
+    armModules:add(arm).
+
+for arm in armModules
+{
+    if arm:HasAction("Toggle hatch access")
+    {
+        arm:DoAction("Toggle hatch access", false).
+        set infoText to "Retract hatch gantry".
+    }
+    else if arm:HasAction("Toggle crew arm")
+    {
+        arm:DoAction("Toggle crew arm", false).
+        set infoText to "Retract hatch gantry".
+    }
+    else if arm:HasField("horizontal adjust") and arm:HasAction("toggle")
+    {
+        arm:DoAction("toggle", false).
+        set infoText to "Retract hatch gantry".
+    }
+}
+
+local armRetractTime is max(8, engineStart + 0.5).
+wait until liftoffTime - Time:Seconds <= armRetractTime.
+
+for arm in armModules
+{
+    if arm:HasEvent("Retract Crew Arm")
+    {
+        arm:DoEvent("Retract Crew Arm").
+        set infoText to "Latch back crew arm".
+    }
+    else if arm:HasAction("Toggle crew arm") and arm:HasEvent("Retract arm")
+    {
+        arm:DoEvent("Retract arm").
+        set infoText to "Latch back crew arm".
+    }
+}
+
 // Engine start sequence for liquid fuels
 if engineStart > 0.5 and not mainEnginesLF:empty()
 {
     wait until liftoffTime - Time:Seconds <= engineStart.
 
 	kUniverse:TimeWarp:CancelWarp().
-    print "Ignition sequence start.".
+    print TMinusString + " Ignition sequence start.".
     set infoText to "Ignition sequence start".
 
     // Throttle up to maximum
@@ -583,7 +630,7 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
     }
 
     local engineThrust is 0.
-    until Time:Seconds - liftoffTime >= -0.5
+    until Time:Seconds - liftoffTime >= -0.2
     {
         set engineThrust to 0.
         for eng in mainEnginesLF
@@ -599,8 +646,8 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
         wait 0.1.
     }
 
-    print "Main engines report " + round(100 * engineThrust / max(engineMaxThrust, 0.01), 1) + "% thrust".
-    set infoText to "Main engines firing".
+    print TMinusString + " Main engines report " + round(100 * engineThrust / max(engineMaxThrust, 0.01), 1) + "% thrust".
+    set infoText to "Main engines nominal".
 
     if engineThrust < engineMaxThrust * 0.98
     {
@@ -612,7 +659,6 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
         if eng:Name = "ROE-RD108"
         {
             // Reduce roll torque calculation
-            print "Increasing roll torque factor for " + eng:Name.
             set SteeringManager:RollTorqueFactor to 12.
             break.
         }
@@ -627,6 +673,34 @@ until countdown = 0 or not padFuelling
         local tMinus is liftoffTime - Time:Seconds.
         if LAS_GetPartParam(lc:part, "t=", -1) >= tMinus and lc:HasEvent("Release Clamp")
         {
+            // Do this before releasing the clamp.
+            if lc:part:HasModule("ModuleAnimateGeneric")
+            {
+                for arm in Ship:ModulesNamed("ModuleAnimateGeneric")
+                {
+                    if arm:part = lc:part
+                    {
+                        if arm:HasEvent("Retract Arm")
+                        {
+                            arm:DoEvent("Retract Arm").
+                            print "Retract Arm".
+                            break.
+                        }
+                        if arm:HasEvent("Retract Arm Left") and lc:part:tag:contains("left")
+                        {
+                            arm:DoEvent("Retract Arm Left").
+                            print "Retract Arm Left".
+                            break.
+                        }
+                        if arm:HasEvent("Retract Arm Right") and not lc:part:tag:contains("left")
+                        {
+                            arm:DoEvent("Retract Arm Right").
+                            print "Retract Arm Right".
+                            break.
+                        }
+                    }
+                }
+            }
             lc:DoEvent("Release Clamp").
         }
     }
@@ -638,7 +712,7 @@ until countdown = 0 or not padFuelling
 local engCount is 1.
 for eng in mainEnginesLF
 {
-	if eng:Thrust < eng:PossibleThrust * 0.98
+	if engineStart > 0.5 and eng:Thrust < eng:PossibleThrust * 0.98
 		GLCAbort(eng:Config + " #" + engCount + " reported reduced thrust.").
 	set engCount to engCount + 1.
 }
@@ -649,7 +723,7 @@ lock Steering to liftoffHeading.
 // Stage any boosters and launch clamps
 if mainEngines:length() > mainEnginesLF:length()
 {
-    print "Booster Ignition".
+    print TMinusString + " Booster Ignition".
     LGUI_SetInfo("T+0 Booster ignition", "#00ff00").
 }
 else
@@ -662,7 +736,7 @@ stage.
 
 wait 0.1.
 
-until Ship:VerticalSpeed >= 5 and Ship:Status = "Flying"
+until Ship:VerticalSpeed >= 2 and Ship:Status = "Flying"
 {
     // Check for vertical movement
     if Ship:VerticalSpeed < -1
@@ -672,6 +746,6 @@ until Ship:VerticalSpeed >= 5 and Ship:Status = "Flying"
     wait 0.
 }
 
-print "Liftoff!".
+print TMinusString + " Liftoff!".
 }
 // End of GLC, handoff to flight.

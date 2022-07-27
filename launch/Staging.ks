@@ -24,6 +24,7 @@ local CrossfeedTanks is lexicon().
 local StageTime is 0.
 
 local kscPos is Ship:GeoPosition.
+local altCorrect is Alt:Radar.
 
 global function METString
 {
@@ -56,6 +57,7 @@ global function LAS_FireDecoupler
 local function StageFlameout
 {
     parameter s.
+    parameter waitAll.
 
     local allFlamedOut is true.
     local anyFlamedOut is false.
@@ -88,10 +90,10 @@ local function StageFlameout
     if allSpooled
         set engineSpooling to false.
 
-    if s < 0
-        return anyFlamedOut.
-    else
+    if waitAll
         return allFlamedOut.
+    else
+        return anyFlamedOut.
 }
 
 local function DecoupleStage
@@ -147,36 +149,43 @@ local function GetBatteryProportion
 // Simple booster drop, just wait for flameout.
 local function BoosterDrop
 {
-    local drop is StageFlameout(Stage:Number - 1).
+    local drop is StageFlameout(Stage:Number - 1, false).
 
     if drop
     {
         print METString + " Stage " + Stage:Number + " separation.".
+        if stageEngines:Length > 1
+        {
+            for eng in stageEngines
+            {
+                if eng:DecoupledIn >= Stage:Number - 1
+                    eng:Shutdown().
+            }
+        }
     }
 
     return drop.
 }
 
-// Hot engine swap, wait for spool and then disable the current stage
-local function HotSwap
+// Hot stage engine drop, wait for spool and then disable the current stage
+local function HotStageDrop
 {
-    local swap is false.
+    local drop is StageFlameout(Stage:Number - 1, true).
     for eng in NextStageEngines
     {
-        if eng:Thrust > eng:PossibleThrust * 0.8
-            set swap to true.
+        if eng:Thrust > eng:PossibleThrust * 0.95
+            set drop to true.
     }
 
-    if swap
+    if drop
     {
         // Switch off old engines
         for eng in ShutdownEngines
-        {
             eng:Shutdown().
-        }
+        print METString + " Stage " + Stage:Number + " separation.".
     }
 
-    return swap.
+    return drop.
 }
 
 local HotStageWarmup is 0.
@@ -199,12 +208,8 @@ local function HotStage
         if not NextStageDecouplers:Empty
         {
             // Use booster drop functionality to wait for flame out.
-            set StagingFunction to BoosterDrop@.
-        }
-        else
-        {
+            set StagingFunction to HotStageDrop@.
 			set ShutdownEngines to StageEngines.
-            set StagingFunction to HotSwap@.
         }
     }
 
@@ -307,7 +312,7 @@ local function UllageStageSeparate
     else
     {
         // Wait for flame out
-        if not StageFlameout(Stage:number - 1)
+        if not StageFlameout(Stage:number - 1, true)
             return false.
 
         local minHeight is LAS_GetPartParam(NextStageEngines[0], "h=", -1).
@@ -418,7 +423,7 @@ local function SpinUp
 
     local burnTime is LAS_GetPartParam(NextStageUllage[0], "t=", -1).
     if burnTime > 0
-        return StageFlameout(-1) or LAS_GetStageBurnTime(stageEngines) < burnTime.
+        return StageFlameout(-1, false) or LAS_GetStageBurnTime(stageEngines) < burnTime.
 
     return Alt:Radar >= 30.
 }
@@ -496,15 +501,14 @@ local function CheckStageType
         else
         {
             set StagingFunction to HotStage@.
-            set HotStageWarmup to 0.8.
-            // Check if we need to wait for turbopump spool.
+            set HotStageWarmup to 0.1.
             for eng in NextStageEngines
             {
-                if not eng:PressureFed and eng:AllowShutdown
-                    set HotStageWarmup to max(HotStageWarmup, 2.5).
+                if eng:AllowShutdown
+                    set HotStageWarmup to max(HotStageWarmup, LAS_CalcFullSpoolTime(eng)).
 				set HotStageWarmup to max(LAS_GetPartParam(eng, "s=", 0), HotStageWarmup).
             }
-            print METString + " Next stage: Hot Stage (" + HotStageWarmup + ")".
+            print METString + " Next stage: Hot Stage (" + round(HotStageWarmup, 2) + ")".
         }
         
         for eng in NextStageEngines
@@ -578,14 +582,11 @@ local function EnableECForStage
 
 local function CheckAbort
 {
-	local allEngines is list().
-    list engines in allEngines.
-
 	local doAbort is false.
 	if LAS_HasEscapeSystem
 	{
 		local shipThrust is 0.
-		for eng in allEngines
+		for eng in ship:engines
 			set shipThrust to shipThrust + eng:Thrust.
 		local twr is ShipThrust / (Ship:Mass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude).
 
@@ -608,14 +609,14 @@ local function CheckAbort
 	else
 	{
 		// If less than 1.5 second to ground impact
-		if Alt:Radar < -Ship:VerticalSpeed * 1.5
-			set doAbort to (Ship:GeoPosition:Position - kscPos:Position):Mag < 1200.
+		if (Alt:Radar - altCorrect) < -Ship:VerticalSpeed * 1.5
+			set doAbort to (Ship:GeoPosition:Position - kscPos:Position):Mag < 2000.
 	}
 
 	if doAbort
 	{
 		// Shutdown all engines
-		for eng in allEngines
+		for eng in Ship:Engines
 		{
 			eng:Shutdown().
 		}
@@ -688,12 +689,8 @@ global function LAS_CheckStaging
             }
         }
         
-        local t is Time:Seconds - StageTime.
-        for xf in CrossfeedTanks:Keys
-        {
-            if xf:FuelCrossfeed <> (CrossfeedTanks[xf][0] > t)
-                CrossfeedTanks[xf][1]:DoAction("toggle crossfeed", true).
-        }
+        if engineSpooling
+            StageFlameout(Stage:Number - 1, false).
     }
 
     return false.
@@ -724,6 +721,24 @@ global function LAS_StageReady
 	return StagingFunction <> CheckStageType@.
 }
 
+global function LAS_StageSpooling
+{
+	return engineSpooling.
+}
+
+// Time to full thrust
+global function LAS_CalcFullSpoolTime
+{
+    parameter eng.
+    if eng:HasModule("ModuleEnginesRF")
+    {
+        local engMod is eng:GetModule("ModuleEnginesRF").
+        return engMod:Getfield("effective spool-up time").
+    }
+    return 0.1.
+}
+
+
 global function LAS_EnableAllEC
 {
     for p in Ship:Parts
@@ -742,10 +757,12 @@ global function LAS_CheckPayload
 {
     parameter fairingStatus is 0.
     parameter equipmentStatus is 0.
+    
+    local QPa is Ship:Q * Constant:AtmTokPa * 1000.
 
     if not PL_FairingsJettisoned
     {
-        if Ship:Q < 5e-3
+        if QPa <= 100
         {
             // Jettison fairings
 			local jettisoned is false.
@@ -765,28 +782,28 @@ global function LAS_CheckPayload
                 print METString + " Fairings jettisoned".
 
             if fairingStatus:IsType("Label")
-                set fairingStatus:Text to "Fairings: <color=#00ff00>jettisoned</color>".
+                ReadoutGUI_SetText(fairingStatus, "jettisoned", "#00ff00").
 
             set PL_FairingsJettisoned to true.
         }
         else
         {
             if fairingStatus:IsType("Label")
-                set fairingStatus:Text to "Fairings: <color=#fff000>attached (Q > " + round(5 * Constant:AtmTokPa, 1) + " Pa)</color>".
+                ReadoutGUI_SetText(fairingStatus, "attached (Q > 100 Pa)", "#fff000").
         }
     }
     else if not PL_PanelsExtended
     {
-        if Ship:Q < 1e-5
+        if QPa <= 1
         {
-			for panel in Ship:ModulesNamed("ModuleROSolar")
+            for panel in Ship:ModulesNamed("ModuleROSolar")
             {
                 if panel:HasAction("extend solar panel") and not panel:part:tag:contains("noextend")
                 {
                     panel:DoAction("extend solar panel", true).
                 }
             }
-			for panel in Ship:ModulesNamed("ModuleDeployableSolarPanel")
+            for panel in Ship:ModulesNamed("ModuleDeployableSolarPanel")
             {
                 if panel:HasAction("extend solar panel") and not panel:part:tag:contains("noextend")
                 {
@@ -794,7 +811,7 @@ global function LAS_CheckPayload
                 }
             }
 
-			for antenna in Ship:ModulesNamed("ModuleDeployableAntenna")
+            for antenna in Ship:ModulesNamed("ModuleDeployableAntenna")
             {
                 if antenna:HasEvent("extend antenna") and not antenna:part:tag:contains("noextend")
                 {
@@ -802,15 +819,31 @@ global function LAS_CheckPayload
                 }
             }
 
+            for boom in Ship:ModulesNamed("ModuleAnimateGeneric")
+            {
+                if boom:HasEvent("extend boom") and not boom:part:tag:contains("noextend")
+                {
+                    boom:DoEvent("extend boom").
+                }
+            }
+
+            for exp in Ship:ModulesNamed("Experiment")
+            {
+                if exp:HasAction("start: magnetic scan") and not exp:part:tag:contains("noextend")
+                {
+                    exp:DoAction("start: magnetic scan", true).
+                }
+            }
+
             if equipmentStatus:IsType("Label")
-                set equipmentStatus:Text to "Equipment: <color=#00ff00>extended</color>".
+                ReadoutGUI_SetText(equipmentStatus, "extended", "#00ff00").
 
             set PL_PanelsExtended to true.
         }
         else
         {
             if equipmentStatus:IsType("Label")
-                set equipmentStatus:Text to "Equipment: <color=#fff000>retracted (Q > " + round(1e-2 * Constant:AtmTokPa, 2) + " Pa)</color>".
+                ReadoutGUI_SetText(equipmentStatus, "retracted (Q > 1 Pa)", "#fff000").
         }
     }
 }
