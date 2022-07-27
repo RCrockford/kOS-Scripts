@@ -10,8 +10,8 @@ wait until Ship:Unpacked.
 switch to scriptpath():volume.
 
 // Setup functions
-runpath("0:/flight/EngineMgmt", Stage:Number).
-runpath("0:/flight/TuneSteering").
+runpath("/flight/EngineMgmt", Stage:Number).
+runpath("/flight/TuneSteering").
 
 if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escaping"
 {
@@ -46,6 +46,12 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
             set r:enabled to true.
         }
     }
+    
+    for a in Ship:ModulesNamed("ModuleProceduralAvionics")
+    {
+        if a:HasEvent("activate avionics")
+            a:DoEvent("activate avionics").
+    }
 
     if Ship:ModulesNamed("ProceduralFairingDecoupler"):Empty
     {
@@ -58,12 +64,6 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
                 rc:DoEvent("disarm chute").
                 set chutesArmed to true.
             }
-        }
-        
-        for a in Ship:ModulesNamed("ModuleProceduralAvionics")
-        {
-            if a:HasEvent("activate avionics")
-                a:DoEvent("activate avionics").
         }
 
         rcs on.
@@ -96,7 +96,12 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     local chutesArmed is false.
     for rc in Ship:ModulesNamed("RealChuteModule")
     {
-        if rc:HasEvent("deploy chute")
+        if rc:HasEvent("arm parachute")
+        {
+            rc:DoEvent("arm parachute").
+            set chutesArmed to true.
+        }
+        else if rc:HasEvent("deploy chute")
         {
             rc:DoEvent("deploy chute").
             set chutesArmed to true.
@@ -105,11 +110,21 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
     if not chutesArmed
         chutes on.
+
+    local curSpeed is Ship:Velocity:Surface:Mag.
+    local curTime is Time:Seconds.
+    local curAccel is -10.
+
+    until curAccel > -4
+    {
+        wait 0.05.
+        set curAccel to (Ship:Velocity:Surface:Mag - curSpeed) / (Time:Seconds - curTime).
+        set curSpeed to Ship:Velocity:Surface:Mag.
+        set curTime to Time:Seconds.
+
+        set debugStat:Text to "Acceleration: " + round(curAccel, 2) + " m/s²".
+    }
         
-    set debugStat:Text to "Waiting for heatshield altitude".
-
-    wait until Alt:Radar < 2500.
-
     // Drop all payload bases and heatshields
     for hs in Ship:ModulesNamed("ModuleDecouple")
     {
@@ -138,8 +153,11 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         }
     }
     
-    if stage:number > 0
+    until stage:number = 0
+    {
+        wait until stage:ready.
         stage.
+    }
     
     wait 0.1.
     
