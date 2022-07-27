@@ -26,7 +26,12 @@ for f in delFiles:Keys
 switch to 1.
 
 local archRoot is path("0:/").
+local success is true.
+
 for f in fileList
 {
-    copypath(archRoot:Combine(f), f).
+    set success to success and copypath(archRoot:Combine(f), f).
 }
+
+fileList:Add(success).
+
