@@ -6,7 +6,7 @@ wait until Ship:Unpacked.
 
 parameter targetStage is 0.
 
-if Ship:Status = "Sub_Orbital"
+if Ship:Status = "Sub_Orbital" or Ship:Status = "Flying" or Ship:Status = "Escaping"
 {
     local fileList is list().
     local burnParams is lexicon().

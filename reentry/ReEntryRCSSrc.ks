@@ -9,7 +9,7 @@ for k in p:keys
 rcs on.
 lock steering to LookDirUp(Retrograde:Vector, Facing:UpVector).
 
-wait until vdot(Retrograde:Vecctor, Facing:Vector) > 0.99999.
+wait until vdot(Retrograde:Vector, Facing:Vector) > 0.99999.
 
 set Ship:Control:Fore to 1.
 

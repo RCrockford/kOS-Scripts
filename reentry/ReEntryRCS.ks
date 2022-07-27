@@ -5,7 +5,7 @@ for k in p:keys
 set p[k]to p[k]:ToScalar(0).
 rcs on.
 lock steering to LookDirUp(Retrograde:Vector,Facing:UpVector).
-wait until vdot(Retrograde:Vecctor,Facing:Vector)>0.99999.
+wait until vdot(Retrograde:Vector,Facing:Vector)>0.99999.
 set Ship:Control:Fore to 1.
 local _0 is Ship:mass.
 until Ship:Obt:Periapsis<=p:pe

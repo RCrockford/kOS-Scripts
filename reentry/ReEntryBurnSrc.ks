@@ -47,32 +47,30 @@ if Ship:Obt:Periapsis > p:pe
     if p:engines > 0
     {
         runpath("/flight/EngineMgmt", Stage:Number).
-        if not EM_Ignition()
-        {
-            set p:engines to 0.
-        }
+        EM_Ignition().
     }
-    if p:engines = 0
-        set Ship:Control:Fore to 1.
-
-	local shipMass is Ship:mass.
+    
+    local shipMass is Ship:mass.
 	until Ship:Obt:Periapsis <= p:pe
 	{
 		wait 0.1.
-		if shipMass = Ship:mass
-		{
-			if p:engines > 0
-			{
+        if p:engines > 0
+        {
+            if Ship:Thrust = 0
+            {
 				set Ship:Control:Fore to 1.
 				set p:engines to 0.
 			}
-			else
-			{
-				print "Out of fuel, aborting burn.".
-				break.
-			}
-		}
-		set shipMass to Ship:Mass.
+        }
+		else
+        {
+            if shipMass = Ship:mass
+            {
+                print "Out of fuel, aborting burn.".
+                break.
+            }
+            set shipMass to Ship:Mass.
+        }
 	}
 }
 

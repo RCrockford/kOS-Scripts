@@ -37,31 +37,29 @@ print"Commencing re-entry burn.".
 if p:engines>0
 {
 runpath("/flight/EngineMgmt",Stage:Number).
-if not EM_Ignition()
-{
-set p:engines to 0.
+EM_Ignition().
 }
-}
-if p:engines=0
-set Ship:Control:Fore to 1.
 local _0 is Ship:mass.
 until Ship:Obt:Periapsis<=p:pe
 {
 wait 0.1.
-if _0=Ship:mass
-{
 if p:engines>0
+{
+if Ship:Thrust=0
 {
 set Ship:Control:Fore to 1.
 set p:engines to 0.
 }
+}
 else
+{
+if _0=Ship:mass
 {
 print"Out of fuel, aborting burn.".
 break.
 }
-}
 set _0 to Ship:Mass.
+}
 }
 }
 set Ship:Control:PilotMainThrottle to 0.

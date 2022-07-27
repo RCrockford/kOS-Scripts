@@ -7,11 +7,13 @@ wait until Ship:Unpacked.
 parameter targetStage is 0.
 parameter retroBurn is false.
 
+switch to scriptpath():volume.
+
 if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
 {
     print "Orienting for re-entry.".
     
-	runoncepath("0:/FCFuncs").
+	runoncepath("/FCFuncs").
 	LAS_Avionics("activate").
 	
 	for rcs in Ship:ModulesNamed("ModuleRCSFX")
@@ -37,10 +39,17 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
     wait 5.
 	wait until vdot(aimVec, Facing:Vector) > 0.999995.
 	
-    local fileList is list().
-    local burnParams is lexicon().
-    
-	fileList:Add("reentry/ReEntryLanding.ks").
+    if scriptpath():ToString[0] = "0"
+    {
+        local fileList is list().
+        local burnParams is lexicon().
+        
+        fileList:Add("reentry/ReEntryLanding.ks").
 
-    runpath("0:/flight/SetupBurn", burnParams, fileList, "re-entry").
+        runpath("/flight/SetupBurn", burnParams, fileList, "re-entry").
+    }
+    else
+    {
+        runpath("reentry/ReEntryLanding.ks").
+    }
 }
