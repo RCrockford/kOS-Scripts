@@ -14,10 +14,13 @@ global function TakeoffControl
     else
     {
         set groundHeading to landingTarget:Heading.
-        if Ship:longitude < landingTarget:lng
-            set groundHeading to groundHeading + (Ship:Latitude - landingTarget:Lat) * 12000.
-        else
-            set groundHeading to groundHeading - (Ship:Latitude - landingTarget:Lat) * 12000.
+        if groundHeading > 85 and groundHeading < 95
+        {
+            if Ship:longitude < landingTarget:lng
+                set groundHeading to groundHeading + (Ship:Latitude - landingTarget:Lat) * 12000.
+            else
+                set groundHeading to groundHeading - (Ship:Latitude - landingTarget:Lat) * 12000.
+        }
         set ctrlState:Pitch to groundPitch.
     }
     
@@ -33,11 +36,9 @@ global function TakeoffControl
     {
         set onGround to true.
     }
-
+    
     local minAlt is 200 * (30 / maxClimbAngle) ^ 2.25.
-    if initialClimb
-        set minAlt to 12.
-    else if abortMode
+    if abortMode
         set minAlt to 400.
         
     if flightState = fs_Airlaunch
@@ -45,17 +46,26 @@ global function TakeoffControl
         set ctrlState:Heading to -1.
         if Ship:AirSpeed < targetSpeed
         {
-            set ctrlState:Pitch to 2.
-            set minAlt to Alt:Radar + 1.
+            set ctrlState:Pitch to 10.
+            set minAlt to 0.
         }
     }
     else
     {
         set ctrlState:Heading to groundHeading.
     }
+    
     set Ship:Control:PilotMainThrottle to 1.
+        
+    if not onGround
+    {
+        if Alt:Radar > 10 and gear
+            gear off.
+        if alt:radar > minAlt / 2 and currentFlapDeflect > 1
+            setFlaps(1).
+    }
 
-    if Alt:Radar > minAlt and Ship:VerticalSpeed > 0 and shipPitch > 4
+    if Alt:Radar >= minAlt and Ship:VerticalSpeed > 0 and shipPitch > 4
     {
         setFlaps(0).
         set flightState to fs_Flight.
@@ -66,10 +76,25 @@ global function TakeoffControl
     return ctrlState.
 }
 
+global function TakeoffSpoolControl
+{
+    local engineMaxThrust is 0.
+    local engineThrust is 0.
+
+    for eng in jetEngines
+    {
+        set engineMaxThrust to engineMaxThrust + eng:part:PossibleThrust().
+        set engineThrust to engineThrust + eng:part:Thrust().
+    }
+
+    if engineThrust > engineMaxThrust * 0.25
+    {
+        TakeoffBrakeRelease().
+    }
+}
+
 global function BeginTakeoff
 {
-    set flightState to fs_Takeoff.
-    set debugName:Text to "Takeoff".
     set guiButtons["to"]:Enabled to false.
     if taxiButton1:IsType("Button")
     {
@@ -95,32 +120,26 @@ global function BeginTakeoff
         rj:Part:Shutdown.
 
     setFlaps(2).
-
+    
     if brakes and not jetEngines:empty
     {
         print "Waiting for engines to spool.".
 
-        local engineMaxThrust is 0.
-        for eng in jetEngines
-        {
-            set engineMaxThrust to engineMaxThrust + eng:part:PossibleThrust().
-        }
-
-        local engineThrust is 0.
-        until engineThrust > engineMaxThrust * 0.5
-        {
-            set engineThrust to 0.
-            for eng in jetEngines
-            {
-                set engineThrust to engineThrust + eng:part:Thrust().
-            }
-            wait 0.
-        }
+        set flightState to fs_TakeoffSpool.
+        set debugName:Text to "Takeoff Spool".
     }
+    else
+    {
+        TakeoffBrakeRelease().
+    }
+}
+
+global function TakeoffBrakeRelease
+{
+    set flightState to fs_Takeoff.
+    set debugName:Text to "Takeoff".
     brakes on.
     brakes off.
 
     print "Beginning takeoff roll.".
-
-    when alt:radar >= 30 then { gear off. if currentFlapDeflect > 1 setFlaps(1). }
 }

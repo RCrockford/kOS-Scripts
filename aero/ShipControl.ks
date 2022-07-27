@@ -5,11 +5,15 @@ local climbRatePid is pidloop(3, 0, 4).
 local climbLimitPid is pidloop(3, 0, 4).
 local climbRateLimit is 0.
 local prevAirSpeed is 0.
+local prevVelocity is V(0,0,0).
 local prevUpdateTime is 0.
+local pitchLimit is 1.
 
-local AoAPid is pidloop(0.04, 0, 0.08, -15, 15).
+local AoAPid is pidloop(0.04, 0, 0.08, -5, 5).
 local prevAoAUpdateTime is 0.
 local targetAoA is 0.
+
+local GLimitPID is pidloop(0.022, 0, 0.0018, -0.2, 0.02).
 
 local rollPid is PIDloop(0.005, 0.00005, 0.001, -1, 1).
 local maxBankPid is pidloop(0.02, 0, 0.05, -2, 1).
@@ -21,8 +25,7 @@ local yawPid is PIDloop(0.0025, 0, 0.0025, -1, 1).
 
 local wheelPid is PIDLoop(0.15, 0, 0.1, -1, 1).
 
-local throtPid is PIDloop(0.1, 0, 0.12, -1, 1).
-local throttleSense is 0.05.
+local throtPid is PIDloop(0.005, 0, 0.006, -0.1, 0.1).
 
 local PitchTune is lexicon(
     "Crossings", 0,
@@ -31,15 +34,15 @@ local PitchTune is lexicon(
     "PrevValue", 0,
     "MinValue", 0,
     "MaxValue", 0,
-    "OutHigh", 1,
-    "OutLow", 0,
+    "OutHigh", 0.5,
+    "OutLow", -0.25,
     "Kp", 0,
     "Ki", 0,
     "Kd", 0
 ).
 local RollTune is PitchTune:Copy.
-set RollTune:OutHigh to 1.
-set RollTune:OutLow to -1.
+set RollTune:OutHigh to 0.2.
+set RollTune:OutLow to -0.2.
 
 global function GetTargetAoA
 {
@@ -154,73 +157,32 @@ global function HighAltControl
 {
     parameter ctrlState.
 
-    set addons:aa:fbw to false.
-    set addons:aa:cruise to false.
-    set addons:aa:director to false.
     set ctrlState:Heading to velocityHeading().
     set SteeringManager:RollControlAngleRange to 180.
     lock steering to heading(ctrlState:Heading, ctrlState:Pitch):Vector.
     print "HighAlt " + round(ctrlState:Heading, 1) + "° p=" + round(ctrlState:Pitch, 1) + "/" + round(shipPitch, 1) + "°            " at (0,0).
 }
 
-global function SteeringControlAA
+global function SteeringReset
 {
-    parameter ctrlState.
-
-    if ctrlState:ClimbRate > -1e6
-    {
-        set addons:aa:vertspeed to ctrlState:ClimbRate.
-        set addons:aa:heading to ctrlState:Heading.
-        set addons:aa:cruise to true.
-        print "Cruise " + round(ctrlState:Heading, 1) + "° vs=" + round(ctrlState:ClimbRate, 1) + "/" + round(Ship:VerticalSpeed, 1) + "           " at (0,0).
-    }
-    else if not initialClimb and flightState = fs_Flight and guiButtons["fl"]:Pressed
-    {
-        set addons:aa:altitude to targetflightLevel * 100.
-        set addons:aa:heading to ctrlState:Heading.
-        set addons:aa:cruise to true.
-        print "Cruise " + round(ctrlState:Heading, 1) + "° alt=" + round(targetflightLevel, 0) + "              " at (0,0).
-    }
-    else
-    {
-        set addons:aa:direction to heading(choose ctrlState:Heading if ctrlState:Heading >= 0 else shipHeading, ctrlState:Pitch):Vector.
-        set addons:aa:director to true.
-        print "Dir " + round(ctrlState:Heading, 1) + "° p=" + round(ctrlState:Pitch, 1) + "/" + round(shipPitch, 1) + "°   MaxAoA=" + round(addons:aa:maxaoa, 1) + "°     " at (0,0).
-    }
-
-    if onGround
-    {
-        if flightState = fs_Takeoff or ctrlState:Pitch > 0
-            set ship:control:pitch to min((ctrlState:Pitch - shipPitch) * TOPitchScale, 1).
-        else
-            set ship:control:pitch to 0.
-
-        set ship:control:roll to shipRoll() * -0.1.
-    }
-    else
-    {
-        set Ship:Control:Neutralize to true.
-    }
-
-    if rocketPlane
-    {
-        if Ship:Altitude > 18000 or initialClimb or flightState = fs_LandFinalApproach or flightState = fs_LandDitch
-            rcs on.
-        else if Ship:Altitude < 17000
-            rcs off.
-    }
+    pitchPid:Reset().
+    rollPid:Reset().
+    yawPid:Reset().
+    AoAPid:Reset().
 }
 
 global function SteeringControl
 {
     parameter ctrlState.
 
-    local ctrlDamp is PIDSettings:tuneSpeed * kUniverse:TimeWarp:Rate / max(min(Ship:AirSpeed, 800), PIDSettings:tuneSpeed * 0.7).
+    local ctrlDamp is PIDSettings:tuneSpeed / max(min(Ship:AirSpeed, 900), PIDSettings:tuneSpeed * 0.7).
+    local ctrlDamp2 is (min(ctrlDamp, 1.1) ^ 2) * kUniverse:TimeWarp:Rate.
+    set ctrlDamp to ctrlDamp * kUniverse:TimeWarp:Rate.
 
     local updateTime is time:seconds.
 
     local climbRate is ctrlState:ClimbRate.
-    if ctrlState:ClimbRate <= -1e6 and not initialClimb and flightState = fs_Flight and guiButtons["fl"]:Pressed
+    if ctrlState:ClimbRate <= -1e6 and not guiButtons["pt"]:Pressed and flightState = fs_Flight and guiButtons["fl"]:Pressed
     {
         set climbRatePid:kP to 100 / Ship:Airspeed.
         set climbRatePid:kD to climbRatePid:kP * 1.6.
@@ -274,6 +236,8 @@ global function SteeringControl
         else
         {
             set climbRateLimit to 0.
+            if guiButtons["fl"]:Pressed
+                set ctrlState:ClimbRate to max(ctrlState:ClimbRate, -Ship:Airspeed * 0.1).
         }
     }
     else
@@ -281,14 +245,17 @@ global function SteeringControl
         set climbRateLimit to 0.
     }
     
-    set AoAPid:kP to AoAkPTweak / ctrlDamp.
-    set AoAPid:kD to AoAkPTweak / ctrlDamp.
+    set AoAPid:kP to AoAkPTweak / ctrlDamp2.
+    set AoAPid:kD to AoAkPTweak * 1.25 / ctrlDamp2.
     set pitchPid:kP to PIDSettings:PitchKp * ctrlDamp.
     set pitchPid:kI to PIDSettings:PitchKi * ctrlDamp / kUniverse:TimeWarp:Rate.
     set pitchPid:kD to PIDSettings:PitchKd * ctrlDamp.
     
     if ctrlState:ClimbRate > -1e6
     {
+        if flightState >= fs_Flight and flightState < fs_LandInterApproach
+            set ctrlState:ClimbRate to max(ctrlState:ClimbRate, -Alt:Radar / 24).
+
         local AoARate is choose 0.16 if flightState < fs_LandFinalApproach else 0.1.
         if prevAoAUpdateTime < updateTime - AoARate * kUniverse:TimeWarp:Rate
         {
@@ -300,12 +267,14 @@ global function SteeringControl
         }
         set ctrlState:Pitch to targetAoA.
     }
+    else
+    {
+        AoAPid:Reset().
+    }
 
     set pitchPid:SetPoint to max(-maxClimbAngle, min(ctrlState:Pitch, maxClimbAngle)).
     local Δpitch is PitchTuning(pitchPid:Update(updateTime, shipPitch)).
 
-    print "Δpitch: " + round(Δpitch, 4) + "            " at (20,2).
-    
     if Ship:Status = "Flying"
     {
         local newYaw is ship:control:yaw.
@@ -316,37 +285,58 @@ global function SteeringControl
             set yawPid:SetPoint to ctrlState:Heading.
             local Δyaw is choose yawPID:Update(updateTime, shipHeading) * ctrlDamp * 0.2 if ctrlState:Heading >= 0 else 0.
             set newYaw to newYaw + Δyaw.
+            
+            if Ship:VerticalSpeed < ctrlState:ClimbRate * 3
+                set Δpitch to Δpitch + (ctrlState:ClimbRate * 3 - Ship:VerticalSpeed) * 0.1.
+            set pitchLimit to 1.
         }
         else
         {
-            // Yaw to correct for nose dropping during turns
-            set yawPid:SetPoint to pitchPid:SetPoint.
-            local Δyaw is choose yawPID:Update(updateTime, shipPitch) * ctrlDamp if ctrlState:Heading >= 0 else 0.
-
-            set newYaw to newYaw * 0.98 - Δyaw * sin(shipRoll()).
-            if flightState > fs_Takeoff
+            // Anti-yaw while cruising
+            if ctrlState:Heading < 0 or (angle_off(ctrlState:Heading, shipHeading) < 2 and abs(shipRoll()) < 4)
             {
-                //if ship:control:roll < 0
-                  //  set newYaw to max(ship:control:roll * 0.8, newYaw).
-                //else
-                  //  set newYaw to min(ship:control:roll * 0.8, newYaw).
+                set yawPid:SetPoint to velocityHeading.
+                local Δyaw is yawPID:Update(updateTime, shipHeading) * 0.08.
+                set newYaw to newYaw + Δyaw.
+            }
+            else
+            {
+                // Yaw to correct for nose dropping during turns
+                set yawPid:SetPoint to pitchPid:SetPoint.
+                local Δyaw is choose yawPID:Update(updateTime, shipPitch) * ctrlDamp if ctrlState:Heading >= 0 else 0.
+                
+                set newYaw to newYaw * 0.98 - Δyaw * sin(shipRoll()).
+            }
+            
+            // G limiter
+            if prevVelocity:Mag > 0
+            {
+                local accel is vdot(Velocity:Surface - prevVelocity, Facing:UpVector) / (9.81 * (updateTime - prevUpdateTime)).
+                local maxg is 9 - min(Ship:Airspeed / 120, 5).
+                print "g: " + round(accel, 2) + " [" + round(maxg, 2) + "]        " at (32, 1).
+
+                set GLimitPID:SetPoint to maxg.
+                set pitchLimit to pitchLimit + GLimitPID:Update(updateTime, accel).
+                set pitchLimit to min(max(-1, pitchLimit), 1).
             }
         }
         set ship:control:yaw to newYaw.
 
-        if flightState = fs_AirLaunch and ctrlState:Pitch < 10
+        if flightState = fs_Takeoff
+            set ship:control:pitch to max(ship:control:pitch - 0.01, min(Δpitch, ship:control:pitch + 0.01)).
+        else if flightState = fs_AirLaunch and ctrlState:Pitch < 10
             set ship:control:pitch to max(-0.6, min(Δpitch, 0.6)).
         else if Ship:Altitude > 25000
             set ship:control:pitch to Δpitch.
         else
-            set ship:control:pitch to max(Δpitch, -1) + max((abs(shipRoll()) - 10) / 40, 0).
+            set ship:control:pitch to min(max(Δpitch, -1) + max((abs(shipRoll()) - 10) / 40, 0), pitchLimit).
     }
     else if Ship:Status = "Landed"
     {
         if flightState = fs_Takeoff
         {
             if Ship:GroundSpeed < rotateSpeed and not abortMode
-                set ship:control:pitch to max(-0.25, min(Δpitch, 0.25)).
+                set ship:control:pitch to max(-0.1, min(Δpitch, 0.25)).
             else
                 set ship:control:pitch to max(ship:control:pitch - 0.01, min(Δpitch, ship:control:pitch + 0.01)).
         }
@@ -356,7 +346,8 @@ global function SteeringControl
             set ship:control:pitch to Δpitch.
     }
 
-    print round(ctrlState:Heading, 1) + "° vs=" + round(ctrlState:ClimbRate, 1) + "/" + round(Ship:VerticalSpeed, 1) + " p=" + round(ctrlState:Pitch, 1) + "/" + round(shipPitch, 1) + "°        " at (0,0).
+    print " Δpitch: " + round(Δpitch, 4) + " lim: " + round(pitchLimit, 3) + "      " at (29,2).
+    print round(ctrlState:Heading, 1) + "° vs=" + (choose "--" if ctrlState:ClimbRate < -10000 else round(ctrlState:ClimbRate, 1)) + "/" + round(Ship:VerticalSpeed, 1) + " p=" + round(ctrlState:Pitch, 1) + "/" + round(shipPitch, 1) + "°        " at (0,0).
 
     local reqBank is 0.
     if alt:radar > 15 and ctrlState:Heading >= 0
@@ -369,10 +360,12 @@ global function SteeringControl
             set headingDelta to -headingDelta.
     
         local reqTurn is angle_off(ctrlState:Heading + headingDelta, shipHeading).
+        
+        local speedBankLimit is 65 - min(max(0, (Ship:AirSpeed - 600) / 6), 50).
 
         if guiButtons["akp"]:Pressed and flightState >= fs_Flight
         {
-            set bankPid:MaxOutput to 65.
+            set bankPid:MaxOutput to speedBankLimit.
         }
         else if abs(reqTurn) > 5
         {
@@ -383,11 +376,11 @@ global function SteeringControl
                 set maxBankPid2:SetPoint to Ship:Airspeed.
                 set bankPid:MaxOutput to bankPid:MaxOutput + maxBankPid2:Update(updateTime, ctrlState:Speed) * ctrlDamp.
             }
-            set bankPid:MaxOutput to max(20, min(bankPid:MaxOutput, 65)).
+            set bankPid:MaxOutput to min(max(20, bankPid:MaxOutput), speedBankLimit).
         }
         else
         {
-            set bankPid:MaxOutput to 30.
+            set bankPid:MaxOutput to min(20, speedBankLimit).
         }
         set bankPid:MinOutput to -bankPid:MaxOutput.
     
@@ -406,7 +399,7 @@ global function SteeringControl
         bankPid:Reset().
     }
     
-    local altBoost is max((Ship:Altitude / 25000)^3, 1).
+    local altBoost is max((Ship:Altitude / 22000)^3, 1).
     if flightState = fs_LandFinalApproach
         set altBoost to altBoost * 2.
 
@@ -419,16 +412,9 @@ global function SteeringControl
     
     print "Roll: " + round(reqBank, 2) + " / " + round(shipRoll(), 2) + "          " at (0,5).
 
+    set prevVelocity to Velocity:Surface.
     set prevAirSpeed to Ship:AirSpeed.
     set prevUpdateTime to updateTime.
-
-    if rocketPlane
-    {
-        if Ship:Altitude > 18000 or (initialClimb and flightState = fs_Flight) or flightState = fs_LandFinalApproach or flightState = fs_LandDitch
-            rcs on.
-        else if Ship:Altitude < 17000
-            rcs off.
-    }
 }
 
 local lastBrake is 0.
@@ -442,17 +428,19 @@ global function ThrottleControl
         local maxThrottle is 1.
 		if hasReheat and not guiButtons["rht"]:Pressed and flightState >= fs_Flight
 			set maxThrottle to 2/3.
+            
+        if not rocketPlane
+        {
+            set throtPid:kP to 0.0004.
+            set throtPid:kD to 0.0025.
+        }
 
         // Throttle control
         set throtPid:SetPoint to ctrlState:Speed.
-        local Δthrottle is throtPid:Update(time:seconds, Ship:AirSpeed) * throttleSense.
+        local Δthrottle is throtPid:Update(time:seconds, Ship:AirSpeed).
+        
         local minThrottle is choose 0.01 if rocketPlane else 0.
-        if guiButtons["akp"]:Pressed and flightState >= fs_Flight
-        {
-            set Ship:Control:PilotMainThrottle to 1.
-            brakes off.
-        }
-        else if brakes or (lastBrake > Time:Seconds - (Ship:AirSpeed - ctrlState:Speed))
+        if brakes or (lastBrake > Time:Seconds - (Ship:AirSpeed - ctrlState:Speed))
         {
             set Ship:Control:PilotMainThrottle to minThrottle.
             if brakes
@@ -461,7 +449,7 @@ global function ThrottleControl
         else
         {
             if flightState < fs_LandInterApproach and alt:radar > 100 and ctrlState:Heading >= 0 and abs(rollPid:SetPoint) > 10
-                set Δthrottle to Δthrottle + min(abs(angle_off(ctrlState:Heading, shipHeading)) * throttleSense, 0.5) * throttleSense.
+                set Δthrottle to Δthrottle + min(abs(angle_off(ctrlState:Heading, shipHeading)) * 0.005, 0.5) * 0.005.
             set Ship:Control:PilotMainThrottle to min(max(minThrottle, Ship:Control:PilotMainThrottle + Δthrottle), maxThrottle).
         }
 
@@ -479,7 +467,7 @@ global function ThrottleControl
     else
     {
         throtPid:Reset().
-        print "No speed control                 " at (0,1).
+        print "No speed control              " at (0,1).
     }
 
     set Ship:control:MainThrottle to Ship:Control:PilotMainThrottle.
@@ -501,6 +489,9 @@ global function GroundControl
 
         set Ship:Control:WheelSteer to wheelPid:update(time:seconds, -wheelError).
         set Ship:Control:Yaw to groundYawPid:Update(time:seconds, wheelError).
+        
+        if abs(Ship:Control:WheelSteer) > 0.5
+            set Ship:Control:PilotMainThrottle to 0.
 
         if flightState = fs_Taxi
             set guiButtons["dbg"]:Text to round(groundHeading, 1) + "° " + round(getDistanceToTarget(), 1) + "m".

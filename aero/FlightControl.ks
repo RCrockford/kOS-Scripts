@@ -4,14 +4,15 @@ global function FlightControl
 {
     parameter ctrlState.
 
-    if guiButtons["fl"]:Pressed or guiButtons["cr"]:Pressed or guiButtons["hdg"]:Pressed
+    if guiButtons["fl"]:Pressed or guiButtons["cr"]:Pressed or guiButtons["hdg"]:Pressed or guiButtons["pt"]:Pressed
     {
         // Altitude control
-        if initialClimb
+        if guiButtons["pt"]:Pressed
         {
-            set ctrlState:Pitch to targetClimbRate.
-            if Ship:VerticalSpeed < 0
-                set initialClimb to false.
+            if targetFixedPitch < 90
+                set ctrlState:Pitch to targetFixedPitch.
+            else
+                set ctrlState:Pitch to 90 - vang(Ship:up:vector, Ship:Velocity:Surface).
         }
         else if guiButtons["cr"]:Pressed
         {
@@ -77,6 +78,7 @@ global function FlightControl
             when alt:radar < 200 then { gear on. lights on. }
         }
 
+        chutes on.
         for chute in allChutes
         {
             local modRealChute is chute:GetModule("RealChuteModule").

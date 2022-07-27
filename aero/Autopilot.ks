@@ -5,7 +5,9 @@
 local KnownRunways is lexicon(
 	"VAFB", lexicon("end1", latlng(34.585765, -120.641), "end2", latlng(34.585765, -120.6141), "alt", 190, "hdg", 90),
 	"KSC", lexicon("end1", latlng(28.612852, -80.6179), "end2", latlng(28.612852, -80.5925), "alt", 78.5, "hdg", 90),
-	"Mahia", lexicon("end1", latlng(-39.255965, 177.8504), "end2", latlng(-39.255965, 177.87954), "alt", 165, "hdg", 90)
+	"Mahia", lexicon("end1", latlng(-39.255965, 177.8504), "end2", latlng(-39.255965, 177.87954), "alt", 165, "hdg", 90),
+	"Plesetsk", lexicon("end1", latlng(62.96169, 40.6695), "end2", latlng(62.96169, 40.7185), "alt", 300, "hdg", 90),
+	"Churchill", lexicon("end1", latlng(58.738635, -93.8434), "end2", latlng(58.738635, -93.8002), "alt", 86, "hdg", 90)
 ).
 
 // Wait for unpack
@@ -13,6 +15,8 @@ wait until Ship:Unpacked.
 
 if Ship:Status = "Landed"
     gear on.    // Just in case
+    
+clearscreen.
 
 global lock shipHeading to mod(360 - latlng(90,0):bearing, 360).
 
@@ -68,30 +72,22 @@ global function getClimbRateToTarget
 	return (flightTargetAlt - Ship:Altitude) / (getDistanceToTarget() / Ship:AirSpeed).
 }
 
-global function GetMaxTemp
-{
-	parameter aje.
-
-	if aje:HasField("eng. internal temp")
-	{
-		local ts is aje:GetField("eng. internal temp").
-        if ts:contains("/")
-            set ts to ts:split("/")[1]:replace(",", "").
-        if ts:contains("K")
-            set ts to ts:substring(0, ts:find("K")).
-		return ts:ToScalar(0).
-	}
-	return 0.
-}
 global function GetEngTemp
 {
 	parameter aje.
 
 	local ts is aje:GetField("eng. internal temp").
-	set ts to ts:replace(",", ""). 
-    if ts:contains("K")
-        set ts to ts:substring(0, ts:find("K")).
-	return ts:ToScalar(0).
+	return ts.
+}
+
+local function GetEngineName
+{
+    parameter aje.
+
+    local shortName is aje:Part:Title.
+    if shortName:Length > 7 and shortName:FindAt(" ", 7) >= 0
+        set shortName to shortName:SubString(0, shortName:FindAt(" ", 7)).
+    return shortName.
 }
 
 global currentFlapDeflect is 0.
@@ -99,10 +95,9 @@ global allFlaps is list().
 global hasReheat is false.
 global hasJet is false.
 global rocketPlane is false.
-global RATOEngines is list().
+global DropTanks is list().
 global RamjetEngines is list().
 global JetEngines is list().
-global initialClimb is true.
 global enginesFiring is true.
 global abortMode is false.
 global allChutes is list().
@@ -112,7 +107,11 @@ global rightGear is 0.
 global gearList is list().
 global jetThrust is 0.
 
+local highAlt is false.
+
 local fuelList is uniqueset().
+
+local jetTempLimits is lexicon("default", 600, "J57-P-8 Turbojet", 705, "J57-P-21 Turbojet", 800, "RD-9B Turbojet", 625, "R-11F2", 900, "J58-P-4", 1200, "Model 304-2 Turbojet", 1000).
 
 for p in Ship:parts
 {
@@ -136,8 +135,11 @@ for p in Ship:parts
 			set hasReheat to true.
         set hasJet to true.
 		set jetThrust to jetThrust + p:PossibleThrust.
-		local engLex is lexicon("part", p, "aje", engMod, "restartSpeed", 0, "maxtemp", GetMaxTemp(engMod), "reheat", engMod:HasField("afterburner throttle"), "heatpid", PIDloop(58, 3750, 0.6, 4, 100)).
-		set engLex:heatpid:SetPoint to (engLex:maxTemp - 4) / engLex:maxTemp.
+        local templimit is jetTempLimits:Default.
+        if jetTempLimits:HasKey(p:Title)
+            set tempLimit to jetTempLimits[p:Title].
+		local engLex is lexicon("part", p, "aje", engMod, "restartSpeed", 0, "maxtemp", tempLimit, "reheat", engMod:HasField("afterburner throttle"), "heatpid", PIDloop(58, 3750, 1, 4, 100)).
+		set engLex:heatpid:SetPoint to (engLex:maxTemp - round(max((engLex:maxTemp - 800) / 50, 2.38)^1.6)) / engLex:maxTemp.
 		JetEngines:add(engLex).
 	}
 	else if p:HasModule("ModuleEnginesAJERamjet")
@@ -145,7 +147,7 @@ for p in Ship:parts
 		local engMod is p:GetModule("ModuleEnginesAJERamjet").
         set hasJet to true.
 		set jetThrust to jetThrust + p:PossibleThrust.
-		local engLex is lexicon("part", p, "aje", engMod, "maxtemp", GetMaxTemp(engMod), "heatpid", PIDloop(58, 3750, 0.6, 4, 100)).
+		local engLex is lexicon("part", p, "aje", engMod, "maxtemp", 3950, "heatpid", PIDloop(58, 3750, 1, 4, 100)).
 		set engLex:heatpid:SetPoint to (engLex:maxTemp - 10) / engLex:maxTemp.
 		RamjetEngines:add(engLex).
 	}
@@ -153,9 +155,11 @@ for p in Ship:parts
 	{
         if p:Ignitions >= 0
 			set rocketPlane to true.
-		if p:tag:contains("rato")
-			RATOEngines:Add(p).
 	}
+    else if p:DecoupledIn >= 0 and p:HasModule("ModuleFuelTanks") and p:Resources:Length > 0
+    {
+        DropTanks:Add(p).
+    }
     
     if p:IsType("Engine")
     {
@@ -163,7 +167,12 @@ for p in Ship:parts
         {
             local res is p:ConsumedResources[k].
             if res:Density > 0
-                fuelList:Add(k).
+            {
+                if k = "LH2"
+                    fuelList:Add("LqdHydrogen").
+                else
+                    fuelList:Add(k).
+            }
         }
     }
 
@@ -213,7 +222,6 @@ global function CalcGroundPitch
     set rearPos to rearPos / max(rearCount, 1).
 
     set groundPitch to max(-4, min(90 - vang(Facing:UpVector, rearPos - frontPos), 4)).
-    print "Ground pitch is " + round(groundPitch, 2).
 }
 
 if hasJet
@@ -307,6 +315,7 @@ global targetFlightLevel is 120.
 global targetSpeed is 0.
 global targetHeading is round(shipHeading, 0).
 global targetClimbRate is 0.
+global targetFixedPitch is 0.
 global rotateSpeed is 100.
 global landingSpeed is 0.
 global controlSense is 1.
@@ -330,11 +339,7 @@ if Ship:Status = "Flying"
 if rocketPlane and not Core:Part:tag:contains("noclimb")
 {
 	set targetFlightLevel to 0.
-	set targetClimbRate to 50.
-}
-else
-{
-	set initialClimb to false.
+	set targetFixedPitch to 25.
 }
 
 global runwayEnd1 is latlng(0, 0).
@@ -355,6 +360,12 @@ global runwayName is "".
 			set runwayName to rw.
 		}
 	}
+    
+    if closestDist > 4000 and (Ship:Status = "Landed" or Ship:Status = "PreLaunch")
+    {
+        knownRunways:Add("Unknown", lexicon("end1", Ship:GeoPosition, "end2", Body:GeoPositionOf(Heading(targetHeading, 0):Vector * 2200), "alt", Ship:Altitude, "hdg", targetHeading)).
+		set runwayName to "Unknown".
+    }
 
 	set runwayEnd1 to knownRunways[runwayName]:end1.
 	set runwayEnd2 to knownRunways[runwayName]:end2.
@@ -362,7 +373,7 @@ global runwayName is "".
 
 	set runwayHeading to knownRunways[runwayName]:hdg.
     
-    if closestDist < 2000
+    if (Ship:Status = "Landed" or Ship:Status = "PreLaunch")
         set targetHeading to runwayHeading.
 }
 
@@ -431,6 +442,7 @@ createGuiControls("hdg", "Heading", targetHeading, { parameter s. set targetHead
 createGuiControls("spd", "Airspeed", targetSpeed, { parameter s. set targetSpeed to s:ToNumber(targetSpeed). }, "").
 createGuiControls("fl", "Flight Level", targetFlightLevel, { parameter s. set targetFlightLevel to s:ToNumber(targetFlightLevel). }, "").
 createGuiControls("cr", "Climb Rate", targetClimbRate, { parameter s. set targetClimbRate to s:ToNumber(targetClimbRate). }, "").
+createGuiControls("pt", "Fixed Pitch", targetFixedPitch, { parameter s. set targetFixedPitch to s:ToNumber(targetFixedPitch). }, "").
 
 global PIDSettings is lexicon(
     "PitchKp", 0.023,
@@ -445,6 +457,10 @@ global PIDSettings is lexicon(
 print " ".
 print " ".
 print " ".
+print " ".
+print " ".
+print " ".
+print " ".
 
 if exists("0:/aero/settings/" + Ship:Name + ".json")
 {
@@ -456,15 +472,15 @@ else
     print "Using default PID settings".
 }
 
-global AoAkPTweak is 0.24.
+global AoAkPTweak is 0.2.
 
 createGuiControls("akp", "AoA kP/kD (Hard Turn)", AoAkPTweak, { parameter s. set AoAkPTweak to s:ToNumber(AoAkPTweak). }, "").
-createGuiControls("pkp", "Pitch kP",  round(PIDSettings:PitchKp, 6), { parameter s. set PIDSettings:PitchKp to s:ToNumber(PIDSettings:PitchKp). }, "").
+createGuiControls("pkp", "Pitch kP (Tune)",  round(PIDSettings:PitchKp, 6), { parameter s. set PIDSettings:PitchKp to s:ToNumber(PIDSettings:PitchKp). }, "").
 createGuiControls("pki", "Pitch kI",  round(PIDSettings:PitchKi, 6), { parameter s. set PIDSettings:PitchKi to s:ToNumber(PIDSettings:PitchKi). }, "").
-createGuiControls("pkd", "Pitch kD",  round(PIDSettings:PitchKd, 6), { parameter s. set PIDSettings:PitchKd to s:ToNumber(PIDSettings:PitchKd). }, "").
-createGuiControls("rkp", "Roll kP",  round(PIDSettings:RollKp, 6), { parameter s. set PIDSettings:RollKp to s:ToNumber(PIDSettings:RollKp). }, "").
+createGuiControls("pkd", "Pitch kD (Save)",  round(PIDSettings:PitchKd, 6), { parameter s. set PIDSettings:PitchKd to s:ToNumber(PIDSettings:PitchKd). }, "").
+createGuiControls("rkp", "Roll kP (Tune)",  round(PIDSettings:RollKp, 6), { parameter s. set PIDSettings:RollKp to s:ToNumber(PIDSettings:RollKp). }, "").
 createGuiControls("rki", "Roll kI",  round(PIDSettings:RollKi, 6), { parameter s. set PIDSettings:RollKi to s:ToNumber(PIDSettings:RollKi). }, "").
-createGuiControls("rkd", "Roll kD",  round(PIDSettings:RollKd, 6), { parameter s. set PIDSettings:RollKd to s:ToNumber(PIDSettings:RollKd). }, "").
+createGuiControls("rkd", "Roll kD (HighAlt)",  round(PIDSettings:RollKd, 6), { parameter s. set PIDSettings:RollKd to s:ToNumber(PIDSettings:RollKd). }, "").
 
 set guiButtons["akp"]:Pressed to false.
 set guiButtons["pkp"]:Pressed to false.
@@ -477,16 +493,19 @@ set guiButtons["rkd"]:Pressed to false.
 if rocketPlane
 {
 	set guiButtons["fl"]:Pressed to false.
+	set guiButtons["cr"]:Pressed to false.
 	set guiButtons["spd"]:Pressed to false.
 }
 else
 {
 	set guiButtons["cr"]:Pressed to false.
+	set guiButtons["pt"]:Pressed to false.
 }
 
 // climbRate / altitude control are exclusive
-set guiButtons["fl"]:OnToggle to { parameter val. if val { set guiButtons["cr"]:Pressed to false. } }.
-set guiButtons["cr"]:OnToggle to { parameter val. if val set guiButtons["fl"]:Pressed to false. }.
+set guiButtons["fl"]:OnToggle to { parameter val. if val { set guiButtons["cr"]:Pressed to false. set guiButtons["pt"]:Pressed to false. } }.
+set guiButtons["cr"]:OnToggle to { parameter val. if val set guiButtons["fl"]:Pressed to false. set guiButtons["pt"]:Pressed to false. }.
+set guiButtons["pt"]:OnToggle to { parameter val. if val set guiButtons["fl"]:Pressed to false. set guiButtons["cr"]:Pressed to false. }.
 
 createGuiControls("to", "Rotate Speed", rotateSpeed, { parameter s. set rotateSpeed to s:ToNumber(rotateSpeed). }, "TO").
 createGuiControls("lnd", "Landing Speed", landingSpeed, { parameter s. set landingSpeed to s:ToNumber(landingSpeed). }, "Land").
@@ -509,6 +528,10 @@ else
 }
 set fuelConsText to guiElements[guiElements:Length-1].
 
+createGuiControls("gav", "Ground Avoidance", 0, 0, "").
+set guiButtons["gav"]:Pressed to true.
+set guiElements[guiElements:Length-1]:Text to "".
+
 createGuiInfo("rwy", runwayName + " Runway", "0.0° 0.0 km").
 createGuiInfo("dbg", "Debug", "").
 global debugName is guiElements[guiElements:Length-2].
@@ -518,9 +541,10 @@ global onGround is true.
 
 global fs_Landed is 0.
 global fs_Takeoff is 1.
-global fs_Taxi is 2.
-global fs_TaxiTurn is 3.
-global fs_Airlaunch is 4.
+global fs_TakeoffSpool is 2.
+global fs_Taxi is 4.
+global fs_TaxiTurn is 5.
+global fs_Airlaunch is 8.
 global fs_Flight is 10.
 global fs_LandInitApproach is 20.
 global fs_LandTurn is 21.
@@ -657,7 +681,7 @@ until exitButton:TakePress
 				{
                     local et is GetEngTemp(jet:aje).
 					set jet:part:ThrustLimit to jet:heatpid:Update(time:seconds, et / jet:maxtemp).
-                    print jet:part:Title + ": " + round(et, 1) + "/" + round(jet:maxtemp) + "K " + round(jet:part:ThrustLimit, 1) + "%   " at (26,line).
+                    print GetEngineName(jet) + ": " + round(et, 1) + "/" + round(jet:maxtemp) + "K " + round(jet:part:ThrustLimit, 1) + "%   " at (28,line).
                     set line to line + 1.
 
 					if jet:part:ThrustLimit >= 50
@@ -700,7 +724,7 @@ until exitButton:TakePress
 			{
                 local et is GetEngTemp(jet:aje).
 				set jet:part:ThrustLimit to jet:heatpid:Update(time:seconds, et / jet:maxtemp).
-                print jet:part:Title + ": " + round(et, 1) + "/" + round(jet:maxtemp) + "K " + round(jet:part:ThrustLimit, 1) + "%   " at (26,line).
+                print GetEngineName(jet) + ": " + round(et, 1) + "/" + round(jet:maxtemp) + "K " + round(jet:part:ThrustLimit, 1) + "%   " at (28,line).
                 set line to line + 1.
 			}
 		}
@@ -722,6 +746,36 @@ until exitButton:TakePress
             }
         }
     }
+    
+    if not DropTanks:Empty
+    {
+        local printLine is 1.
+        local dropCount is 0.
+    
+        for t in DropTanks
+        {
+            local fuelAmount is 0.
+            local fuelCapacity is 0.
+            for r in t:Resources
+            {
+                set fuelAmount to fuelAmount + r:Amount * r:Density.
+                set fuelCapacity to fuelCapacity + r:Capacity * r:Density.
+            }
+        
+            print "Drop Tank " + printLine + ": " + round(100 * fuelAmount / fuelCapacity, 1) + "%    " at (0, printLine + 30).
+            set printLine to printLine + 1.
+            
+            if fuelAmount / fuelCapacity < 0.0005
+                set dropCount to dropCount + 1.
+        }
+        
+        if dropCount = DropTanks:Length
+        {
+            print "Dropping tanks.".
+            stage.
+            dropTanks:Clear.
+        }
+    }
 
 	if flightState <> fs_Landed
 	{
@@ -738,6 +792,10 @@ until exitButton:TakePress
 		{
 			set ctrlState to TakeoffControl(ctrlState).
 		}
+        else if flightState = fs_TakeoffSpool
+        {
+            TakeoffSpoolControl().
+        }
 		else if flightState = fs_Flight
 		{
 			set ctrlState to FlightControl(ctrlState).
@@ -796,10 +854,13 @@ until exitButton:TakePress
 		if not rocketPlane and flightState >= fs_Flight and flightState <= fs_LandTouchdown
 		{
 			set abortMode to false.
-			if flightState >= fs_LandFinalApproach
-				set abortMode to Ship:VerticalSpeed < -8 and Ship:VerticalSpeed * -5 > Alt:Radar.
-			else
-				set abortMode to Ship:VerticalSpeed * -10 > Alt:Radar.
+            if guiButtons["gav"]:Pressed
+            {
+                if flightState >= fs_LandFinalApproach
+                    set abortMode to Ship:VerticalSpeed < -8 and Ship:VerticalSpeed * -5 > Alt:Radar.
+                else
+                    set abortMode to Ship:VerticalSpeed * -10 > Alt:Radar.
+            }
 
 			if abortMode or ctrlState:goAround
 			{
@@ -819,66 +880,42 @@ until exitButton:TakePress
                     set debugName:Text to "Go Around".
                 if currentFlapDeflect < 2
                     setFlaps(2).
+                brakes off.
 				when alt:radar >= 20 and Ship:VerticalSpeed > 0 then { gear off. if currentFlapDeflect > 1 setFlaps(1). }
 			}
 		}
 		
-		local highAlt is false.
-		
 		if rocketPlane and flightState = fs_Flight
 		{
-			if initialClimb and enginesFiring
-			{
-				//set addons:aa:maxaoa to 30.
-				
-				local allEngines is list().
-				list engines in allEngines.
-
-				local engineThrust is 0.
-				for eng in allEngines
-				{
-					set engineThrust to engineThrust + eng:Thrust.
-				}
-				if engineThrust < 0.1
-				{
-                    set enginesFiring to false.
-				}
-			}
-			else
-			{
-				//set addons:aa:maxaoa to min(max(5 + Ship:altitude / 1000, 15), 75).
-				if Ship:Altitude > 25000
-				{
-					set ctrlState:Pitch to 90 - vang(Ship:up:vector, Ship:Velocity:Surface).
-					set ctrlState:ClimbRate to -1e8.
-                    if Ship:VerticalSpeed < -500
-                        set ctrlState:Pitch to ctrlState:Pitch + 10.
-				}
-
-                if Ship:Altitude > 30000
-                    set highAlt to true.
-            }
-        }
-
-        if not RATOEngines:Empty and Stage:Number > 0 and Stage:Ready
-        {
-            local flamedOut is true.
-            for e in RATOEngines
+            if Ship:Altitude > 32000
             {
-                if not e:Flameout
-                    set flamedOut to false.
+                set highAlt to true.
             }
-            if flamedOut
+            
+            if Ship:VerticalSpeed < 0
             {
-                set RATOEngines to list().
-                stage.
+                if highAlt and Ship:Altitude < 24000 and Ship:VerticalSpeed > -150 and Ship:AirSpeed < 1100
+                    set highAlt to false.
+
+                if highAlt
+                {
+                    set ctrlState:Pitch to 90 - vang(Ship:up:vector, Ship:Velocity:Surface).
+                    set ctrlState:ClimbRate to -1e8.
+                    if Ship:VerticalSpeed < -100
+                        set ctrlState:Pitch to ctrlState:Pitch + min((-100 - Ship:VerticalSpeed) / 40, min(72 / (Ship:AirSpeed / 1000)^2, 25)).
+                }
             }
+
+            if Ship:Altitude > 24000
+                rcs on.
+            else if Ship:Altitude < 20000 and Ship:VerticalSpeed > -150
+                rcs off.
         }
         
         if navmode <> "surface"
             set navmode to "surface".
 
-		if highAlt
+		if highAlt or guiButtons:rkd:pressed
 		{
             set ctrlState:Heading to velocityHeading().
 
@@ -899,6 +936,7 @@ until exitButton:TakePress
             {
                 unlock steering.
                 set SteeringLocked to 0.
+                SteeringReset().
             }
 			if ctrlState:Enabled
 			{
@@ -907,9 +945,6 @@ until exitButton:TakePress
 			else
 			{
 				set Ship:Control:Neutralize to true.
-				//set addons:aa:cruise to false.
-				//set addons:aa:director to false.
-				//set addons:aa:fbw to true.
 				print "Manual                                         " at (0,0).
 			}
 		}
@@ -921,6 +956,7 @@ until exitButton:TakePress
         {
             set guiButtons["fl"]:Pressed to false.
             set guiButtons["cr"]:Pressed to false.
+            set guiButtons["pt"]:Pressed to false.
             set guiButtons["hdg"]:Pressed to false.
             set guiButtons["spd"]:Pressed to false.
             set flightState to fs_Flight.
@@ -1002,24 +1038,41 @@ until exitButton:TakePress
 	if Time:Seconds - lastFuelTime >= 1
 	{
 		local fuelAmount is 0.
+		local fuelCapacity is 0.
         local line is 38 - fuelList:Length.
 		for r in Ship:Resources
 		{
 			if fuelList:Contains(r:Name)
             {
 				set fuelAmount to fuelAmount + r:Amount.
-                print r:Name + ": " + round(r:Amount, 3) at (0,line).
+                set fuelCapacity to fuelCapacity + r:Capacity.
+                print r:Name + ": " + round(r:Amount, 2) + " [" + round(100 * r:Amount / r:Capacity, 1) + "%]   " at (0,line).
                 set line to line + 1.
             }
 		}
-        print "Total: " + round(fuelAmount, 3) at (0,line).
-		
+        if fuelCapacity > 0
+            print "Total: " + round(fuelAmount, 2) + " [" + round(100 * fuelAmount / fuelCapacity, 1) + "%]   " at (0,line).
+        
 		local fuelCons is (lastFuelAmount - fuelAmount) / (Time:Seconds - lastFuelTime).
-		set fuelConsText:Text to round(1000 * fuelCons / Ship:GroundSpeed, 2) + " / " + round(Ship:GroundSpeed * fuelAmount / max(fuelCons * 1000, 1e-3)) + " km".
+        local fuelTime is fuelAmount / max(fuelCons, 1e-6).
+        if fuelTime > 3600
+        {
+            set fuelTime to round(fuelTime / 3600, 2) + " h".
+        }
+        else if fuelTime > 90
+        {
+            set fuelTime to round(fuelTime / 60, 2) + " m".
+        }
+        else
+        {
+            set fuelTime to round(fuelTime, 1) + " s".
+        }
+		
+		set fuelConsText:Text to fuelTime + " / " + round(Ship:GroundSpeed * fuelAmount / max(fuelCons * 1000, 1e-3)) + " km".
 		set lastFuelAmount to fuelAmount.
 		set lastFuelTime to Time:Seconds.
         
-        if fuelAmount < 1
+        if fuelAmount < 1 or fuelAmount / fuelCapacity < 0.01
             set rocketPlane to true.
 	}
 
