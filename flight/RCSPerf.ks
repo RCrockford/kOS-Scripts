@@ -70,11 +70,16 @@ global function GetRCSPerf
     {
         perfStats:add(a[0], lexicon("thrust", 0, "massflow", 0, "torque", 0)).
     }
+    
+    perfStats:add("lowtorque", false).
 
     for r in allRCS
     {
         if r:HasSuffix("ThrustVectors") and r:Enabled
         {
+            if r:tag:contains("lowtorque")
+                set perfStats:LowTorque to true.
+            
             for a in shipAxes
             {
                 local thrustMul is 0.

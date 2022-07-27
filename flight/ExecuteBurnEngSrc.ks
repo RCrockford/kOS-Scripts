@@ -2,52 +2,57 @@
 
 parameter p.
 parameter debugStat.
+parameter dV.
 
 set debugStat:Text to "Ignition".
 
-local duration to p:t.
-if p:int = 0
-    set duration to (ship:Mass - ship:Mass / p:mRatio) / p:mFlow.
-
-local fuelRes is 0.
-local fuelTarget is 0.
-for r in Ship:Resources
-{
-    if r:Name = p:fuelN
-    {
-        set fuelRes to r.
-        // Wait until we have burned the right amount of fuel.
-        set fuelTarget to r:Amount -  p:fFlow * duration.
-    }
-}
-local fuelStart is fuelRes:Amount.
+local massRatio is constant:e ^ (dV:Mag * p:mFlow / p:thr).
+local startMass is Ship:Mass.
 
 EM_Ignition().
 
+local preStageMass is Ship:Mass.
+local minVel is 0.
+
 // If this is a spun kick stage, then decouple it.
-if p:int > 0
+if p:HasKey("spin")
 {
     wait until Stage:Ready.
     unlock steering.
     set Ship:Control:Neutralize to true.
     rcs off.
     stage.
+    set startMass to startMass - (preStageMass - Ship:Mass).
+    set minVel to (Velocity:Orbit + dV):Mag.
 }
 else if p:stage < stage:number
+{
     stage.
+    set startMass to startMass - (preStageMass - Ship:Mass).
+}
+
+if EM_GetEngines()[0]:HasGimbal
+    rcs off.
 
 local burnStart is Time:Seconds.
+local finalMass is startMass / massRatio.
+local burnMass is Ship:Mass - finalMass.
 
-until fuelRes:Amount <= fuelTarget or not EM_CheckThrust(0.1)
+until not EM_CheckThrust(0.1)
 {
-    local prevUpdate is Time:Seconds.
+    local prevVel is Velocity:Orbit.
     CheckHeading().
     RollControl().
-    set debugStat:Text to "Burning, Fuel: " + round(fuelRes:Amount, 2) + " / " + round(fuelTarget, 2) + " [" + round((fuelRes:Amount - fuelTarget) / p:fFlow, 2) + "s]".
+    set debugStat:Text to "Burning, Mass: " + round(Ship:Mass * 1000, 1) + " / " + round(finalMass * 1000, 1) + " [" + round(burnMass / p:mFlow, 2) + "s]".
     wait 0.
-    // Break if we'll hit the target fuel in one update.
-    if fuelRes:Amount - (p:fFlow * (Time:Seconds - prevUpdate)) <= fuelTarget
+    set burnMass to Ship:Mass - finalMass.
+    local accel is (Velocity:Orbit - prevVel):Mag.
+    // Break if we'll hit the target mass in one update.
+    if (burnMass <= 0) and (Velocity:Orbit:Mag + accel >= minVel)
         break.
 }
+
+if not EM_CheckThrust(0.1)
+    print "Fuel exhaustion".
 
 EM_Shutdown().

@@ -17,7 +17,7 @@ create("1:/burn.csv"):write(burnStr:Substring(0, max(burnStr:Length-1, 0))).
 
 runpath("0:/localpack/InstallPack.ks", fileList).
 
-if exists("1:/" + fileList[fileList:Length-1])
+if fileList[fileList:Length-1]
 {
     print "Waiting for " + name + " in autonomous mode".
     set core:bootfilename to "/" + fileList[0].

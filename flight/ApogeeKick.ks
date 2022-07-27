@@ -9,7 +9,7 @@ local lock burnEta to eta:Apoapsis.
 runoncepath("/FCFuncs").
 
 runpath("/flight/AlignTime").
-local alignMargin is GetAlignTime().
+local alignMargin is GetAlignTime() * 1.25.
 
 print "Align in " + round(burnEta - margin - alignMargin, 1) + "s (T-" + round(alignMargin, 1) + ")".
 

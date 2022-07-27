@@ -8,23 +8,46 @@ local activeEngines is list().
 
 runoncepath("/FCFuncs").
 
-// Setup active engine list
-local stageEngines is LAS_GetStageEngines(burnStage).
-
-for e in stageEngines
+// Lead time for manoeuvres
+global function EM_CalcSpoolTime
 {
-    if e:Ignitions <> 0 or e:Ignition
+    parameter eng.
+    
+    if eng:HasModule("ModuleEnginesRF")
     {
-        activeEngines:Add(e).
-        
-        if e:Ullage
-            set needsUllage to true.
-        if not e:PressureFed    // Assume all pumped engines have spool time (for 8096C which is pumped but not ullaged)
-            set ignitionDelay to max(ignitionDelay, 2.39).
-        else if e:Ullage
-            set ignitionDelay to max(ignitionDelay, 0.91).
+        local engMod is eng:GetModule("ModuleEnginesRF").
+        return engMod:Getfield("effective spool-up time").
+    }
+    return 0.1.
+}
+
+global function EM_ResetEngines
+{
+    parameter newStage.
+    
+    // Setup active engine list
+    set burnStage to newStage.
+    local stageEngines is LAS_GetStageEngines(burnStage).
+    
+    set needsUllage to false.
+    set ignitionDelay to 0.
+    activeEngines:Clear().
+
+    for e in stageEngines
+    {
+        if e:Ignitions <> 0 or e:Ignition
+        {
+            activeEngines:Add(e).
+            
+            if e:Ullage
+                set needsUllage to true.
+            if e:Ullage or not e:PressureFed
+                set ignitionDelay to EM_CalcSpoolTime(e).
+        }
     }
 }
+
+EM_ResetEngines(burnStage).
 
 global function EM_IgDelay
 {
@@ -45,14 +68,14 @@ global function EM_CheckThrust
     
 global function EM_Ignition
 {
-    parameter minThrust is 0.5.
+    parameter minThrust is 0.25.
 
     // If we have engines, prep them to ignite.
     if not activeEngines:empty
     {
         for e in activeEngines
             e:Shutdown.
-			
+
         // Burn forwards with RCS.
         if needsUllage
         {
@@ -60,17 +83,19 @@ global function EM_Ignition
             set Ship:Control:Fore to 1.
         }
         set Ship:Control:PilotMainThrottle to 1.
-        
+
         for e in activeEngines
             wait until e:FuelStability >= 0.99.
-        
+
+		local t is time:seconds + 0.2.
         for e in activeEngines
+        {
             e:Activate.
-			
-		local t is time:seconds + 3.
+            set t to max(t, time:seconds + EM_CalcSpoolTime(e) * 2).
+        }
 
         wait until EM_CheckThrust(minThrust) or activeEngines[0]:Flameout or time:seconds > t.
-        
+
         set Ship:Control:Fore to 0.
     }
     

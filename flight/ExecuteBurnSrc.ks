@@ -4,8 +4,7 @@ wait until Ship:Unpacked.
 
 local p is lexicon(open("1:/burn.csv"):readall:string:split(",")).
 for k in p:keys
-    if k <> "fuelN"
-        set p[k] to p[k]:ToScalar(0).
+    set p[k] to p[k]:ToScalar(0).
 
 local lock tVec to Prograde:Vector.
 local lock bVec to vcrs(tVec, up:vector):Normalized.
@@ -62,7 +61,7 @@ global function RollControl
 {
     local cmdroll is 0.
     local rollRate is vdot(Facing:Vector, Ship:AngularVel).
-    if p:int > 0 and vdot(dV:Normalized, Facing:Vector) > 0.99
+    if p:haskey("spin") and vdot(dV:Normalized, Facing:Vector) > 0.999
     {
         // spin up
         if abs(rollRate) > p:spin * 1.25
@@ -80,8 +79,8 @@ global function RollControl
     }
     else
     {
-        if abs(rollRate) < 1e-3
-            set cmdroll to choose -0.000011 if rollRate < 0 else 0.000011.
+        if abs(rollRate) < 0.01
+            set cmdroll to choose -0.0001 if rollRate < 0 else 0.0001.
     }
     set ship:control:roll to cmdroll.
 }
@@ -91,14 +90,16 @@ CheckHeading().
 
 rcs on.
 lock steering to LookDirUp(dV:Normalized, Facing:UpVector).
+local statText is "Aligning ship".
 
 until burnETA <= ignitionTime
 {
     RollControl().
+    CheckHeading().
 
     local err is vang(dV:Normalized, Facing:Vector).
     local omega is  vxcl(Facing:Vector, Ship:AngularVel):Mag * 180 / Constant:Pi.
-    set debugStat:Text to "Aligning ship, <color=" + (choose "#ff8000" if err > 0.5 else "#00ff00") + ">Δθ: " + round(err, 2)
+    set debugStat:Text to statText + ", <color=" + (choose "#ff8000" if err > 0.5 else "#00ff00") + ">Δθ: " + round(err, 2)
         + "°</color> <color=" + (choose "#ff8000" if err / max(omega, 1e-4) > burnETA - ignitionTime else "#00ff00") + ">ω: " + round(omega, 3) + "°/s</color> roll: " + round(vdot(Facing:Vector, Ship:AngularVel), 6).
 
     // Pre-ullage
@@ -114,16 +115,16 @@ until burnETA <= ignitionTime
             if mainEng:FuelStability < 0.98  
                 set Ship:Control:Fore to 1.
         }
+        set statText to "Ullage".
     }
     wait 0.
 }
-CheckHeading().
 
-print "Starting burn".
+print "Starting burn T-" + round(ignitionTime, 2).
 
 // If we have engines, ignite them.
 if p:eng > 0
-    runpath("flight/ExecuteBurnEng", p, debugStat).
+    runpath("flight/ExecuteBurnEng", p, debugStat, dV).
 else
     runpath("flight/ExecuteBurnRCS", p, debugStat).
 ClearGuis().

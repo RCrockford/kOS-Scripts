@@ -38,26 +38,29 @@ else
     print "Next node is ascending in " + round(NodeAngle, 1) + "°".
 }
 
-local meanAnomDelta is CalcMeanAnom(Ship:Orbit:TrueAnomaly + NodeAngle) - CalcMeanAnom(Ship:Orbit:TrueAnomaly).
-
-local NodeETA is meanAnomDelta * Ship:Orbit:Period / 360.
-print "  Node ETA: " + FormatTime(NodeETA).
-
-print "Executing manoeuvre at Node-" + round(burnDur:halfBurn, 1) + " seconds.".
-print "  DeltaV: " + round(deltaV, 1) + " m/s.".
-print "  Duration: " + round(burnDur:duration, 1) + " s.".
-print "  Align at: T-" + round(alignMargin, 1) + " s.".
-
-local burnEta is NodeETA - burnDur:halfBurn.
-if burnEta > 1800 and Addons:Available("KAC")
+if CheckControl()
 {
-    // Add a KAC alarm.
-    AddAlarm("Raw", burnEta - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+    local meanAnomDelta is CalcMeanAnom(Ship:Orbit:TrueAnomaly + NodeAngle) - CalcMeanAnom(Ship:Orbit:TrueAnomaly).
+
+    local NodeETA is meanAnomDelta * Ship:Orbit:Period / 360.
+    print "  Node ETA: " + FormatTime(NodeETA).
+
+    print "Executing manoeuvre at Node-" + round(burnDur:halfBurn, 1) + " seconds.".
+    print "  DeltaV: " + round(deltaV, 1) + " m/s.".
+    print "  Duration: " + round(burnDur:duration, 1) + " s.".
+    print "  Align at: T-" + round(alignMargin, 1) + " s.".
+
+    local burnEta is NodeETA - burnDur:halfBurn.
+    if burnEta > 1800 and Addons:Available("KAC")
+    {
+        // Add a KAC alarm.
+        AddAlarm("Raw", burnEta - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+    }
+
+    local burnParams is lexicon(
+        "t", burnDur:halfBurn,
+        "align", alignMargin
+    ).
+
+    runpath("0:/flight/SetupBurn", burnParams, list("flight/GTOInsertBurn.ks", "FCFuncs.ks", "flight/EngineMgmt.ks")).
 }
-
-local burnParams is lexicon(
-    "t", burnDur:halfBurn,
-    "align", alignMargin
-).
-
-runpath("0:/flight/SetupBurn", burnParams, list("flight/GTOInsertBurn.ks", "FCFuncs.ks", "flight/EngineMgmt.ks")).

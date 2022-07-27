@@ -71,3 +71,26 @@ global function CalcMeanAnom
 	local eccAnom is arctan2(sqrt(1-Ship:Orbit:Eccentricity^2) * sin(trueAnom), Ship:Orbit:Eccentricity + cos(trueAnom)).
 	return eccAnom - Ship:Orbit:Eccentricity * sin(eccAnom) * Constant:RadToDeg.
 }
+
+global function CheckControl
+{
+    local totalControlled is 0.
+    for a in Ship:ModulesNamed("ModuleProceduralAvionics")
+    {
+        local c is choose a:GetField("controllable") if a:HasField("Controllable") else 0.
+        set totalControlled to totalControlled + c.
+    }
+    for a in Ship:ModulesNamed("ModuleAvionics")
+    {
+        local c is choose a:GetField("controllable") if a:HasField("Controllable") else 0.
+        set totalControlled to totalControlled + c.
+    }
+
+    if Ship:Mass >= totalControlled
+    {
+        print "Insufficient avionics for control.".
+        return false.
+    }
+    
+    return true.
+}

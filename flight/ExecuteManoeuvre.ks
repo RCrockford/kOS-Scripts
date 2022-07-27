@@ -30,16 +30,17 @@ else
 }
 runoncepath("0:/FCFuncs").
 runoncepath("0:/flight/FlightFuncs").
+runoncepath("0:/mgmt/ResourceWalk").
 
-local duration is 0.
 local burnStage is stage:Number.
 local activeEngines is list().
 local fuelName is 0.
 local fuelTotal is 0.
+local fuelCapacity is 0.
 local maxFuelFlow is 0.
-local massRatio is 0.
 local massFlow is 0.
 local burnThrust is 0.
+local residuals is 0.
 local shipMass is Ship:Mass.
 
 if rcsBurn
@@ -78,42 +79,31 @@ else
         {
             set massFlow to massFlow + eng:MaxMassFlow.
             set burnThrust to burnThrust + eng:PossibleThrust.
+            set residuals to max(residuals, eng:residuals).
         }
-        
-        local activeResources is lexicon().
         
         set shipMass to 0.
         for shipPart in Ship:Parts
         {
             local partStage is choose shipPart:Stage if shipPart:IsType("Decoupler") else shipPart:DecoupledIn.
             if partStage < burnStage
-            {
                 set shipMass to shipMass + shipPart:Mass.
-                
-                for r in shipPart:resources
-                {
-                    if r:Density > 0
-                    {
-                        if not activeResources:HasKey(r:Name)
-                            activeResources:Add(r:Name, r:amount).
-                        else
-                            set activeResources[r:name] to activeResources[r:name] + r:amount.
-                    }
-                }
-            }
         }
 
+        local activeResources is GetConnectedResources(activeEngines[0]).
+        
         local maxFlow is 0.
         for k in activeEngines[0]:ConsumedResources:keys
         {
             local res is activeEngines[0]:ConsumedResources[k].
             if res:Density > 0 and activeResources:HasKey(res:Name) and res:Name = k
             {
-                if res:MaxFuelFlow > maxFlow
+                if res:MaxMassFlow > maxFlow
                 {
                     set fuelName to res:Name.
-                    set fuelTotal to activeResources[res:Name].
-                    set maxFlow to res:MaxFuelFlow.
+                    set fuelTotal to activeResources[res:Name]:Amount.
+                    set fuelCapacity to activeResources[res:Name]:Capacity.
+                    set maxFlow to res:MaxMassFlow.
                 }
             }
         }
@@ -130,12 +120,12 @@ else
     }
 }
 
-if massFlow > 0
+if CheckControl() and massFlow > 0
 {
 	// Calc burn duration
-	set massRatio to constant:e ^ (dV:Mag * massflow / burnThrust).
+	local massRatio is constant:e ^ (dV:Mag * massflow / burnThrust).
 	local finalMass is shipMass / massRatio.
-	set duration to (shipMass - finalMass) / massflow.
+	local duration is (shipMass - finalMass) / massflow.
     
     // Calc alignment time
     runpath("0:/flight/AlignTime").
@@ -147,13 +137,21 @@ if massFlow > 0
 	print "  Align at: T-" + round(alignMargin, 1) + " s.".
 	if not rcsBurn
     {
-		print "  Fuel Monitor: " + fuelName + " " + round(fuelTotal, 2) + " => " + round(fuelTotal - maxFuelFlow * duration, 2).
+        if fuelTotal > 0
+        {
+            local finalFuel is fuelTotal - maxFuelFlow * duration.
+            print "  Fuel: " + fuelName + " " + round(fuelTotal, 2) + " => " + round(fuelTotal - maxFuelFlow * duration, 2) +
+                " (" + round(100 * finalFuel / fuelCapacity, 2) + "% / " + round(100 * residuals, 2) + "%)".
+        }
         if activeEngines:Length > 0 and addons:available("tf")
         {
             local eng is activeEngines[0].
-            local burnTime is Addons:TF:RunTime(eng) + duration.
             local ratedTime is Addons:TF:RatedBurnTime(eng).
-            print "  Reliability: " + round(100 * Addons:TF:Reliability(eng, burnTime), 2) + "% Ignition: " +  + round(100 * Addons:TF:IgnitionChance(eng), 2) + "% t: " + round(burnTime, 1) + " / " + round(ratedTime) + "s".
+            if ratedTime > 0
+            {
+                local burnTime is Addons:TF:RunTime(eng) + duration.
+                print "  Reliability: " + round(100 * Addons:TF:Reliability(eng, burnTime), 2) + "% Ignition: " +  + round(100 * Addons:TF:IgnitionChance(eng), 2) + "% t: " + round(burnTime, 1) + " / " + round(ratedTime) + "s".
+            }
         }
     }
 	if rcsBurn
@@ -166,10 +164,11 @@ if massFlow > 0
 		print "  Inertial burn.".
 	}
 		
-	if burnEta - alignMargin > 300 and Addons:Available("KAC")
+	if burnEta - alignMargin > 900 and Addons:Available("KAC")
 	{
 		// Add a KAC alarm.
-		local alrm is AddAlarm("Raw", burnEta - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+        local alarmMargin is choose 600 if burnEta - alignMargin > 3600 else 60.
+		local alrm is AddAlarm("Raw", burnEta - alignMargin - alarmMargin + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
         wait 0.
         set alrm:Action to "KillWarp".
 	}
@@ -177,15 +176,13 @@ if massFlow > 0
 	local burnParams is lexicon(
 		"t", duration,
 		"eng", activeEngines:length,
-		"int", choose 1 if spinKick else 0,
         "align", alignMargin
 	).
 
 	if burnParams:eng
 	{
-		burnParams:Add("fuelN", fuelName).
-		burnParams:Add("mRatio", massRatio).
 		burnParams:Add("mFlow", massflow).
+		burnParams:Add("thr", burnThrust).
 		burnParams:Add("fFlow", maxFuelFlow).
 		burnParams:Add("stage", burnStage).
 	}

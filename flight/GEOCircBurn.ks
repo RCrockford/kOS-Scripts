@@ -10,7 +10,7 @@ runoncepath("0:/flight/FlightFuncs").
 runpath("/flight/EngineMgmt", stage:number).
 local ignitionTime is EM_IgDelay().
 
-local lock tVec is vcrs(-Ship:Body:Position, Body:AngularVel):Normalized.
+local lock tVec to vcrs(-Ship:Body:Position, -Body:AngularVel):Normalized.
 
 local lock NodeAngle to (choose 180 if Ship:Latitude > 0 else 360) - mod(Ship:Orbit:ArgumentOfPeriapsis + Ship:Orbit:TrueAnomaly + 360, 360).
 local lock meanAnomDelta to mod(CalcMeanAnom(Ship:Orbit:TrueAnomaly + NodeAngle) - CalcMeanAnom(Ship:Orbit:TrueAnomaly) + 360, 360).
@@ -41,10 +41,8 @@ print "Aligning ship".
 
 LAS_Avionics("activate").
 
-local lock deltaV to p:tV * tVec - Ship:Velocity:Orbit.
-
 rcs on.
-lock steering to LookDirUp(deltaV:Normalized, Facing:UpVector).
+lock steering to LookDirUp(SrfRetrograde:Vector, Facing:UpVector).
 
 until meanAnomDelta <= burnAngle
 {
@@ -59,6 +57,12 @@ ClearGUIs().
 EM_Ignition().
 rcs off.
 
-wait until Ship:Obt:SemiMajorAxis >= (35793170 + Ship:Body:Radius) or not EM_CheckThrust(0.1).
+until not EM_CheckThrust(0.1)
+{
+    if ship:orbit:period >= 1436 * 60
+        break.
+
+	wait 0.
+}
 
 EM_Shutdown().

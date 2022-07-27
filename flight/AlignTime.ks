@@ -18,10 +18,12 @@ runoncepath("/flight/RCSPerf.ks").
 local RCSPerf is GetRCSPerf().
 
 local minAccel is min(RCSPerf:Star:Torque / pitchMoI, RCSPerf:Up:Torque / yawMoI).
-local SteerTime is Constant:pi / (2 * minAccel).
+local SteerTime is Constant:pi / minAccel.
+if RCSPerf:LowTorque
+    set SteerTime to SteerTime * 4.
 
 global function GetAlignTime
 {
-    // Round to nearest 5 seconds, 20 second margin for time warp and settling.
-    return round(SteerTime / 5 + 4, 0) * 5 + 20.
+    // Round to nearest 5 seconds, 30 second margin for time warp and settling.
+    return max(round(SteerTime / 5 + 4, 0) * 5 + 30, 60).
 }

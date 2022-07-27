@@ -26,38 +26,41 @@ set burnDur:HalfBurn to burnDur:HalfBurn + timeOffset.
 
 local burnAtAp is abs(burnETA() - eta:Apoapsis) < Ship:Orbit:Period * 0.25.
 
-// Calc alignment time
-runpath("0:/flight/AlignTime").
-local alignMargin is GetAlignTime().
-
-print "Executing manoeuvre at " + (choose "Ap" if burnAtAp else "Pe") + (choose "-" if burnDur:halfBurn > 0 else "+") + round(abs(burnDur:halfBurn), 1) + " seconds.".
-print "  DeltaV: " + round(deltaV, 1) + " m/s.".
-print "  Duration: " + round(burnDur:duration, 1) + " s.".
-print "  Align at: T-" + round(alignMargin, 1) + " s.".
-
-if burnDur:duration < Ship:Orbit:Period * 0.25
+if CheckControl()
 {
-	if burnETA() - burnDur:halfBurn - alignMargin > 300 and Addons:Available("KAC")
-	{
-		// Add a KAC alarm.
-		AddAlarm("Raw", (burnETA() - burnDur:halfBurn) - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
-	}
+    // Calc alignment time
+    runpath("0:/flight/AlignTime").
+    local alignMargin is GetAlignTime().
 
-	local burnParams is lexicon(
-		"sma", targetA,
-		"ap", choose 1 if burnAtAp else 0,
-		"t", burnDur:halfBurn,
-        "align", alignMargin
-	).
-	
-	runpath("0:/flight/TuneSteering").
+    print "Executing manoeuvre at " + (choose "Ap" if burnAtAp else "Pe") + (choose "-" if burnDur:halfBurn > 0 else "+") + round(abs(burnDur:halfBurn), 1) + " seconds.".
+    print "  DeltaV: " + round(deltaV, 1) + " m/s.".
+    print "  Duration: " + round(burnDur:duration, 1) + " s.".
+    print "  Align at: T-" + round(alignMargin, 1) + " s.".
 
-	if useEngines
-		runpath("0:/flight/SetupBurn", burnParams, list("flight/ChangeApsisBurn.ks", "FCFuncs.ks", "flight/EngineMgmt.ks")).
-	else
-		runpath("0:/flight/SetupBurn", burnParams, list("flight/ChangeApsisRCS.ks")).
-}
-else
-{
-	print "Burn too long relative to orbit, aborting.".
+    if burnDur:duration < Ship:Orbit:Period * 0.25
+    {
+        if burnETA() - burnDur:halfBurn - alignMargin > 300 and Addons:Available("KAC")
+        {
+            // Add a KAC alarm.
+            AddAlarm("Raw", (burnETA() - burnDur:halfBurn) - alignMargin - 30 + Time:Seconds, Ship:Name + " Manoeuvre", Ship:Name + " is nearing its next manoeuvre").
+        }
+
+        local burnParams is lexicon(
+            "sma", targetA,
+            "ap", choose 1 if burnAtAp else 0,
+            "t", burnDur:halfBurn,
+            "align", alignMargin
+        ).
+        
+        runpath("0:/flight/TuneSteering").
+
+        if useEngines
+            runpath("0:/flight/SetupBurn", burnParams, list("flight/ChangeApsisBurn.ks", "FCFuncs.ks", "flight/EngineMgmt.ks")).
+        else
+            runpath("0:/flight/SetupBurn", burnParams, list("flight/ChangeApsisRCS.ks")).
+    }
+    else
+    {
+        print "Burn too long relative to orbit, aborting.".
+    }
 }
