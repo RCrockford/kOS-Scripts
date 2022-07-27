@@ -29,7 +29,7 @@ global function LandingControl
                 set flightTarget to LatLng(landingTarget:lat + approachDirLat * (4/2.46), landingTarget:lng + approachDirLng * (4/2.46)).
                 set flightTargetAlt to runwayAlt + 220.
                 if rocketPlane
-                    set flightTargetAlt to flightTargetAlt + 440.
+                    set flightTargetAlt to flightTargetAlt + 400.
                 else
                     setFlaps(2).
                 print "On approach".
@@ -111,12 +111,19 @@ global function LandingControl
                 set landingTarget to runwayEnd2.
             else
                 set landingTarget to runwayEnd1.
-            set flightTargetAlt	to runwayAlt + 6.
-            setFlaps(3).
-            gear on.
+            set flightTargetAlt	to runwayAlt + (choose 6 if rocketplane else 0).
+            if rocketPlane
+            {
+                setFlaps(1).
+            }
+            else
+            {
+                setFlaps(3).
+                gear on.
+            }
             brakes off.
             set groundPitch to -10.
-            when alt:radar < 100 then { lights off. lights on. }
+            when alt:radar < 100 then { lights off. lights on. if rocketPlane { setFlaps(2). gear on. } }
             print "Final approach".
         }
     }
@@ -125,20 +132,15 @@ global function LandingControl
         set ctrlState:Heading to flightTarget:Heading.
         set ctrlState:Speed to max(1.1 * max(getDistanceToTarget() / 4200, 1e-4) ^ 0.2, 1) * landingSpeed.
 
-        set guiButtons["dbg"]:Text to round(ctrlState:Heading, 1) + "° " + round(getDistanceToTarget() * 0.001, 2).
-        
         local sinkRate is -50.
         local landingAltitude is max(8, min(Alt:Radar, Ship:Altitude - runwayAlt)).
 
-        if rocketPlane and landingAltitude < 100
-        {
-            set sinkRate to -(landingAltitude/20)^1.7.
-            set ctrlState:Heading to landingTarget:heading.
-        }
-        else if landingAltitude < 40
+        set guiButtons["dbg"]:Text to round(ctrlState:Heading, 1) + "° " + round(landingAltitude, 1) + " m".
+        
+        if (rocketPlane and landingAltitude < 100) or landingAltitude < 40
         {
             set ctrlState:Heading to landingTarget:heading.
-            set sinkRate to -(landingAltitude/10)^1.2.
+            set sinkRate to min(-(landingAltitude/10)^1.2, choose -1 if rocketPlane else -2).
         }
         
         if not rocketPlane and flightTarget:Distance > (landingAltitude - 5) / sin(1) and not rocketPlane
@@ -175,9 +177,8 @@ global function LandingControl
     else if flightState = fs_LandTouchdown
     {
         set ctrlState:Heading to flightTarget:Heading.
-        set ctrlState:ClimbRate to -1e8.
-        set ctrlState:Pitch to max((groundPitch + 0.2 + shipPitch()) / 2,  GetTargetAoA()).
-        local landingAltitude is max(8, min(Alt:Radar, Ship:Altitude - runwayAlt)).
+        set ctrlState:ClimbRate to choose -1 if rocketPlane else -2.
+        local landingAltitude is min(Alt:Radar, Ship:Altitude - runwayAlt).
         set landingSpeedPid:SetPoint to -2.5.
         set ctrlState:Speed to Ship:AirSpeed + min(0, landingSpeedPid:Update(Time:Seconds, Ship:VerticalSpeed)).
 
@@ -190,7 +191,7 @@ global function LandingControl
             setFlaps(2).
             stopEngines().
         }
-        else if landingAltitude > 40 or landingTarget:Distance < 1000 and not rocketPlane
+        else if (landingAltitude > 40 or landingTarget:Distance < 1000) and not rocketPlane
         {
             if landingAltitude > 40
                 print "Over altitude, going around".
