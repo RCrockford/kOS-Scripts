@@ -13,3 +13,5 @@ kOSStrip reentry\ReEntryRCSSrc.ks reentry\ReEntryRCS.ks
 kOSStrip reentry\ReEntryRCSProSrc.ks reentry\ReEntryRCSPro.ks
 kOSStrip reentry\ReEntryLandingSrc.ks reentry\ReEntryLanding.ks
 kOSStrip flight\TuneSteeringSrc.ks flight\TuneSteering.ks
+
+kOSStrip lander\DirectDescent.ks lander\DDPack.ks

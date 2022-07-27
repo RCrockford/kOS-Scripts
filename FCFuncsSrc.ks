@@ -16,11 +16,8 @@ global function LAS_GetStageEngines
     parameter stageNum is Stage:Number.
     parameter ullage is false.
     
-    local allEngines is list().
-    list engines in allEngines.
-    
     local stageEngines is list().
-    for e in allEngines
+    for e in ship:engines
     {
         if e:Stage = stageNum and LAS_EngineIsUllage(e) = ullage and not e:Name:Contains("vernier") and not e:Name:Contains("lr101")
             stageEngines:Add(e).
@@ -28,7 +25,6 @@ global function LAS_GetStageEngines
     
     return stageEngines.
 }
-
 
 global function LAS_Avionics
 {

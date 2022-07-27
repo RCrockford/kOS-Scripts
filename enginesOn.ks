@@ -8,6 +8,7 @@ switch to scriptpath():volume.
 runpath("/flight/EngineMgmt", stage:number).
 
 lock throttle to 0.
+wait 0.1.
 for eng in EM_GetEngines()
 {
     eng:Activate.
