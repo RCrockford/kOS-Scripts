@@ -2,6 +2,7 @@
 // Two phase landing system, approach mode attempts to slow the craft to <20 m/s ground speed and targeted vertical speed in one full thrust burn.
 // Descent phase attempts a soft landing on the ground.
 
+@clobberbuiltins on.
 @lazyglobal off.
 
 // Wait for unpack

@@ -1,3 +1,4 @@
+@clobberbuiltins on.
 @lazyglobal off.
 
 local ResourceAliases is lexicon("LqdHydrogen", list("LH2")).

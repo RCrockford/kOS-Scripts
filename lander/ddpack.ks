@@ -1,3 +1,4 @@
+@clobberbuiltins on.
 @lazyglobal off.
 wait until Ship:Unpacked.
 parameter _0 is max(Stage:Number-1,0).

@@ -1,5 +1,6 @@
 // Ground launch controller.
 
+@clobberbuiltins on.
 @lazyglobal off.
 
 parameter engineStart.

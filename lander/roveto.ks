@@ -1,3 +1,4 @@
+@clobberbuiltins on.
 @lazyglobal off.
 
 parameter maxSpeed is 5.

@@ -1,5 +1,6 @@
 // Launch window planning for polar direct ascent
 
+@clobberbuiltins on.
 @lazyglobal off.
 
 // Wait for unpack

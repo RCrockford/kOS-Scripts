@@ -2,6 +2,7 @@
 // Based on: EXPLICIT GUIDANCE EQUATIONS FOR MULTISTAGE BOOST TRAJECTORIES By Fred Teren
 // Valid for an unlimited number of stages (tested with 3 stages).
 
+@clobberbuiltins on.
 @lazyglobal off.
 
 parameter liftoffStage is choose stage:number - 1 if Ship:Status <> "Flying" else Stage:number.

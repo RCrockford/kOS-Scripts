@@ -1,5 +1,6 @@
 // Staging functionality functions for the LAS
 
+@clobberbuiltins on.
 @lazyglobal off.
 
 local StageEngines is list().

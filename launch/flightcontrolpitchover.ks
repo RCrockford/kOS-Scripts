@@ -1,3 +1,4 @@
+clobberbuiltins on.
 lazyglobal off.
 
 // Fly minimal AoA until Q < 0.1 and then engage guidance

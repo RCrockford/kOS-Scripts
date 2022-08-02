@@ -1,3 +1,4 @@
+@clobberbuiltins on.
 parameter t.
 parameter n.
 parameter b.

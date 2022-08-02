@@ -1,5 +1,6 @@
 // Generic functions for the LAS
 
+@clobberbuiltins on.
 @lazyglobal off.
 
 runoncepath("/fcfuncs").

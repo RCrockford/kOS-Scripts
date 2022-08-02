@@ -1,6 +1,7 @@
 // Minimal orbital insertion burn from flyby using engines
 // Just burns all fuel retrograde at periapsis
 
+@clobberbuiltins on.
 @lazyglobal off.
 
 // Wait for unpack

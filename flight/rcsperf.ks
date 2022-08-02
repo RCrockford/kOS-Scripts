@@ -1,3 +1,4 @@
+@clobberbuiltins on.
 @lazyglobal off.
 
 global function GetRCSForePerf

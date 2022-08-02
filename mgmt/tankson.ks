@@ -1,3 +1,4 @@
+@clobberbuiltins on.
 @lazyglobal off.
 
 // Wait for unpack

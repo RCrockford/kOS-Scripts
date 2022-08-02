@@ -1,5 +1,6 @@
 // Course correction manoeuvres using KSP flight planner and RCS
 
+@clobberbuiltins on.
 @lazyglobal off.
 
 parameter tangent is 0.

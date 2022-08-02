@@ -1,4 +1,5 @@
 // Flight autopilot
+@clobberbuiltins on.
 @lazyglobal off.
 
 // runway length should be approximately 2.46km

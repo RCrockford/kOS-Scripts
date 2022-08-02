@@ -1,3 +1,4 @@
+@clobberbuiltins on.
 @lazyglobal off.
 
 // Lift off then just turn 30 degrees and wait for guidance to become active
