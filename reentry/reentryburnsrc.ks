@@ -20,7 +20,7 @@ if abs(p:oLatLong) <= 180
 	}
 }
 
-runoncepath("/FCFuncs").
+runoncepath("/fcfuncs").
 
 LAS_Avionics("activate").
 
@@ -46,7 +46,7 @@ if Ship:Obt:Periapsis > p:pe
 
     if p:engines > 0
     {
-        runpath("/flight/EngineMgmt", Stage:Number).
+        runpath("/flight/enginemgmt", Stage:Number).
         EM_Ignition().
     }
     
@@ -76,4 +76,4 @@ if Ship:Obt:Periapsis > p:pe
 
 set Ship:Control:PilotMainThrottle to 0.
 
-runpath("/reentry/ReEntryLanding").
+runpath("/reentry/reentrylanding").

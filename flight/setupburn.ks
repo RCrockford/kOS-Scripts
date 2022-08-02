@@ -5,7 +5,7 @@ parameter fileList.
 parameter name is "manoeuvre".
 
 // Clear storage
-runpath("0:/localpack/InstallPack.ks", list()).
+runpath("0:/localpack/installpack.ks", list()).
 
 // Write to storage so it can be restored when switching to ship.
 local burnStr is "".
@@ -15,7 +15,7 @@ for k in burnParams:keys
 }
 create("1:/burn.csv"):write(burnStr:Substring(0, max(burnStr:Length-1, 0))).
 
-runpath("0:/localpack/InstallPack.ks", fileList).
+runpath("0:/localpack/installpack.ks", fileList).
 
 if fileList[fileList:Length-1]
 {

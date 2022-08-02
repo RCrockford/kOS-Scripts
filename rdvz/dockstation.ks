@@ -44,8 +44,8 @@ local starPID is pidloop(2, 0, 0.2, -1, 1).
 local topPID is pidloop(2, 0, 0.2, -1, 1).
 
 switch to scriptpath():volume.
-runoncepath("/FCFuncs").
-runpath("flight/TuneSteering").
+runoncepath("/fcfuncs").
+runpath("flight/tunesteering").
 
 LAS_Avionics("activate").
 rcs on.
@@ -61,7 +61,7 @@ local lock movePosCurrent to tPort:Position + tPort:Facing:Vector * tPort:Positi
 local lock movePosFixed to tPort:Position + tPort:Facing:Vector * moveDist.
 local movePos is movePosCurrent@.
 
-runoncepath("/flight/RCSPerf").
+runoncepath("/flight/rcsperf").
 local rcsPerf is GetRCSPerf().
 
 local foreAccel is rcsPerf:Fore:thrust / Ship:Mass.

@@ -6,7 +6,7 @@ local p is lexicon(open("1:/burn.csv"):readall:string:split(",")).
 for k in p:keys
     set p[k] to p[k]:ToScalar(0).
 
-runpath("/flight/EngineMgmt", stage:number).
+runpath("/flight/enginemgmt", stage:number).
 local ignitionTime is EM_IgDelay().
 
 local lock burnEta to choose eta:Apoapsis if p:ap > 0 else eta:periapsis.

@@ -68,7 +68,7 @@ local engThrust is 0.
 for eng in mainEngines
     set engThrust to engThrust + eng:PossibleThrust.
 
-runpath("/lander/LanderThrottle", mainEngines).
+runpath("/lander/landerthrottle", mainEngines).
 
 local steerVec is Up:Vector.
 lock steering to lookdirup(steerVec, Facing:UpVector).

@@ -10,7 +10,7 @@ wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
 
-runpath("/rdvz/RdvzFuncs").
+runpath("/rdvz/rdvzfuncs").
 
 local lock targetPos to tShip:Position.
 local lock headingVec to -tShip:Position.
@@ -31,8 +31,8 @@ until targetPos:Mag <= 5000 and relV:Mag > 0.001
 kUniverse:Timewarp:CancelWarp().
 
 // check for engine braking
-runoncepath("/flight/FlightFuncs").
-runoncepath("/flight/RCSPerf.ks").
+runoncepath("/flight/flightfuncs").
+runoncepath("/flight/rcsperf.ks").
 local burnDur is CalcBurnDuration(relV:Mag, true):duration.
 local RCSPerf is GetRCSAftPerf().
 
@@ -41,7 +41,7 @@ local lock massRatio to constant:e ^ (relV:Mag * RCSPerf:massflow / RCSPerf:Thru
 local lock finalMass to Ship:Mass / massRatio.
 local lock brakeTime to (Ship:Mass - finalMass) / RCSPerf:massflow.
 
-runpath("/flight/AlignTime").
+runpath("/flight/aligntime").
 local alignMargin is GetAlignTime().
 
 local activeEngines is choose EM_GetEngines() if allowEng else list().

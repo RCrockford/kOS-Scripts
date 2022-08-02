@@ -6,9 +6,9 @@ parameter margin is 2.
 
 local lock burnEta to eta:Apoapsis.
 
-runoncepath("/FCFuncs").
+runoncepath("/fcfuncs").
 
-runpath("/flight/AlignTime").
+runpath("/flight/aligntime").
 local alignMargin is GetAlignTime() * 1.25.
 
 print "Align in " + round(burnEta - margin - alignMargin, 1) + "s (T-" + round(alignMargin, 1) + ")".

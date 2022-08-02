@@ -6,7 +6,7 @@ local ignitionDelay is 0.
 local needsUllage is false.
 local activeEngines is list().
 
-runoncepath("/FCFuncs").
+runoncepath("/fcfuncs").
 
 // Lead time for manoeuvres
 global function EM_CalcSpoolTime

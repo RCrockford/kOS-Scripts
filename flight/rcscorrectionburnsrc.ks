@@ -23,7 +23,7 @@ wait until burnETA < 30.
 kUniverse:Timewarp:CancelWarp().
 print "Settling ship".
 
-runoncepath("/FCFuncs").
+runoncepath("/fcfuncs").
 
 local function CheckHeading
 {

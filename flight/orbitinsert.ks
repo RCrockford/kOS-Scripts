@@ -41,4 +41,4 @@ local burnParams is lexicon(
     "t", burnTime
 ).
 
-runpath("0:/flight/SetupBurn", burnParams, list("flight/OrbitInsertBurn.ks")).
+runpath("0:/flight/setupburn", burnParams, list("flight/orbitinsertburn.ks")).

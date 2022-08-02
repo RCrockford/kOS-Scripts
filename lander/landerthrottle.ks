@@ -3,8 +3,8 @@
 parameter DescentEngines.
 parameter enginesActive is false.
 
-if exists("/mgmt/DiffThrottle.ks")
-    runoncepath("/mgmt/DiffThrottle").
+if exists("/mgmt/diffthrottle.ks")
+    runoncepath("/mgmt/diffthrottle").
 
 local minThrottle is 0.
 local throttleClamp is 0.

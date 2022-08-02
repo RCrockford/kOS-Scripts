@@ -15,7 +15,7 @@ else
 wait until abs(Ship:Longitude-p:oLatLong)<0.5.
 }
 }
-runoncepath("/FCFuncs").
+runoncepath("/fcfuncs").
 LAS_Avionics("activate").
 rcs on.
 lock steering to LookDirUp(Retrograde:Vector,Facing:UpVector).
@@ -36,7 +36,7 @@ if Ship:Obt:Periapsis>p:pe
 print"Commencing re-entry burn.".
 if p:engines>0
 {
-runpath("/flight/EngineMgmt",Stage:Number).
+runpath("/flight/enginemgmt",Stage:Number).
 EM_Ignition().
 }
 local _0 is Ship:mass.
@@ -63,4 +63,4 @@ set _0 to Ship:Mass.
 }
 }
 set Ship:Control:PilotMainThrottle to 0.
-runpath("/reentry/ReEntryLanding").
+runpath("/reentry/reentrylanding").

@@ -3,7 +3,7 @@
 // Wait for unpack
 wait until Ship:Unpacked.
 
-runoncepath("0:/launch/LASFunctions").
+runoncepath("0:/launch/lasfunctions").
 
 local liftoffStage is choose stage:number - 1 if Ship:Status <> "Flying" else Stage:number.
 

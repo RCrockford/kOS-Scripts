@@ -16,7 +16,7 @@ else
 {
 switch to scriptpath():volume.
 
-runoncepath("/FCFuncs").
+runoncepath("/fcfuncs").
 
 if targetPoint:IsType("Scalar")
 {

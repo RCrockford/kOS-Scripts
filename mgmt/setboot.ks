@@ -2,7 +2,7 @@
 
 parameter filename.
 
-runpath("0:/localpack/InstallPack.ks", list(filename)).
+runpath("0:/localpack/installpack.ks", list(filename)).
 
 if exists("1:/" + filename)
 {

@@ -5,7 +5,7 @@ wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
 
-runpath("/flight/EngineMgmt", stage:number).
+runpath("/flight/enginemgmt", stage:number).
 
 lock throttle to 0.
 wait 0.1.

@@ -15,7 +15,7 @@ print"Settle in "+round(burnETA-30,0)+" seconds.".
 wait until burnETA<30.
 kUniverse:Timewarp:CancelWarp().
 print"Settling ship".
-runoncepath("/FCFuncs").
+runoncepath("/fcfuncs").
 local function _f3
 {
 if HasNode and nextNode:eta<60

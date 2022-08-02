@@ -6,8 +6,8 @@ local p is lexicon(open("1:/burn.csv"):readall:string:split(",")).
 for k in p:keys
     set p[k] to p[k]:ToScalar(0).
 
-runoncepath("0:/flight/FlightFuncs").
-runpath("/flight/EngineMgmt", stage:number).
+runoncepath("0:/flight/flightfuncs").
+runpath("/flight/enginemgmt", stage:number).
 local ignitionTime is EM_IgDelay().
 
 local lock tVec to vcrs(-Ship:Body:Position, -Body:AngularVel):Normalized.

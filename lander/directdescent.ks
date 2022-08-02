@@ -15,9 +15,9 @@ parameter manualTarget is 0.
 switch to scriptpath():volume.
 
 // Setup functions
-runpath("/flight/EngineMgmt", min(Stage:Number, landStage + 1)).
-runpath("/flight/TuneSteering").
-runoncepath("/lander/LanderSteering").
+runpath("/flight/enginemgmt", min(Stage:Number, landStage + 1)).
+runpath("/flight/tunesteering").
+runoncepath("/lander/landersteering").
 
 local DescentEngines is EM_GetEngines().
 
@@ -117,7 +117,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     if HasTarget and manualTarget:IsType("Scalar")
         set manualTarget to Target.
 
-    runoncepath("/mgmt/ReadoutGUI").
+    runoncepath("/mgmt/readoutgui").
     local readoutGui is ReadoutGUI_Create().
     readoutGui:SetColumnCount(80, 3).
 
@@ -404,5 +404,5 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 	for eng in DescentEngines
 		eng:Shutdown.
 
-    runpath("/lander/FinalDescent", DescentEngines, Readouts, LanderTargetPos()).
+    runpath("/lander/finaldescent", DescentEngines, Readouts, LanderTargetPos()).
 }

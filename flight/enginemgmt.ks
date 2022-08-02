@@ -3,7 +3,7 @@ parameter _0.
 local _1 is 0.
 local _2 is false.
 local _3 is list().
-runoncepath("/FCFuncs").
+runoncepath("/fcfuncs").
 global function EM_CalcSpoolTime
 {
 parameter _p0.

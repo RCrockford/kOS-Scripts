@@ -24,7 +24,7 @@ global function METString
 }
 
 // Setup functions
-runoncepath("/launch/LASFunctions").
+runoncepath("/launch/lasfunctions").
 
 if Ship:Status = "Landed" or Ship:Status = "Splashed"
 {
@@ -83,7 +83,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
     else
         global LAS_TargetAp is targetAp.
 
-    runpath("/launch/OrbitalGuidance", stage:number).
+    runpath("/launch/orbitalguidance", stage:number).
 
     // Trigger flight control
     if Ship:Body:Atm:Exists
@@ -91,10 +91,10 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
         set pitchOverSpeed to LAS_GetPartParam(Ship:RootPart, "spd=", 50).
         set pitchOverAngle to LAS_GetPartParam(Ship:RootPart, "ang=", 3).
 
-        runpath("/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth).
+        runpath("/launch/flightcontrolpitchover", pitchOverSpeed, pitchOverAngle, launchAzimuth).
     }
     else
     {
-        runpath("/launch/FlightControlNoAtm", launchAzimuth, -1, targetOrbitable).
+        runpath("/launch/flightcontrolnoatm", launchAzimuth, -1, targetOrbitable).
     }
 }

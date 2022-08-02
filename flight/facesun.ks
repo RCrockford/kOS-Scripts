@@ -8,7 +8,7 @@ switch to scriptpath():volume.
 parameter multiplier is 1.
 parameter spin is false.
 
-runoncepath("0:/FCFuncs").
+runoncepath("0:/fcfuncs").
 
 runpath("0:/flight/tunesteering").
 

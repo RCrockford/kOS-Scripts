@@ -603,10 +603,10 @@ global maxClimbAngle is choose 45 if jetThrust / (ship:mass * 9.81) >= 0.8 else 
 if rocketPlane
     set maxClimbAngle to 60.
 
-runoncepath("0:/aero/ShipControl").
-runoncepath("0:/aero/FlightControl").
-runoncepath("0:/aero/TakeoffControl").
-runoncepath("0:/aero/LandingControl").
+runoncepath("0:/aero/shipcontrol").
+runoncepath("0:/aero/flightcontrol").
+runoncepath("0:/aero/takeoffcontrol").
+runoncepath("0:/aero/landingcontrol").
 
 // Configure AA
 //set addons:aa:fbw to true.

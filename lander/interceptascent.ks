@@ -40,6 +40,6 @@ switch to scriptpath():volume.
 print "Launch azimuth for target: " + round(launchAzimuth, 2) + "°, Inclination: " + round(TargetOrbit:Inclination, 2) + "°".
 
 if doLaunch
-    runpath("/lander/landerAscent", targetAp, targetPe, launchAzimuth, ascentStage, target).
+    runpath("/lander/landerascent", targetAp, targetPe, launchAzimuth, ascentStage, target).
 else
     print "Periapsis: " + round(targetPe, 1) + " km Apoapsis: " + round(targetAp, 1) + " km".

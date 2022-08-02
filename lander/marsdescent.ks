@@ -10,8 +10,8 @@ wait until Ship:Unpacked.
 switch to scriptpath():volume.
 
 // Setup functions
-runpath("/flight/EngineMgmt", Stage:Number).
-runpath("/flight/TuneSteering").
+runpath("/flight/enginemgmt", Stage:Number).
+runpath("/flight/tunesteering").
 
 if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escaping"
 {
@@ -165,5 +165,5 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     local DescentEngines is list().
 	list engines in DescentEngines.
 
-    runpath("/lander/FinalDescent", DescentEngines, debugStat, 0).
+    runpath("/lander/finaldescent", DescentEngines, debugStat, 0).
 }

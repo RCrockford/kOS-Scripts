@@ -5,7 +5,7 @@ wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
 
-runoncepath("0:/launch/LASFunctions").
+runoncepath("0:/launch/lasfunctions").
 
 parameter flightTime is LAS_GetPartParam(Core:Part, "ft=", 4) * 24 * 3600.
 

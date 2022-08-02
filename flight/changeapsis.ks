@@ -20,7 +20,7 @@ local targetV is sqrt(Ship:Body:Mu * targetA * (1 - targetEcc^2)) / burnRadius.
 
 local deltaV is abs(targetV - currentV).
 
-runpath("0:/flight/FlightFuncs").
+runpath("0:/flight/flightfuncs").
 local burnDur is CalcBurnDuration(deltaV, useEngines).
 set burnDur:HalfBurn to burnDur:HalfBurn + timeOffset.
 
@@ -29,7 +29,7 @@ local burnAtAp is abs(burnETA() - eta:Apoapsis) < Ship:Orbit:Period * 0.25.
 if CheckControl()
 {
     // Calc alignment time
-    runpath("0:/flight/AlignTime").
+    runpath("0:/flight/aligntime").
     local alignMargin is GetAlignTime().
 
     print "Executing manoeuvre at " + (choose "Ap" if burnAtAp else "Pe") + (choose "-" if burnDur:halfBurn > 0 else "+") + round(abs(burnDur:halfBurn), 1) + " seconds.".
@@ -52,12 +52,12 @@ if CheckControl()
             "align", alignMargin
         ).
         
-        runpath("0:/flight/TuneSteering").
+        runpath("0:/flight/tunesteering").
 
         if useEngines
-            runpath("0:/flight/SetupBurn", burnParams, list("flight/ChangeApsisBurn.ks", "FCFuncs.ks", "flight/EngineMgmt.ks")).
+            runpath("0:/flight/setupburn", burnParams, list("flight/changeapsisburn.ks", "fcfuncs.ks", "flight/enginemgmt.ks")).
         else
-            runpath("0:/flight/SetupBurn", burnParams, list("flight/ChangeApsisRCS.ks")).
+            runpath("0:/flight/setupburn", burnParams, list("flight/changeapsisrcs.ks")).
     }
     else
     {

@@ -94,7 +94,7 @@ for eng in CraneEngines
     set engThrust to engThrust + eng:PossibleThrust.
 }
 
-runpath("/lander/LanderThrottle", CraneEngines).
+runpath("/lander/landerthrottle", CraneEngines).
 
 GatherFuelStatus(CraneEngines).
 local bingoFuel is false.

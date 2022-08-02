@@ -32,7 +32,7 @@ else
 
 local portDist is port:Position:Mag + 1.
 
-runpath("/rdvz/RdvzFuncs").
+runpath("/rdvz/rdvzfuncs").
 
 LAS_Avionics("activate").
 rcs on.

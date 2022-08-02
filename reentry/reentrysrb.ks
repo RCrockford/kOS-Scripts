@@ -13,7 +13,7 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
 {
     print "Orienting for re-entry.".
     
-	runoncepath("/FCFuncs").
+	runoncepath("/fcfuncs").
 	LAS_Avionics("activate").
 	
 	for rcs in Ship:ModulesNamed("ModuleRCSFX")
@@ -44,12 +44,12 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
         local fileList is list().
         local burnParams is lexicon().
         
-        fileList:Add("reentry/ReEntryLanding.ks").
+        fileList:Add("reentry/reentrylanding.ks").
 
-        runpath("/flight/SetupBurn", burnParams, fileList, "re-entry").
+        runpath("/flight/setupburn", burnParams, fileList, "re-entry").
     }
     else
     {
-        runpath("reentry/ReEntryLanding.ks").
+        runpath("reentry/reentrylanding.ks").
     }
 }

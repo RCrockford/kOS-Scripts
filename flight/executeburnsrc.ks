@@ -37,14 +37,14 @@ local mainBox is debugGui:AddVBox().
 local debugStat is mainBox:AddLabel("Aligning ship").
 debugGui:Show().
 
-runoncepath("/FCFuncs").
-runpath("flight/TuneSteering").
+runoncepath("/fcfuncs").
+runpath("flight/tunesteering").
 
 local ignitionTime is 0.
 local mainEng is 0.
 if p:eng > 0
 {
-    runpath("/flight/EngineMgmt", p:stage).
+    runpath("/flight/enginemgmt", p:stage).
     set ignitionTime to EM_IgDelay().
     set mainEng to EM_GetEngines()[0].
 }
@@ -124,7 +124,7 @@ print "Starting burn T-" + round(ignitionTime, 2).
 
 // If we have engines, ignite them.
 if p:eng > 0
-    runpath("flight/ExecuteBurnEng", p, debugStat, dV).
+    runpath("flight/executeburneng", p, debugStat, dV).
 else
-    runpath("flight/ExecuteBurnRCS", p, debugStat).
+    runpath("flight/executeburnrcs", p, debugStat).
 ClearGuis().

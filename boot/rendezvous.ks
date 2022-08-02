@@ -24,4 +24,4 @@ if LAS_TargetPe > 280
 	set LAS_TargetAP to targetOrbit:Apoapsis / 1000.
 }
 
-runpath("0:/launch/LaunchAscentSystem.ks", -1, targetOrbit).
+runpath("0:/launch/launchascentsystem.ks", -1, targetOrbit).

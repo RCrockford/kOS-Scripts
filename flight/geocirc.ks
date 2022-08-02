@@ -13,12 +13,12 @@ local deltaV is -VelocityAt(Ship, ETA:Apoapsis + Time:Seconds):Surface.
 
 switch to 0.
 
-runoncepath("0:/flight/FlightFuncs").
-runpath("0:/flight/TuneSteering").
+runoncepath("0:/flight/flightfuncs").
+runpath("0:/flight/tunesteering").
 local burnDur is CalcBurnDuration(deltaV:Mag, true).
 
 // Calc alignment time
-runpath("0:/flight/AlignTime").
+runpath("0:/flight/aligntime").
 local alignMargin is GetAlignTime().
 
 // Time to next node
@@ -59,5 +59,5 @@ if CheckControl()
         "align", alignMargin
     ).
 
-    runpath("0:/flight/SetupBurn", burnParams, list("flight/GEOCircBurn.ks", "FCFuncs.ks", "flight/FlightFuncs.ks", "flight/EngineMgmt.ks")).
+    runpath("0:/flight/setupburn", burnParams, list("flight/geocircburn.ks", "fcfuncs.ks", "flight/flightfuncs.ks", "flight/enginemgmt.ks")).
 }

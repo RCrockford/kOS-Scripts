@@ -2,9 +2,9 @@
 
 wait until Ship:Unpacked.
 
-runoncepath("0:/mgmt/ResourceWalk").
+runoncepath("0:/mgmt/resourcewalk").
 
-runpath("0:/flight/EngineMgmt", Stage:Number).
+runpath("0:/flight/enginemgmt", Stage:Number).
 local activeEngines is EM_GetEngines().
 
 local fuelName is 0.

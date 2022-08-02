@@ -26,13 +26,13 @@ set _0:Y to _0:Y+300.
 local _1 is _0:AddVBox().
 local _2 is _1:AddLabel("Aligning ship").
 _0:Show().
-runoncepath("/FCFuncs").
-runpath("flight/TuneSteering").
+runoncepath("/fcfuncs").
+runpath("flight/tunesteering").
 local _3 is 0.
 local _4 is 0.
 if p:eng>0
 {
-runpath("/flight/EngineMgmt",p:stage).
+runpath("/flight/enginemgmt",p:stage).
 set _3 to EM_IgDelay().
 set _4 to EM_GetEngines()[0].
 }
@@ -100,7 +100,7 @@ wait 0.
 }
 print"Starting burn T-"+round(_3,2).
 if p:eng>0
-runpath("flight/ExecuteBurnEng",p,_2,dV).
+runpath("flight/executeburneng",p,_2,dV).
 else
-runpath("flight/ExecuteBurnRCS",p,_2).
+runpath("flight/executeburnrcs",p,_2).
 ClearGuis().

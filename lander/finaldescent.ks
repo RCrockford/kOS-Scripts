@@ -22,9 +22,9 @@ for eng in DescentEngines
 if needUllage
     set multiIgnition to false.
 
-runoncepath("/lander/LanderThrottle", DescentEngines, enginesOn).
+runoncepath("/lander/landerthrottle", DescentEngines, enginesOn).
 if needUllage
-    runpath("/flight/EngineMgmt", Stage:Number).
+    runpath("/flight/enginemgmt", Stage:Number).
     
 local burnThrust is LanderMaxThrust().
 

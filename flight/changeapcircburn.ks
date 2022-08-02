@@ -6,7 +6,7 @@ parameter targetAp.
 
 wait until Ship:Unpacked.
 
-runpath("/flight/EngineMgmt", stage:number).
+runpath("/flight/enginemgmt", stage:number).
 local ignitionTime is EM_IgDelay().
 
 kUniverse:Timewarp:CancelWarp().

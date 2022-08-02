@@ -31,16 +31,16 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
 	Core:Part:ControlFrom().
    
     // Setup functions
-    runoncepath("0:/launch/LASFunctions").
+    runoncepath("0:/launch/lasfunctions").
 
 	if not Ship:Crew:Empty
 	{
 		print "Crew found, setting up escape system.".
-		runpath("0:/launch/LaunchEscape").
+		runpath("0:/launch/launchescape").
 	}
 	
-    runpath("0:/launch/Staging").
-    runpath("0:/launch/LaunchGUI").
+    runpath("0:/launch/staging").
+    runpath("0:/launch/launchgui").
 
     local totalControlled is 0.
 	for a in Ship:ModulesNamed("ModuleProceduralAvionics")
@@ -85,7 +85,7 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
         
 		if defined LAS_TargetSMA or LAS_TargetAp > 100
         {
-			runpath("0:/launch/OrbitalGuidance").
+			runpath("0:/launch/orbitalguidance").
             if LAS_GuidanceTargetVTheta() > 0
             {
                 if LAS_GuidanceDeltaV() < LAS_GuidanceTargetVTheta() + 1000
@@ -323,9 +323,9 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
     
     // Trigger GLC
 	if totalControlled > 0
-		runpath("0:/launch/GroundLaunchControl", engineStart, { return targetOrbit. }, launchButton, totalControlled).
+		runpath("0:/launch/groundlaunchcontrol", engineStart, { return targetOrbit. }, launchButton, totalControlled).
 	else
-		runpath("0:/launch/GroundLaunchControl", engineStart, { return 0. }).
+		runpath("0:/launch/groundlaunchcontrol", engineStart, { return 0. }).
 
     // Check if we actually lifted off
     if Ship:Status = "Flying"
@@ -342,7 +342,7 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
         // Trigger flight control
         if totalControlled <= 0
         {
-            runpath("0:/launch/FlightControlUnguided", maxApoapsis).
+            runpath("0:/launch/flightcontrolunguided", maxApoapsis).
         }
         else
         {
@@ -371,7 +371,7 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
             LGUI_Hide().
             
             writejson(list(pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, launchParams), "1:/launch.json").
-            runpath("0:/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, launchParams).
+            runpath("0:/launch/flightcontrolpitchover", pitchOverSpeed, pitchOverAngle, launchAzimuth, targetInclination, targetOrbitable, launchParams).
         }
     }
 }
@@ -383,11 +383,11 @@ else if Ship:Status = "Flying"
         
         print "Resuming launch: " + round(p[3], 2) + "° inc, " + round(p[2], 2) + "° azimuth".
         
-        runoncepath("0:/launch/LASFunctions").
-        runpath("0:/launch/Staging").
+        runoncepath("0:/launch/lasfunctions").
+        runpath("0:/launch/staging").
 		if defined LAS_TargetSMA or LAS_TargetAp > 100
-            runpath("0:/launch/OrbitalGuidance").
+            runpath("0:/launch/orbitalguidance").
         
-        runpath("0:/launch/FlightControlPitchOver", p[0], p[1], p[2], p[3], p[4], p[5]).
+        runpath("0:/launch/flightcontrolpitchover", p[0], p[1], p[2], p[3], p[4], p[5]).
     }
 }

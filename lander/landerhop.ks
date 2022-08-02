@@ -11,7 +11,7 @@ switch to scriptpath():volume.
 Core:Part:ControlFrom().
 
 // Setup functions
-runoncepath("/launch/LASFunctions").
+runoncepath("/launch/lasfunctions").
 
 if Ship:Status = "Landed" or Ship:Status = "Splashed"
 {
@@ -48,5 +48,5 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
     rcs off.
     unlock steering.
 
-    runpath("/lander/DirectDescent", stage:number).
+    runpath("/lander/directdescent", stage:number).
 }

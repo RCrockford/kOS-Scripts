@@ -2,7 +2,7 @@
 
 switch to scriptpath():volume.
 
-runoncepath("/mgmt/ReadoutGUI").
+runoncepath("/mgmt/readoutgui").
 
 local readoutGui is ReadoutGUI_Create(800, -180).
 readoutGui:SetColumnCount(100, 2).
@@ -17,9 +17,9 @@ Readouts:Add("status", readoutGui:AddStatus()).
 
 readoutGui:Show().
 
-runoncepath("/FCFuncs").
-runoncepath("/flight/RCSPerf").
-runpath("flight/TuneSteering").
+runoncepath("/fcfuncs").
+runoncepath("/flight/rcsperf").
+runpath("flight/tunesteering").
 
 local rcsPerf is GetRCSPerf().
 

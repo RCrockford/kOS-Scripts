@@ -7,7 +7,7 @@ wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
 
-runoncepath("/flight/RCSPerf.ks").
+runoncepath("/flight/rcsperf.ks").
 
 local perf is GetRCSForePerf().
 

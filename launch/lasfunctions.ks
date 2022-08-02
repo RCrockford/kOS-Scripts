@@ -2,7 +2,7 @@
 
 @lazyglobal off.
 
-runoncepath("/FCFuncs").
+runoncepath("/fcfuncs").
 
 global function LAS_GetStageParts
 {
@@ -42,7 +42,7 @@ global function LAS_GetPartParam
     return value.
 }
 
-runoncepath("/mgmt/ResourceWalk").
+runoncepath("/mgmt/resourcewalk").
 
 local EngineStats is lexicon().
 

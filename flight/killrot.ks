@@ -5,7 +5,7 @@ wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
 
-runoncepath("/FCFuncs").
+runoncepath("/fcfuncs").
 
 runpath("/flight/tunesteering").
 

@@ -5,9 +5,9 @@ parameter _1 is 1.5.
 parameter _2 is false.
 parameter _3 is 0.
 switch to scriptpath():volume.
-runpath("/flight/EngineMgmt",min(Stage:Number,_0+1)).
-runpath("/flight/TuneSteering").
-runoncepath("/lander/LanderSteering").
+runpath("/flight/enginemgmt",min(Stage:Number,_0+1)).
+runpath("/flight/tunesteering").
+runoncepath("/lander/landersteering").
 local _4 is EM_GetEngines().
 local _5 is 0.
 local _6 is 0.
@@ -84,7 +84,7 @@ if Ship:Status="Flying"or Ship:Status="Sub_Orbital"or Ship:Status="Escaping"
 print"Direct descent system online.".
 if HasTarget and _3:IsType("Scalar")
 set _3 to Target.
-runoncepath("/mgmt/ReadoutGUI").
+runoncepath("/mgmt/readoutgui").
 local _19 is ReadoutGUI_Create().
 _19:SetColumnCount(80,3).
 local _20 is lexicon().
@@ -310,5 +310,5 @@ list engines in _4.
 set Ship:Control:PilotMainThrottle to 0.
 for eng in _4
 eng:Shutdown.
-runpath("/lander/FinalDescent",_4,_20,LanderTargetPos()).
+runpath("/lander/finaldescent",_4,_20,LanderTargetPos()).
 }

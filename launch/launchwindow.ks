@@ -15,7 +15,7 @@ if Ship:Status = "PreLaunch"
     
     switch to 0.
 
-    runoncepath("0:/launch/LASFunctions").
+    runoncepath("0:/launch/lasfunctions").
 
     local meanAngMotion is 360 / targetObt:Orbit:Period.
 

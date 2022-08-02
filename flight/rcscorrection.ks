@@ -25,10 +25,10 @@ else
     set dV to NextNode:DeltaV.
     lock burnEta to NextNode:eta.
 }
-runoncepath("0:/FCFuncs").
-runoncepath("0:/flight/FlightFuncs").
+runoncepath("0:/fcfuncs").
+runoncepath("0:/flight/flightfuncs").
 
-runoncepath("0:/flight/RCSPerf.ks").
+runoncepath("0:/flight/rcsperf.ks").
 local RCSPerf is GetRCSPerf().
 
 local maxThrust is RCSPerf:fore:thrust.
@@ -93,8 +93,8 @@ if CheckControl()
             burnParams:Add("dvz", dV:Z).
         }
 
-        local fileList is list("flight/RCSCorrectionBurn.ks", "FCFuncs.ks").
+        local fileList is list("flight/rcscorrectionburn.ks", "fcfuncs.ks").
 
-        runpath("0:/flight/SetupBurn", burnParams, fileList).
+        runpath("0:/flight/setupburn", burnParams, fileList).
     }
 }

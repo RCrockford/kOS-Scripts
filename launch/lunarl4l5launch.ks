@@ -5,7 +5,7 @@ wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
 
-runoncepath("0:/launch/LASFunctions").
+runoncepath("0:/launch/lasfunctions").
     
 // 4 day flight time
 parameter L4 is true.   // if false, L5.

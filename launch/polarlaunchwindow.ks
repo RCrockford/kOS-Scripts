@@ -269,7 +269,7 @@ if Ship:Status = "PreLaunch" or isGroundStation
 
     switch to 0.
 
-    runoncepath("0:/launch/LASFunctions").
+    runoncepath("0:/launch/lasfunctions").
 
 	local planningGui is Gui(300).
 	set planningGui:Y to 200.

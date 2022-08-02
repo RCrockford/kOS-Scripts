@@ -4,6 +4,6 @@ global LAS_TargetPe is 200.
 global LAS_TargetAp is 200.
 
 // Calc required inclination
-runpath("0:/launch/LunarLaunch").
+runpath("0:/launch/lunarlaunch").
 
-runpath("0:/launch/LaunchAscentSystem.ks", -1, 0).
+runpath("0:/launch/launchascentsystem.ks", -1, 0).

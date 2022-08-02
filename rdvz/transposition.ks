@@ -72,7 +72,7 @@ print "Detached from LV".
 
 switch to scriptpath():volume.
 
-runpath("/rdvz/RdvzFuncs").
+runpath("/rdvz/rdvzfuncs").
 
 LAS_Avionics("activate").
 rcs on.

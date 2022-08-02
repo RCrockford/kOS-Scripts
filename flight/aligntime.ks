@@ -14,7 +14,7 @@ for p in ship:parts
     set yawMoI to yawMoI + p:Mass * vxcl(Ship:ControlPart:Facing:UpVector, p:Position):SqrMagnitude.
 }
 
-runoncepath("/flight/RCSPerf.ks").
+runoncepath("/flight/rcsperf.ks").
 local RCSPerf is GetRCSPerf().
 
 local minAccel is min(RCSPerf:Star:Torque / pitchMoI, RCSPerf:Up:Torque / yawMoI).

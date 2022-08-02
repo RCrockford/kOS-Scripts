@@ -4,4 +4,4 @@
 global LAS_TargetPe is 200.
 global LAS_TargetAp is 200.
 
-runpath("0:/launch/CelestialLaunch").
+runpath("0:/launch/celestiallaunch").

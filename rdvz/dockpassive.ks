@@ -15,8 +15,8 @@ local tShip is target.
 wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
-runoncepath("/FCFuncs").
-runpath("flight/TuneSteering").
+runoncepath("/fcfuncs").
+runpath("flight/tunesteering").
 
 LAS_Avionics("activate").
 

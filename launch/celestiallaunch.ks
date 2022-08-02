@@ -9,10 +9,10 @@ Core:DoEvent("Open Terminal").
 
 clearguis().
 
-runoncepath("0:/launch/LASFunctions").
+runoncepath("0:/launch/lasfunctions").
 runoncepath("0:/launch/lambert").
 
-runpath("0:/launch/LaunchGUI").
+runpath("0:/launch/launchgui").
 
 set Terminal:Height to max(Terminal:Height, 70).
 
@@ -279,4 +279,4 @@ LGUI_Hide().
 global LAS_TargetInc is launchInc.
 global LAS_TargetLAN is launchLAN.
 
-runpath("0:/launch/LaunchAscentSystem.ks", -1, 0).
+runpath("0:/launch/launchascentsystem.ks", -1, 0).

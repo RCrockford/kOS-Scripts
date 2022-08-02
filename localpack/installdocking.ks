@@ -1,22 +1,22 @@
 @lazyglobal off.
 
 // Clear storage
-runpath("0:/localpack/InstallPack.ks", list()).
+runpath("0:/localpack/installpack.ks", list()).
 
 local filelist is list(
-    "FCFuncs.ks",
-    "flight/TuneSteering.ks",
-    "flight/RCSPerf.ks",
-    "flight/EngineMgmt.ks",
-    "flight/FlightFuncs.ks",
-    "flight/AlignTime.ks",
-    "mgmt/ReadoutGUI.ks",
-    "rdvz/DockActive.ks",
-    "rdvz/RdvzFuncs.ks",
-    "rdvz/Rendezvous.ks"
+    "fcfuncs.ks",
+    "flight/tunesteering.ks",
+    "flight/rcsperf.ks",
+    "flight/enginemgmt.ks",
+    "flight/flightfuncs.ks",
+    "flight/aligntime.ks",
+    "mgmt/readoutgui.ks",
+    "rdvz/dockactive.ks",
+    "rdvz/rdvzfuncs.ks",
+    "rdvz/rendezvous.ks"
 ).
 
-runpath("0:/localpack/InstallPack.ks", fileList).
+runpath("0:/localpack/installpack.ks", fileList).
 
 if fileList[fileList:Length-1]
 {

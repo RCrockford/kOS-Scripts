@@ -21,10 +21,10 @@ set heightGate to max(heightGate, 1000).
 ClearGUIs().
 
 // Setup functions
-runoncepath("/FCFuncs").
-runoncepath("/flight/TuneSteering").
-runpath("/flight/EngineMgmt", Stage:Number).
-runoncepath("/lander/LanderSteering").
+runoncepath("/fcfuncs").
+runoncepath("/flight/tunesteering").
+runpath("/flight/enginemgmt", Stage:Number).
+runoncepath("/lander/landersteering").
 
 local DescentEngines is EM_GetEngines().
 local enginesIgnited is DescentEngines[0]:Ignition.
@@ -183,7 +183,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
     local bingoFuel is false.
     local ΔVmargin is 2 * sqrt(2 * rT / (Body:Mu / Body:Position:SqrMagnitude)) * (Body:Mu / Body:Position:SqrMagnitude).
     
-    runpath("/lander/LanderThrottle", DescentEngines).
+    runpath("/lander/landerthrottle", DescentEngines).
 
     if HasTarget and manualTarget:IsType("Scalar")
         set manualTarget to Target.
@@ -191,7 +191,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
     LanderSelectWP(manualTarget).
     local targetPos is LanderTargetPos().
     
-    runoncepath("/mgmt/ReadoutGUI").
+    runoncepath("/mgmt/readoutgui").
     local readoutGui is ReadoutGUI_Create().
     readoutGui:SetColumnCount(80, 3).
 
@@ -437,12 +437,12 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         set maintainAlt:enabled to false.
         set maintainH:enabled to false.
         set ignoreTarget:enabled to false.
-        runpath("/lander/SkyCrane", DescentEngines, targetPos).
+        runpath("/lander/skycrane", DescentEngines, targetPos).
         set abortMode to false.
     }
     else
     {
-        runpath("/lander/FinalDescent", DescentEngines, Readouts, targetPos, stage:number > 0).
+        runpath("/lander/finaldescent", DescentEngines, Readouts, targetPos, stage:number > 0).
 
         if Ship:VerticalSpeed < -5
             set abortMode to true.
@@ -472,7 +472,7 @@ if abortMode
     global LAS_TargetPe is 50.
     global LAS_TargetAp is max(Ship:Orbit:Apoapsis / 1000, 50).
 
-    runpath("/launch/OrbitalGuidance", stage:number).
+    runpath("/launch/orbitalguidance", stage:number).
 
     // Trigger flight control
     if Ship:Body:Atm:Exists
@@ -480,10 +480,10 @@ if abortMode
         set pitchOverSpeed to LAS_GetPartParam(Ship:RootPart, "spd=", 50).
         set pitchOverAngle to LAS_GetPartParam(Ship:RootPart, "ang=", 3).
 
-        runpath("/launch/FlightControlPitchOver", pitchOverSpeed, pitchOverAngle, mod(360 - latlng(90,0):bearing, 360)).
+        runpath("/launch/flightcontrolpitchover", pitchOverSpeed, pitchOverAngle, mod(360 - latlng(90,0):bearing, 360)).
     }
     else
     {
-        runpath("/launch/FlightControlNoAtm", mod(360 - latlng(90,0):bearing, 360)).
+        runpath("/launch/flightcontrolnoatm", mod(360 - latlng(90,0):bearing, 360)).
     }
 }

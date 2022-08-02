@@ -25,4 +25,4 @@ until Ship:Obt:Periapsis <= p:pe
     set shipMass to Ship:Mass.
 }
 
-runpath("/flight/ReEntryLanding").
+runpath("/flight/reentrylanding").

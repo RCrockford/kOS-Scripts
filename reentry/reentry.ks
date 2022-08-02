@@ -42,8 +42,8 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
         print "Orient at Long: " + round(orientLatLong, 2).
     }
 	
-    runpath("0:/flight/EngineMgmt", Stage:Number).
-	runpath("0:/flight/TuneSteering").
+    runpath("0:/flight/enginemgmt", Stage:Number).
+	runpath("0:/flight/tunesteering").
     
     local fileList is list().
     local burnParams is lexicon("pe", targetPe * 1000).
@@ -63,9 +63,9 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
         // Cheap version, RCS only, immediate.
         runoncepath("0:/flight/rcsperf").
         if GetRCSForePerf():Thrust < GetRCSAftPerf():Thrust * 0.5
-            fileList:Add("reentry/ReEntryRCSPro.ks").
+            fileList:Add("reentry/reentryrcspro.ks").
         else
-            fileList:Add("reentry/ReEntryRCS.ks").
+            fileList:Add("reentry/reentryrcs.ks").
     }
     else
     {
@@ -73,13 +73,13 @@ if Ship:Status = "Sub_Orbital" or Ship:Status = "Orbiting"
         burnParams:Add("bLatLong", burnLatLong).
         burnParams:Add("engines", EM_GetEngines():Length).
         
-        fileList:Add("reentry/ReEntryBurn.ks").
-        fileList:add("FCFuncs").
+        fileList:Add("reentry/reentryburn.ks").
+        fileList:add("fcfuncs").
         if burnParams:engines > 0
-            fileList:add("flight/EngineMgmt.ks").
+            fileList:add("flight/enginemgmt.ks").
     }
-    fileList:add("reentry/ReEntryLanding.ks").
+    fileList:add("reentry/reentrylanding.ks").
 	print "Using " + fileList[0].
 
-    runpath("0:/flight/SetupBurn", burnParams, fileList, "re-entry").
+    runpath("0:/flight/setupburn", burnParams, fileList, "re-entry").
 }

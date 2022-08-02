@@ -10,8 +10,8 @@ parameter targetInclination is -1.
 parameter targetOrbitable is 0.
 parameter launchParams is lexicon().
 
-runoncepath("/mgmt/DiffThrottle").
-runoncepath("/mgmt/ReadoutGUI").
+runoncepath("/mgmt/diffthrottle").
+runoncepath("/mgmt/readoutgui").
 
 local maxQ is Ship:Q.
 local maxQset is false.

@@ -28,9 +28,9 @@ else
     set dV to NextNode:DeltaV.
     lock burnEta to NextNode:eta.
 }
-runoncepath("0:/FCFuncs").
-runoncepath("0:/flight/FlightFuncs").
-runoncepath("0:/mgmt/ResourceWalk").
+runoncepath("0:/fcfuncs").
+runoncepath("0:/flight/flightfuncs").
+runoncepath("0:/mgmt/resourcewalk").
 
 local burnStage is stage:Number.
 local activeEngines is list().
@@ -45,7 +45,7 @@ local shipMass is Ship:Mass.
 
 if rcsBurn
 {
-    runoncepath("0:/flight/RCSPerf.ks").
+    runoncepath("0:/flight/rcsperf.ks").
     local RCSPerf is GetRCSForePerf().
 	
 	set massFlow to RCSPerf:massFlow.
@@ -56,7 +56,7 @@ else
     if spinKick
         set burnStage to burnStage - 1.
 
-    runpath("0:/flight/EngineMgmt", burnStage).
+    runpath("0:/flight/enginemgmt", burnStage).
     if EM_GetEngines():Length = 0
     {
         local eng is list().
@@ -64,7 +64,7 @@ else
         if eng:Length = 1 and not eng[0]:AllowShutdown
         {
             set burnStage to burnStage - 1.
-            runpath("0:/flight/EngineMgmt", burnStage).
+            runpath("0:/flight/enginemgmt", burnStage).
         }
     }
     
@@ -128,7 +128,7 @@ if CheckControl() and massFlow > 0
 	local duration is (shipMass - finalMass) / massflow.
     
     // Calc alignment time
-    runpath("0:/flight/AlignTime").
+    runpath("0:/flight/aligntime").
     local alignMargin is GetAlignTime().
 
 	print "Executing manoeuvre in " + FormatTime(burnEta).
@@ -198,16 +198,16 @@ if CheckControl() and massFlow > 0
 		burnParams:Add("dvz", dV:Z).
 	}
 
-	local fileList is list("flight/ExecuteBurn.ks", "FCFuncs.ks", "flight/TuneSteering.ks").
+	local fileList is list("flight/executeburn.ks", "fcfuncs.ks", "flight/tunesteering.ks").
 	if burnParams:eng > 0
     {
-		fileList:add("flight/EngineMgmt.ks").
-        fileList:add("flight/ExecuteBurnEng.ks").
+		fileList:add("flight/enginemgmt.ks").
+        fileList:add("flight/executeburneng.ks").
     }
     else
     {
-        fileList:add("flight/ExecuteBurnRCS.ks").
+        fileList:add("flight/executeburnrcs.ks").
     }
 
-	runpath("0:/flight/SetupBurn", burnParams, fileList).
+	runpath("0:/flight/setupburn", burnParams, fileList).
 }

@@ -2,6 +2,6 @@
 
 global LAS_TargetPe is 200.
 
-runpath("0:/launch/PolarLaunchWindow").
+runpath("0:/launch/polarlaunchwindow").
 
-runpath("0:/launch/LaunchAscentSystem.ks", -1, 0).
+runpath("0:/launch/launchascentsystem.ks", -1, 0).

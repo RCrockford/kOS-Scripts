@@ -17,12 +17,12 @@ local targetV is sqrt(Ship:Body:Mu * targetA * (1 - targetEcc^2)) / Ship:Orbit:S
 set targetAp to targetAp - Ship:Body:Radius.
 local deltaV is targetV - currentV.
 
-runpath("0:/flight/FlightFuncs").
-runpath("0:/flight/TuneSteering").
+runpath("0:/flight/flightfuncs").
+runpath("0:/flight/tunesteering").
 local burnDur is CalcBurnDuration(deltaV, true).
 
 // Calc alignment time
-runpath("0:/flight/AlignTime").
+runpath("0:/flight/aligntime").
 local alignMargin is GetAlignTime().
 
 // Time to next node
@@ -62,5 +62,5 @@ if CheckControl()
         "align", alignMargin
     ).
 
-    runpath("0:/flight/SetupBurn", burnParams, list("flight/GTOInsertBurn.ks", "FCFuncs.ks", "flight/EngineMgmt.ks")).
+    runpath("0:/flight/setupburn", burnParams, list("flight/gtoinsertburn.ks", "fcfuncs.ks", "flight/enginemgmt.ks")).
 }

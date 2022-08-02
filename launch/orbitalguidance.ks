@@ -6,7 +6,7 @@
 
 parameter liftoffStage is choose stage:number - 1 if Ship:Status <> "Flying" else Stage:number.
 
-runoncepath("/mgmt/ReadoutGUI").
+runoncepath("/mgmt/readoutgui").
 
 //------------------------------------------------------------------------------------------------
 
