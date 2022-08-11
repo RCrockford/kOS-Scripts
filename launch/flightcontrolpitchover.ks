@@ -144,7 +144,9 @@ local function checkAscent
             }
             if compassGuidance
             {
-                if Ship:GroundSpeed > 3200 and (Stage:Number <= LAS_GuidanceLastStage() or LAS_GuidanceBurnTime() > 60)
+                if targetInclination < 0
+                    set compassGuidance to false.
+                else if Ship:GroundSpeed > 3200 and (Stage:Number <= LAS_GuidanceLastStage() or LAS_GuidanceBurnTime() > 60)
                     set compassGuidance to false.
                 // Just fly along launch azimuth until 4 km ground speed, then use guidance yaw steering
                 set guidance to Heading(launchAzimuth, targetPitch):Vector.

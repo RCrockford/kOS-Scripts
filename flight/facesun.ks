@@ -12,6 +12,8 @@ runoncepath("0:/fcfuncs").
 
 runpath("0:/flight/tunesteering").
 
+set steeringmanager:maxstoppingtime to 0.5.
+
 LAS_Avionics("activate").
 
 rcs on.
