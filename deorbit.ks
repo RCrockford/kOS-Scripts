@@ -5,10 +5,13 @@ wait until Ship:Unpacked.
 
 lock throttle to 0.
 
-print "Waiting for separation".
+if Ship:Type <> "Debris"
+{
+    print "Waiting for separation".
 
-local startParts is Ship:Parts:Length.
-wait until Ship:Parts:Length < startParts.
+    local startParts is Ship:Parts:Length.
+    wait until Ship:Parts:Length < startParts.
+}
 
 print "Deorbiting stage".
 
@@ -17,7 +20,7 @@ wait 5.
 rcs on.
 lock steering to retrograde.
 
-wait until vdot(Facing:Vector, Retrograde:Vector) > 0.999.
+wait until vdot(Facing:Vector, Retrograde:Vector) > 0.75.
 
 set ship:control:fore to 1.
 wait 5.
