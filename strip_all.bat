@@ -1,16 +1,16 @@
 @echo off
 
-kOSStrip FCFuncsSrc.ks FCFuncs.ks
+kOSStrip fcfuncssrc.ks fcfuncs.ks
 
-kOSStrip flight\EngineManagementSrc.ks flight\EngineMgmt.ks
-kOSStrip flight\ExecuteBurnSrc.ks flight\ExecuteBurn.ks
-kOSStrip flight\ExecuteBurnEngSrc.ks flight\ExecuteBurnEng.ks
-kOSStrip flight\ExecuteBurnRCSSrc.ks flight\ExecuteBurnRCS.ks
-kOSStrip flight\RCSCorrectionBurnSrc.ks flight\RCSCorrectionBurn.ks
-kOSStrip flight\OrbitInsertBurnSrc.ks flight\OrbitInsertBurn.ks
-kOSStrip reentry\ReEntryBurnSrc.ks reentry\ReEntryBurn.ks
-kOSStrip reentry\ReEntryRCSSrc.ks reentry\ReEntryRCS.ks
-kOSStrip reentry\ReEntryRCSProSrc.ks reentry\ReEntryRCSPro.ks
-kOSStrip reentry\ReEntryLandingSrc.ks reentry\ReEntryLanding.ks
+kOSStrip flight\enginemanagementsrc.ks flight\enginemgmt.ks
+kOSStrip flight\executeburnsrc.ks flight\executeburn.ks
+kOSStrip flight\executeburnengsrc.ks flight\executeburneng.ks
+kOSStrip flight\executeburnrcssrc.ks flight\executeburnrcs.ks
+kOSStrip flight\rcscorrectionburnsrc.ks flight\rcscorrectionburn.ks
+kOSStrip flight\orbitinsertburnsrc.ks flight\orbitinsertburn.ks
+kOSStrip reentry\reentryburnsrc.ks reentry\reentryburn.ks
+kOSStrip reentry\reentryrcssrc.ks reentry\reentryrcs.ks
+kOSStrip reentry\reentryrcsprosrc.ks reentry\reentryrcspro.ks
+kOSStrip reentry\reentrylandingsrc.ks reentry\reentrylanding.ks
 
-kOSStrip lander\DirectDescent.ks lander\DDPack.ks
+kOSStrip lander\directdescent.ks lander\ddpack.ks
