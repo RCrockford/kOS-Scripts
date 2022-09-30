@@ -8,8 +8,10 @@ parameter launchAzimuth is 90.
 parameter targetInclination is -1.
 parameter targetOrbitable is 0.
 
-local pitchOverSpeed is 20.
-local pitchOverAngle is 12 * Ship:MaxThrust / (Ship:Mass * Ship:Body:Mu / Body:Position:SqrMagnitude).
+runoncepath("/mgmt/readoutgui").
+
+local pitchOverSpeed is 12.
+local pitchOverAngle is 10 * Ship:MaxThrust / (Ship:Mass * Ship:Body:Mu / Body:Position:SqrMagnitude).
 
 local pitchOverCosine is cos(pitchOverAngle).
 
@@ -21,22 +23,26 @@ local c_PhasePitchOver      is 1.
 local c_PhaseGuidanceReady  is 2.
 local c_PhaseGuidanceActive is 3.
 local c_PhaseMECO           is 4.
-local c_PhaseCoast          is 5.
 
 local flightPhase is c_PhaseLiftoff.
-local guidanceMinV is LAS_GuidanceTargetVTheta() * 0.2.
+local guidanceMinV is LAS_GuidanceTargetVTheta() * 0.1.
 local minPitch is 30.
+local pitchAdj is 1.
 local guidance is v(0,0,0).
 
 lock Steering to LookDirUp(Ship:Up:Vector, Ship:Facing:TopVector).
 
-local debugGui is GUI(300, 80).
-set debugGui:X to -150.
-set debugGui:Y to debugGui:Y - 480.
-local mainBox is debugGui:AddVBox().
+local readoutGui is ReadoutGUI_Create(-320, -500).
+readoutGui:SetColumnCount(80, list(160, 100)).
 
-local debugStat is mainBox:AddLabel("Liftoff").
-debugGui:Show().
+local flightStatus is readoutGui:AddReadout("Flight").
+local twrStatus is readoutGui:AddReadout("TWR").
+local pitchStatus is readoutGui:AddReadout("Pitch").
+local vThReadout is readoutGui:AddReadout("vTh").
+
+ReadoutGUI_SetText(flightStatus, "Liftoff", ReadoutGUI_ColourNormal).
+
+readoutGui:Show().
 
 local function checkAscent
 {
@@ -64,6 +70,7 @@ local function checkAscent
 			if flightPhase = c_PhaseGuidanceReady
 			{
 				set flightPhase to c_PhaseGuidanceActive.
+                ReadoutGui_SetText(flightStatus, "Guidance Active", ReadoutGUI_ColourGood).
 				lock Steering to guidance.
 				set Ship:Control:PilotMainThrottle to 1.
 				print "Orbital guidance mode active".
@@ -92,7 +99,8 @@ local function checkAscent
         if Ship:VerticalSpeed >= pitchOverSpeed
         {
             set flightPhase to c_PhasePitchOver.
-			lock Steering to Heading(launchAzimuth, max(minPitch, min(90 - pitchOverAngle, velocityPitch))).
+            ReadoutGui_SetText(flightStatus, "Pitch and roll", ReadoutGui_ColourNormal).
+			lock Steering to Heading(launchAzimuth, max(minPitch, min(90 - pitchOverAngle, velocityPitch + pitchAdj))).
         }
 	}
 	else if flightPhase = c_PhasePitchOver
@@ -108,6 +116,7 @@ local function checkAscent
 				if LAS_StartGuidance(Stage:Number, targetInclination, targetOrbitable, launchAzimuth)
                 {
 					set flightPhase to c_PhaseGuidanceReady.
+                    ReadoutGui_SetText(flightStatus, "Guidance Ready", ReadoutGUI_ColourNormal).
                 }
 				else
                 {
@@ -126,15 +135,12 @@ local function checkAscent
 		local omega is h / Body:Position:SqrMagnitude.
 		local grav is Ship:Body:Mu / Body:Position:SqrMagnitude - (omega * omega) * Body:Position:Mag.
 		local invTWR is (Ship:Mass * grav) / Ship:MaxThrust.
-		set minPitch to arcsin(invTWR) * 1.05.
-		set debugStat:Text to "TWR=" + round(1 / invTWR, 2) + " minPitch=" + round(minPitch, 1) + " vTh=" + round(h / Body:Position:Mag, 1) + " / " + round(guidanceMinV, 1).
-		
-		if Ship:Apoapsis > LAS_TargetPe * 1010 and (flightPhase < c_PhaseGuidanceReady or vdot(guidance, Facing:Vector) < 0.99)
-		{
-			print "Entering coast mode".
-			set Ship:Control:PilotMainThrottle to 0.
-            set flightPhase to c_PhaseCoast.
-		}
+		set minPitch to arcsin(invTWR) * 1.1.
+        set pitchAdj to max(2.5 - 0.5 / invTWR, -0.5).
+
+        ReadoutGui_SetText(pitchStatus, round(minPitch, 2) + " < " + round(velocityPitch, 2), choose ReadoutGUI_ColourGood if velocityPitch > minPitch else ReadoutGUI_ColourNormal).
+        ReadoutGui_SetText(twrStatus, round(1 / invTWR, 2):ToString(), ReadoutGUI_ColourNormal).
+        ReadoutGui_SetText(vThReadout, round(h / Body:Position:Mag, 1) + " / " + round(guidanceMinV, 1), ReadoutGUI_ColourNormal).
 	}
 }
 
@@ -145,7 +151,9 @@ until flightPhase >= c_PhaseMECO
 }
 
 // Release control
+unlock Steering.
 set Ship:Control:Neutralize to true.
 
-if flightPhase = c_PhaseCoast
-    runpath("/flight/changeperi", LAS_TargetPe, true).
+ClearGUIs().
+
+LAS_Avionics("shutdown").
