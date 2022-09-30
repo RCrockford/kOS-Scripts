@@ -41,6 +41,11 @@ if targetPoint:IsType("Scalar")
 	}
 }
 
+if targetPoint:IsType("Scalar") and HasTarget
+{
+    set targetPoint to target.
+}
+
 local fullCharge is 1.
 for r in ship:resources
 {
@@ -51,10 +56,13 @@ for r in ship:resources
     }
 }
 
-local targetGeoPos is choose targetPoint:GeoPosition if targetPoint:IsType("WayPoint") else targetPoint.
+local targetGeoPos is targetPoint.
 
-if targetPoint:IsType("WayPoint")
+if targetPoint:IsType("WayPoint") or targetPoint:IsType("Vessel")
+{
 	print "Roving to " + targetPoint:Name.
+    set targetGeoPos to targetPoint:GeoPosition.
+}
 
 local turnPid is PIDLoop(0.04, 0.0001, 0.05, -0.5, 0.5).
 local steerPid is PIDLoop(3, 0.1, 0.5, -1, 1).
