@@ -34,6 +34,8 @@ local shipMass is Ship:Mass.
 local downrangeAdjust is 1.
 local spinBrake is false.
 
+local solidStage is lexicon("Count", 0, "Mass", 0, "PreStageMass", 0, "FuelMass", 0, "Thrust", 0, "MassFlow", 0, "DeltaV", 0).
+
 local function GetBrakingAim
 {
 	parameter pCurrent is LAS_ShipPos().
@@ -57,14 +59,19 @@ local function EstimateBrakingPosition
 	local vCurrent is Ship:Velocity:Surface.
 	local mCurrent is shipMass.
 	local pCurrent is LAS_ShipPos().
+
+    local canStageSolid is solidStage:Count > 0.
+    local curThrust is burnThrust.
+    local curFlow is massFlow.
+    local dryMass is massFlow * 2.
     
-	until vdot(vCurrent, Up:Vector) > vTarget or mCurrent < massFlow * 2
+	until vdot(vCurrent, Up:Vector) > vTarget or mCurrent < dryMass
 	{
 		// Assume thrust is constant magntiude and retrograde
         local throt is 0.
 		if burnDelay < tStep
 			set throt to ((tStep - burnDelay) / tStep).
-		local accel is throt * GetBrakingAim(pCurrent, vCurrent) * burnThrust / mCurrent.
+		local accel is throt * GetBrakingAim(pCurrent, vCurrent) * curThrust / mCurrent.
 		set burnDelay to max(0, burnDelay - tStep).
 		local g is -pCurrent:Normalized * Body:Mu / pCurrent:SqrMagnitude.
 
@@ -72,7 +79,16 @@ local function EstimateBrakingPosition
 		set vCurrent to vCurrent + (accel + g) * tStep.
 		set pCurrent to pCurrent + vCurrent * tStep.
 
-		set mCurrent to mCurrent - massFlow * throt * tStep.
+		set mCurrent to mCurrent - curFlow * throt * tStep.
+        
+        if canStageSolid and mCurrent <= solidStage:PreStageMass
+        {
+            set canStageSolid to false.
+            set mCurrent to solidStage:Mass.
+            set curThrust to solidStage:Thrust.
+            set curFlow to solidStage:MassFlow.
+            set dryMass to mCurrent - solidStage:FuelMass.
+        }
 	}
 
 	return pCurrent.
@@ -82,19 +98,30 @@ local function RC
 {
     parameter close.
 
-    if spinBrake and abs(SteeringManager:AngleError) < 1
+    local cmdRoll is 0.
+    local rollRate is vdot(Facing:Vector, Ship:AngularVel).
+ 
+    if spinBrake or solidStage:Count > 1
     {
-        // spin up
-        local rollRate is vdot(Facing:Vector, Ship:AngularVel).
-        if abs(rollRate) > 1.2
+        if abs(SteeringManager:AngleError) < 1
         {
-            set ship:control:roll to -0.01.
-        }
-        else
-        {
-            set ship:control:roll to -1.
+            // spin up
+            if abs(rollRate) > 1.2 + solidStage:Count * 0.5
+            {
+                set cmdroll to -0.001.
+            }
+            else
+            {
+                set cmdroll to -1.
+            }
         }
     }
+    else
+    {
+        if abs(rollRate) > 0.01
+            set cmdroll to rollRate.
+    }
+    set ship:control:roll to cmdRoll.
     
     if close and EM_IgDelay() > 0
     {
@@ -142,18 +169,60 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
 	if Stage:Number > landStage or Ship:Velocity:Surface:Mag > 300
 	{
-        set spinBrake to landStage < Stage:Number - 1.
-        if spinBrake
+        if landStage < Stage:Number - 1
         {
-            print "Using unguided braking stage".
-            set shipMass to 0.
-            for shipPart in Ship:Parts
+            local residuals is 0.
+            
+            for eng in Ship:Engines
             {
-                local decoupleStage is shipPart:DecoupledIn.
-
-                if shipPart:DecoupledIn < Stage:Number - 1
+                if (eng:Stage = Stage:Number - 1) and (not eng:AllowShutdown)
                 {
-                    set shipMass to shipMass + shipPart:Mass.
+                    set solidStage:Count to solidStage:Count + 1.
+                    set solidStage:FuelMass to solidStage:FuelMass + eng:Mass - Eng:DryMass.
+                    set solidStage:Thrust to solidStage:Thrust + eng:PossibleThrust.
+                    set solidStage:MassFlow to solidStage:MassFlow + eng:MaxMassFlow.
+                    set residuals to max(residuals, eng:residuals).
+                }
+            }
+
+            if solidStage:Count > 0
+            {
+                for shipPart in Ship:Parts
+                {
+                    local decoupleStage is shipPart:DecoupledIn.
+
+                    if shipPart:DecoupledIn < Stage:Number - 1
+                    {
+                        set solidStage:Mass to solidStage:Mass + shipPart:Mass.
+                        set solidStage:PreStageMass to solidStage:PreStageMass + shipPart:Mass.
+                    }
+                    else
+                    {
+                        set solidStage:PreStageMass to solidStage:PreStageMass + shipPart:DryMass.
+                    }
+                }
+
+                set solidStage:FuelMass to solidStage:FuelMass  * (1 - residuals).
+                local massRatio is solidStage:Mass / (solidStage:Mass - solidStage:FuelMass).
+                set solidStage:DeltaV to ln(massRatio) * solidStage:Thrust / solidStage:MassFlow.
+                
+                EM_ResetEngines(Stage:Number).
+
+                print "Using solid braking stage: " + round(solidStage:DeltaV, 1) + " m/s".
+            }
+            else
+            {
+                set spinBrake to true.
+                print "Using unguided braking stage".
+                set shipMass to 0.
+                for shipPart in Ship:Parts
+                {
+                    local decoupleStage is shipPart:DecoupledIn.
+
+                    if shipPart:DecoupledIn < Stage:Number - 1
+                    {
+                        set shipMass to shipMass + shipPart:Mass.
+                    }
                 }
             }
         }
@@ -288,7 +357,11 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         
         until DescentEngines[0]:Ignitions = 0 or EM_CheckThrust(0.1)
             EM_Ignition(0.1).
-        
+
+        if solidStage:Count <= 1
+            set ship:control:roll to 0.
+        else
+            set ship:control:roll to -0.001.
         if spinBrake
         {
             // Jettison alignment stage.
@@ -303,6 +376,8 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
             local drPred is vdot(targetPos:Position - lastPrediction:Position, vxcl(Up:Vector, Ship:Velocity:Surface):Normalized).
             set downrangeAdjust to 1 + max(-0.02, min((drPred - 2500) / 20000, 0.02)).
         }
+        
+        local canFireSolid is solidStage:Count > 0.
 
         until (Ship:VerticalSpeed >= targetSpeed and Ship:Velocity:Surface:Mag < -targetSpeed) or not EM_CheckThrust(0.1)
         {
@@ -339,7 +414,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
                 choose ReadoutGUI_ColourGood if Ship:Thrust > nomThrust * 0.75 else (choose ReadoutGUI_ColourNormal if Ship:Thrust > nomThrust * 0.25 else ReadoutGUI_ColourFault)).
 
             ReadoutGUI_SetText(Readouts:eta, round(t, 2) + " s", ReadoutGUI_ColourNormal).
-            
+
             if spinBrake and vdot(Facing:Vector, SrfRetrograde:Vector) < 0.3
                 break.
                 
@@ -347,14 +422,22 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
                 break.
             
             wait 0.
+
+            if canFireSolid and ((Velocity:Surface:Mag < solidStage:DeltaV - targetSpeed) or not EM_CheckThrust(0.1))
+            {
+                print "Firing solid stage".
+                EM_Cutoff().
+                Stage.
+                wait until stage:ready.
+                EM_ResetEngines(Stage:Number).
+                set canFireSolid to false.
+            }
         }
         
-        if not EM_CheckThrust(0.1).
-			print "Fuel exhaustion in braking stage".
-
         if stage:number > landStage
         {
             set Ship:Control:PilotMainThrottle to 0.
+            set ship:control:roll to 0.
 
             // Use braking stage RCS to reorient
             wait until (Ship:VerticalSpeed <= targetSpeed * 2).
@@ -371,10 +454,11 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 		rcs on.
     }
     
-    if spinBrake and vdot(Facing:Vector, Ship:AngularVel) > 0.25
+    // Despin
+    if abs(vdot(Facing:Vector, Ship:AngularVel)) > 0.2
     {
-        set ship:control:roll to 1.
-        wait vdot(Facing:Vector, Ship:AngularVel) < 0.25.
+        set ship:control:roll to choose 1 if vdot(Facing:Vector, Ship:AngularVel) > 0 else -1.
+        wait abs(vdot(Facing:Vector, Ship:AngularVel)) < 0.2.
         set ship:control:roll to 0.
     }
 
