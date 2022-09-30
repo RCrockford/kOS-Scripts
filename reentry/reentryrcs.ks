@@ -18,4 +18,4 @@ break.
 }
 set _0 to Ship:Mass.
 }
-runpath("/flight/reentrylanding").
+runpath("/reentry/reentrylanding").

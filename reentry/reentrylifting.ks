@@ -95,11 +95,8 @@ until Ship:Velocity:Surface:Mag < 1000
         set startTime to Time:Seconds.
     }
     
-    if steeringmanager:RollControlAngleRange > 179
-    {
-        set currentRoll to rollPID:Update(Time:Seconds, -accel - Ship:VerticalSpeed / 12).
-        set upVec to initVec * angleaxis(CurrentRoll, SrfRetrograde:Vector).
-    }
+    set currentRoll to rollPID:Update(Time:Seconds, -accel - Ship:VerticalSpeed / 12).
+    set upVec to initVec * angleaxis(CurrentRoll, SrfRetrograde:Vector).
 }
 
 if steeringmanager:RollControlAngleRange > 179 and Core:Part:HasModule("AdjustableComShifter")
@@ -110,7 +107,7 @@ if steeringmanager:RollControlAngleRange > 179 and Core:Part:HasModule("Adjustab
 }
 
 lock steering to "kill".
-
+        
 set core:bootfilename to "".
 
 set kUniverse:TimeWarp:Mode to "Physics".
@@ -124,6 +121,12 @@ until Ship:Altitude - max(Ship:GeoPosition:TerrainHeight, 0) < 10
 	set debugStat1:Text to "Landing ETA: " + round(radarAlt / Ship:Velocity:Surface:Mag, 1) + " s".
     if Ship:Velocity:Surface:Mag < 500
         set kUniverse:TimeWarp:Rate to min(max(1, round(radarAlt / 50)), 4).
+        
+    if Velocity:Surface:Mag < 80
+    {
+        set ship:control:yaw to 0.
+        set ship:control:pitch to 0.
+    }
         
     if Ship:Velocity:Surface:Mag < 50 and not droppedHS
     {
