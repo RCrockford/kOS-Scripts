@@ -4,6 +4,7 @@ parameter DescentEngines.
 parameter Readouts.
 parameter targetPos.
 parameter canAbort is false.
+parameter ignoreTarget is lexicon("pressed", false).
 
 local enginesOn is Ship:Control:PilotMainThrottle > 0.
 local needUllage is false.
@@ -26,6 +27,18 @@ runoncepath("/lander/landerthrottle", DescentEngines, enginesOn).
 if needUllage
     runpath("/flight/enginemgmt", Stage:Number).
     
+local FuelEngines is DescentEngines.
+if DescentEngines:Length = 0
+{
+    set FuelEngines to list().
+    for eng in Ship:RCS
+    {
+        if eng:ForeByThrottle
+            FuelEngines:Add(eng).
+    }
+}
+
+    
 local burnThrust is LanderMaxThrust().
 
 print "Descent mode active".
@@ -43,19 +56,21 @@ local engFailTime is 0.
 local radarHeight is shipBounds:BottomAltRadar.
 local killThrott is false.
 local cutThrott is 0.75.
-local ignThrottle is 0.9 - DescentEngines:Length * 0.0125.
+local ignThrottle is 0.9 - FuelEngines:Length * 0.0125.
+local bingoFuel is not Readouts:HasKey("fuel").
 
 if LanderMinThrottle() < 0.9
 {
     set cutThrott to LanderMinThrottle().
-    set ignThrottle to 0.6 + LanderMinThrottle() * 0.4.
+    set ignThrottle to 0.85 + LanderMinThrottle() * 0.15.
 }
+
+local hSpeedPID is PIDLoop(0.5, 0.1, 0.5, -5, 5).
+local steerPID is PIDLoop(1, 0, 0.5, -1, 1).
+local steerHeight is min(radarHeight, 100).
 
 until radarHeight < 2
 {
-    // Prevent too much tip over in final descent
-    set steerVec to Up:Vector * max(0, 2 * (0.8 - vdot(SrfRetrograde:Vector, Up:Vector))) + SrfRetrograde:Vector.
-
     local maxAccel is burnThrust / Ship:Mass.
     local localGrav is Ship:Body:Mu / LAS_ShipPos():SqrMagnitude.
 
@@ -66,6 +81,51 @@ until radarHeight < 2
 
     // Commanded vertical acceleration is accel needed to reach vT in the height available
     local acgx is -(vT^2 - Ship:VerticalSpeed^2) / (2 * h).
+    
+    local targetDist is -1.
+    if targetPos:IsType("GeoCoordinates")
+    {
+        set targetDist to targetPos:AltitudePosition(Ship:Altitude):Mag.
+    }
+
+    // Prevent too much tip over in final descent
+    set steerVec to Up:Vector * max(0, 2 * (0.71 - vdot(SrfRetrograde:Vector, Up:Vector))) + SrfRetrograde:Vector.
+    
+    if not bingoFuel and targetDist <= 100 and targetDist >= 1 and h > 5 and not ignoreTarget:pressed
+    {
+        // Slow descent while steering
+        if targetDist >= 5
+        {
+            local responseT is -8.
+            set acgx to 12 * (steerHeight - h) / (responseT*responseT) + 6 * Ship:VerticalSpeed / responseT.
+        }
+        else
+        {
+            set steerHeight to min(h, 100).
+        }
+
+        local targetVec is vxcl(Up:Vector, targetPos:Position).
+        local targetSpeed is -hSpeedPID:Update(Time:Seconds, targetVec:Mag).
+    
+        local horizVel is vxcl(Up:Vector, Ship:Velocity:Surface).
+        local targetVel is targetVec:Normalized * targetSpeed.
+        local hAccel is steerPID:Update(Time:Seconds, (horizVel - targetVel):Mag).
+        
+        if Readouts:HasKey("steermul")
+            ReadoutGUI_SetText(Readouts:steermul, round(targetSpeed, 2) + "m/s", ReadoutGUI_ColourNormal).
+            
+        if abs(horizVel:Mag) < hSpeedPID:MaxOutput * 1.05
+        {
+            set steerVec to Up:Vector.
+            set hAccel to hAccel * (horizVel - targetVel):Normalized.
+            set ship:control:starboard to vdot(Facing:StarVector, hAccel).
+            set ship:control:top to vdot(Facing:TopVector, hAccel).
+        }
+    }
+    else
+    {
+    }
+
     local fr is (acgx + localGrav) / maxAccel.
 
     if fr > ignThrottle * 0.8
@@ -98,27 +158,32 @@ until radarHeight < 2
     if targetPos:IsType("GeoCoordinates")
     {
         local wpBearing is vang(vxcl(up:vector, TargetPos:Position), vxcl(up:vector, Ship:Velocity:Surface)).
-        ReadoutGUI_SetText(Readouts:dist, round(targetPos:Distance) + " m", ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(Readouts:dist, round(targetDist, 1) + " m", ReadoutGUI_ColourNormal).
         ReadoutGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", ReadoutGUI_ColourNormal).
     }
 
     if Readouts:HasKey("fuel")
     {
-        local fuelStatus is CurrentFuelStatus(DescentEngines).
+        local fuelStatus is CurrentFuelStatus(FuelEngines).
         ReadoutGUI_SetText(Readouts:Δv, round(fuelStatus[1], 1) + " m/s", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:margin, round(fuelStatus[1]  - Ship:Velocity:Surface:Mag, 3) + " m/s", ReadoutGUI_ColourNormal).
+        ReadoutGUI_SetText(Readouts:margin, round(fuelStatus[1]  - Ship:Velocity:Surface:Mag, 1) + " m/s", ReadoutGUI_ColourNormal).
         ReadoutGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "%", ReadoutGUI_ColourGood).
+        
+        local ΔVmargin is 2 * sqrt(2 * h / (Body:Mu / Body:Position:SqrMagnitude)) * (Body:Mu / Body:Position:SqrMagnitude).
+        if not bingoFuel and fuelStatus[1] < Ship:Velocity:Surface:Mag + ΔVmargin
+            set bingoFuel to true.
     }
     
     ReadoutGUI_SetText(Readouts:throt, round(100 * reqThrottle, 1) + "%", ReadoutGUI_ColourNormal).
 
-    local nomThrust is Ship:AvailableThrust * (LanderMinThrottle() + Ship:Control:PilotMainThrottle * (1 - LanderMinThrottle())).
-    ReadoutGUI_SetText(Readouts:thrust, round(100 * min(Ship:Thrust / max(Ship:AvailableThrust, 0.001), 2), 2) + "%", 
-        choose ReadoutGUI_ColourGood if Ship:Thrust > nomThrust * 0.75 else (choose ReadoutGUI_ColourNormal if Ship:Thrust > nomThrust * 0.25 else ReadoutGUI_ColourFault)).
+    local thrustData is LanderCalcThrust(FuelEngines).
+    ReadoutGUI_SetText(Readouts:thrust, round(100 * min(thrustData:current / max(LanderMaxThrust(), 0.001), 2), 2) + "%", 
+        choose ReadoutGUI_ColourGood if thrustData:current > thrustData:nominal * 0.75 else
+        (choose ReadoutGUI_ColourNormal if thrustData:current > thrustData:nominal * 0.25 else ReadoutGUI_ColourFault)).
 
     if canAbort and Ship:VerticalSpeed < -8
     {
-        if enginesOn and Ship:Thrust < nomThrust * 0.25
+        if enginesOn and thrustData:current < thrustData:nominal * 0.25
         {
             if Time:Seconds - engFailTime > 1
             {
