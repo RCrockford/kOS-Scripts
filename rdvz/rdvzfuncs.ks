@@ -36,16 +36,19 @@ global function Rdvz_TargetApproach
     parameter minSpeed is 0.
     parameter maxSpeed is maxAccel * 4.
     parameter stopDist is maxAccel.
+    parameter docking is false.
     
     set prevTVec to targetFunc().
     set prevT to Time:Seconds.
     local relV is V(maxAccel * 10, 0, 0).
     
+    local startElements is Ship:Elements:Length.
+    
     lock steering to lookdirup(headingFunc(), Facing:UpVector).
     
     set minSpeed to max(minSpeed, maxAccel * 0.1).
     
-    until prevTVec:Mag < stopDist and relV:Mag < minSpeed
+    until (prevTVec:Mag < stopDist and relV:Mag < minSpeed) or (docking and Ship:Elements:Length > startElements)
     {
         wait 0.
         local tVec is targetFunc().
@@ -84,7 +87,7 @@ global function Rdvz_UpdateReadouts
     ReadoutGUI_SetText(Readouts:dist, round(tVec:Mag, 1) + " m", ReadoutGUI_ColourNormal).
     ReadoutGUI_SetText(Readouts:relv, round(relV:Mag, 3) + " m/s", ReadoutGUI_ColourNormal).
     ReadoutGUI_SetText(Readouts:tarv, round(targetSpeed, 3) + " m/s", ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:ang, round(vang(tVec, relV), 2) + "°", ReadoutGUI_ColourNormal).
+    ReadoutGUI_SetText(Readouts:ang, round(vang(tVec, Facing:Vector), 2) + "°", ReadoutGUI_ColourNormal).
     
     return relV.
 }
@@ -93,4 +96,9 @@ global function Rdvz_SetStatus
 {
     parameter status.
     ReadoutGUI_SetText(Readouts:status, status, ReadoutGUI_ColourNormal).
+}
+
+global function Rdvz_GetMaxAccel
+{
+    return maxAccel.
 }

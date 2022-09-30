@@ -100,7 +100,7 @@ local startElements is Ship:Elements:Length.
 until Ship:Elements:Length > startElements
 {
     Rdvz_SetStatus("Docking").
-    Rdvz_TargetApproach(TargetPos@, { return tPort:Position. }, 0.25, 1, 0.5).
+    Rdvz_TargetApproach(TargetPos@, { return tPort:Position. }, 0.25, 0.75, 0.5).
     
     until Ship:Elements:Length > startElements
     {

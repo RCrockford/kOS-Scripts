@@ -38,7 +38,7 @@ LAS_Avionics("activate").
 rcs on.
 
 Rdvz_SetStatus("Approaching").
-Rdvz_TargetApproach({ return tPort:Position - tPort:Position:Normalized * (5 + portDist). }, { return tPort:Position. }).
+Rdvz_TargetApproach({ return tPort:Position - tPort:Position:Normalized * (5 + portDist). }, { return tPort:Position. }, 1, max(1.2, min(Rdvz_GetMaxAccel() * 8, 4))).
 
 local lock TargetPos to tPort:Position + tPort:Facing:Vector * portDist.
 
@@ -50,18 +50,15 @@ until vdot(tPort:Position:Normalized, tPort:Facing:Vector) < -0.99 and vdot(tPor
 
 local startElements is Ship:Elements:Length.
 
+Rdvz_SetStatus("Docking").
+Rdvz_TargetApproach(TargetPos@, { return tPort:Position. }, 0.25, 1, 0.5, true).
+
 until Ship:Elements:Length > startElements
 {
-    Rdvz_SetStatus("Docking").
-    Rdvz_TargetApproach(TargetPos@, { return tPort:Position. }, 0.25, 1, 0.5).
-    
-    until Ship:Elements:Length > startElements
-    {
-        wait 0.
-        local relV is Rdvz_UpdateReadouts(TargetPos@).
-        if vdot(relV:Normalized, tPort:Position:Normalized) < 0
-            break.
-    }
+    wait 0.
+    local relV is Rdvz_UpdateReadouts(TargetPos@).
+    if vdot(relV:Normalized, tPort:Position:Normalized) < 0
+        break.
 }
 
 unlock steering.
