@@ -28,7 +28,7 @@ debugGui:Show().
 
 until abs(vdot(Sun:Position:Normalized, Facing:Vector)) > 0.99999 and abs(SteeringManager:AngleError) < 0.1 and Ship:AngularVel:Mag < 1e-3
 {
-	set debugStat:Text to "a = " + round(abs(SteeringManager:AngleError), 2) + " / 0.1   ω = " + round(Ship:AngularVel:Mag, 6).
+	set debugStat:Text to "a = " + round(abs(SteeringManager:AngleError), 2) + " / 0.1   ω = " + round(Ship:AngularVel:Mag * 180 / Constant:Pi, 4).
 	wait 0.
 }
 
@@ -48,14 +48,14 @@ else
 {
     lock steering to "kill".
 
-    until Ship:AngularVel:Mag < 2e-4
+    until Ship:AngularVel:Mag < 5e-4
     {
-        set debugStat:Text to "a = " + round(abs(SteeringManager:AngleError), 2) + " / 0.1   ω = " + round(Ship:AngularVel:Mag, 6).
+        set debugStat:Text to "a = " + round(abs(SteeringManager:AngleError), 2) + " / 0.1   ω = " + round(Ship:AngularVel:Mag * 180 / Constant:Pi, 4).
         wait 0.
     }
 }
 
-print "a = " + round(abs(SteeringManager:AngleError), 2) + " / 0.1  ω = " + round(Ship:AngularVel:Mag, 6).
+print "a = " + round(abs(SteeringManager:AngleError), 2) + " / 0.1  ω = " + round(Ship:AngularVel:Mag * 180 / Constant:Pi, 4).
 
 unlock steering.
 rcs off.

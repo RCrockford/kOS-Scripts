@@ -10,9 +10,10 @@ parameter _p0.
 if _p0:HasModule("ModuleEnginesRF")
 {
 local _4 is _p0:GetModule("ModuleEnginesRF").
+if _4:HasField("effective spool-up time")
 return _4:Getfield("effective spool-up time").
 }
-return 0.1.
+return 0.01.
 }
 global function EM_ResetEngines
 {
@@ -73,6 +74,11 @@ wait until EM_CheckThrust(_p0)or _3[0]:Flameout or time:seconds>t.
 set Ship:Control:Fore to 0.
 }
 return not _3:empty.
+}
+global function EM_Cutoff
+{
+for e in _3
+e:Shutdown.
 }
 global function EM_Shutdown
 {

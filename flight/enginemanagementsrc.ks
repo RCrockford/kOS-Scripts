@@ -16,9 +16,10 @@ global function EM_CalcSpoolTime
     if eng:HasModule("ModuleEnginesRF")
     {
         local engMod is eng:GetModule("ModuleEnginesRF").
-        return engMod:Getfield("effective spool-up time").
+        if engMod:HasField("effective spool-up time")
+            return engMod:Getfield("effective spool-up time").
     }
-    return 0.1.
+    return 0.01.
 }
 
 global function EM_ResetEngines
@@ -100,6 +101,12 @@ global function EM_Ignition
     }
     
     return not activeEngines:empty.
+}
+
+global function EM_Cutoff
+{
+    for e in activeEngines
+        e:Shutdown.    
 }
 
 global function EM_Shutdown

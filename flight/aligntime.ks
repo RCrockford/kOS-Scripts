@@ -18,7 +18,7 @@ runoncepath("/flight/rcsperf.ks").
 local RCSPerf is GetRCSPerf().
 
 local minAccel is min(RCSPerf:Star:Torque / pitchMoI, RCSPerf:Up:Torque / yawMoI).
-local SteerTime is 1.5 * Constant:pi / minAccel.
+local SteerTime is 1.2 * Constant:pi / minAccel.
 if RCSPerf:LowTorque
     set SteerTime to SteerTime * 4.
 
