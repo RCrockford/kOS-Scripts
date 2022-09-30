@@ -2,16 +2,16 @@
 
 @lazyglobal off.
 
-parameter targetAp.
-parameter targetPe.
+parameter targetPe is round(Body:Radius * 0.000015).
+parameter targetAp is targetPe * 2.
 parameter launchAzimuth is 90.
-parameter ascentStage is stage:number.
-parameter targetOrbitable is 0.
+parameter ascentStage is max(stage:number - 1, 0).
 
 // Wait for unpack
 wait until Ship:Unpacked.
 
 switch to scriptpath():volume.
+Core:Part:ControlFrom().
 
 local liftoffTime is MissionTime.
 
@@ -66,7 +66,7 @@ if Ship:Status = "Landed" or Ship:Status = "Splashed"
 		stage.
 	}
     
-    wait until Alt:Radar > 50 or Ship:VerticalSpeed > 10.
+    wait until Ship:VerticalSpeed > 2.
 }
 
 if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
@@ -95,6 +95,6 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital"
     }
     else
     {
-        runpath("/launch/flightcontrolnoatm", launchAzimuth, -1, targetOrbitable).
+        runpath("/launch/flightcontrolnoatm", launchAzimuth, -1, 0).
     }
 }
