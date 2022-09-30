@@ -18,9 +18,9 @@ set LAS_TargetPe to max(LAS_TargetPe, 150).
 global LAS_TargetAp is LAS_TargetPe.
 
 // If target orbit is unrealistically high, insert into an elliptic orbit.
-if LAS_TargetPe > 280
+if LAS_TargetPe > 240
 {
-	set LAS_TargetPe to 250.
+	set LAS_TargetPe to 240.
 	set LAS_TargetAP to targetOrbit:Apoapsis / 1000.
 }
 

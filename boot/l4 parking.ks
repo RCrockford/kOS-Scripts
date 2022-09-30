@@ -1,7 +1,7 @@
 @lazyglobal off.
 
-global LAS_TargetPe is 200.
-global LAS_TargetAp is 200.
+global LAS_TargetPe is 185.
+global LAS_TargetAp is 185.
 
 // Calc required inclination
 runpath("0:/launch/lunarl4l5launch", true).

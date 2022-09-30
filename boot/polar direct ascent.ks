@@ -1,6 +1,6 @@
 @lazyglobal off.
 
-global LAS_TargetPe is 200.
+global LAS_TargetPe is 185.
 
 runpath("0:/launch/polarlaunchwindow").
 
