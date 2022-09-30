@@ -11,18 +11,18 @@ local filelist is list(
     "lander/finaldescent.ks",
     "lander/landerthrottle.ks",
     "mgmt/readoutgui",
-    "lander/marsdescent.ks"
+    "lander/orbitdescent.ks"
 ).
 
 runpath("0:/localpack/installpack.ks", fileList).
 
 if fileList[fileList:Length-1]
 {
-    print "Installed Mars descent pack".
+    print "Installed orbit descent pack".
     switch to 1.
 }
 else
 {
-    print "Failed to install Mars descent pack".
+    print "Failed to install orbit descent pack".
     switch to 0.
 }

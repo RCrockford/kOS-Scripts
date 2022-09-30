@@ -10,6 +10,7 @@ local filelist is list(
     "lander/landersteering.ks",
     "lander/finaldescent.ks",
     "lander/landerthrottle.ks",
+    "mgmt/readoutgui",
     "lander/ddpack.ks"
 ).
 
