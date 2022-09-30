@@ -6,7 +6,7 @@ wait until Ship:Unpacked.
 local targetPos is 0.
 local minDist is Body:Radius / 2 + Ship:Altitude.
 local targetName is 0.
-local steerPID is PIDLoop(0.1, 0, 0.04, -0.05, 0.05).
+local steerPID is PIDLoop(0.1, 0, 0.04, -0.1, 0.1).
 
 global function LanderSelectWP
 {
@@ -47,7 +47,7 @@ global function LanderSelectWP
     }
 
 	if targetPos:IsType("GeoCoordinates")
-		print "Landing Target: " + targetName + " @ " + round(targetPos:Lat, 3) + ", " + round(targetPos:Lng, 3).
+		print "Landing Target: " + targetName + " @ " + round(targetPos:Lat, 2) + ", " + round(targetPos:Lng, 2) + "; " + round(targetPos:TerrainHeight, 1) + "m".
 }
 
 global function LanderSteering

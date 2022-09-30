@@ -17,7 +17,7 @@ for eng in DescentEngines
     set minThrust to minThrust + eng:MinThrottle * eng:PossibleThrust.
     set maxThrust to maxThrust + eng:PossibleThrust.
     if eng:ullage or eng:Ignitions >= 0
-        set throttleClamp to 0.01.  // Prevent shutdown
+        set throttleClamp to 0.001.  // Prevent shutdown
 }
 for eng in Ship:RCS
 {
@@ -103,6 +103,23 @@ global function LanderCanThrottle
 global function LanderMinThrottle
 {
     return minThrottle.
+}
+
+global function LanderCalcThrust
+{
+    parameter engList.
+    
+    local nomThrust is maxThrust * (minThrottle + Ship:Control:PilotMainThrottle * (1 - minThrottle)).
+    local curThrust is 0.
+    for e in engList
+    {
+        if e:HasSuffix("Thrust")
+            set curThrust to curThrust + e:Thrust.
+        else
+            set curThrust to curThrust + e:AvailableThrust.
+    }
+    
+    return lexicon("nominal", nomThrust, "current", curThrust).
 }
 
 global function LanderSetThrottle
