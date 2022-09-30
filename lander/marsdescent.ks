@@ -18,13 +18,21 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 {
     print "Martian descent system online.".
 
-	local debugGui is GUI(400, 80).
-    set debugGui:X to 160.
-    set debugGui:Y to debugGui:Y + 240.
-    local mainBox is debugGui:AddVBox().
+    runoncepath("/mgmt/readoutgui").
+    local readoutGui is ReadoutGUI_Create().
+    readoutGui:SetColumnCount(80, 3).
 
-    local debugStat is mainBox:AddLabel("Awaiting atmospheric interface").
-	debugGui:Show().
+    local Readouts is lexicon().
+
+    Readouts:Add("height", readoutGui:AddReadout("Height")).
+    Readouts:Add("acgx", readoutGui:AddReadout("Acgx")).
+    Readouts:Add("fr", readoutGui:AddReadout("fr")).
+
+    Readouts:Add("throt", readoutGui:AddReadout("Throttle")).
+    Readouts:Add("thrust", readoutGui:AddReadout("Thrust")).
+    Readouts:Add("status", readoutGui:AddReadout("Status")).
+
+	readoutGui:Show().
     
     unlock steering.
     set Ship:Control:Neutralize to true.
@@ -35,7 +43,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
 	set navmode to "surface".
     
-    set debugStat:Text to "Waiting for dynamic pressure".
+    ReadoutGUI_SetText(Readouts:status, "Wait Q", ReadoutGUI_ColourNormal).
     
     wait until Ship:Q > 1e-6.
    
@@ -56,7 +64,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
     if Ship:ModulesNamed("ProceduralFairingDecoupler"):Empty
     {
-        set debugStat:Text to "Aligning retrograde".
+        ReadoutGUI_SetText(Readouts:status, "Align", ReadoutGUI_ColourNormal).
         
         for rc in Ship:ModulesNamed("RealChuteModule")
         {
@@ -79,7 +87,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     }
     else
     {
-        set debugStat:Text to "Waiting for aeroshell deployment".
+        ReadoutGUI_SetText(Readouts:status, "Wait Shell", ReadoutGUI_ColourNormal).
 
         wait until Ship:Airspeed <= 1000.
         
@@ -90,7 +98,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         }
     }
 
-    set debugStat:Text to "Waiting for chute altitude".
+    ReadoutGUI_SetText(Readouts:status, "Wait Chute", ReadoutGUI_ColourNormal).
 
     wait until Ship:Altitude - Ship:GeoPosition:TerrainHeight < 15000.
 
@@ -112,6 +120,8 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     if not chutesArmed
         chutes on.
 
+    ReadoutGUI_SetText(Readouts:status, "Stabilising", ReadoutGUI_ColourNormal).
+
     local curSpeed is Ship:Velocity:Surface:Mag.
     local curTime is Time:Seconds.
     local curAccel is -10.
@@ -123,35 +133,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         set curSpeed to Ship:Velocity:Surface:Mag.
         set curTime to Time:Seconds.
 
-        set debugStat:Text to "Acceleration: " + round(curAccel, 2) + " m/s²".
-    }
-        
-    // Drop all payload bases and heatshields
-    for hs in Ship:ModulesNamed("ModuleDecouple")
-    {
-        if hs:HasEvent("decouple")
-            hs:DoEvent("decouple").
-        else if hs:HasEvent("decouple top node")
-            hs:DoEvent("decouple top node").
-        else if hs:HasEvent("decoupler staging")
-            hs:DoEvent("decoupler staging").
-    }
-    for hs in Ship:ModulesNamed("ModuleAnchoredDecoupler")
-    {
-        if hs:HasEvent("decouple")
-            hs:DoEvent("decouple").
-        else if hs:HasEvent("decouple top node")
-            hs:DoEvent("decouple top node").
-        else if hs:HasEvent("decoupler staging")
-            hs:DoEvent("decoupler staging").
-    }
-    wait 0.
-    for hs in Ship:ModulesNamed("ModuleDecouple")
-    {
-        if hs:HasEvent("jettison heat shield")
-        {
-            hs:DoEvent("jettison heat shield").
-        }
+        ReadoutGUI_SetText(Readouts:acgx, round(curAccel, 3), ReadoutGUI_ColourNormal).
     }
     
     until stage:number = 0
@@ -166,5 +148,5 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     local DescentEngines is list().
 	list engines in DescentEngines.
 
-    runpath("/lander/finaldescent", DescentEngines, debugStat, 0).
+    runpath("/lander/finaldescent", DescentEngines, Readouts, 0).
 }
