@@ -67,7 +67,7 @@ local launchDelay is max(10, engineStart + 2).
 
 local launchStage is Stage:Number.
 local mainEngines is LAS_GetStageEngines(launchStage).
-if mainEngines:Empty
+until not mainEngines:Empty
 {
     set launchStage to launchStage - 1.
     set mainEngines to LAS_GetStageEngines(launchStage).
@@ -458,7 +458,7 @@ if LaunchAngleFunc:IsType("UserDelegate")
                 set t to t + 60.
         }
 
-		set kUniverse:TimeWarp:Warp to round(min(log10(max(1, waitTime - 15)), 4), 0).
+		set kUniverse:TimeWarp:Warp to round(min(log10(max(1, waitTime - 15)), 3), 0).
 
         wait t.
 
@@ -578,6 +578,8 @@ for arm in armModules
 local armRetractTime is max(8, engineStart + 0.5).
 wait until liftoffTime - Time:Seconds <= armRetractTime.
 
+local armParts is uniqueset().
+
 for arm in armModules
 {
     if arm:HasEvent("Retract Crew Arm")
@@ -590,12 +592,17 @@ for arm in armModules
         arm:DoEvent("Retract arm").
         set infoText to "Latch back crew arm".
     }
+    armParts:Add(arm:part).
 }
 
 // Engine start sequence for liquid fuels
 if engineStart > 0.5 and not mainEnginesLF:empty()
 {
     wait until liftoffTime - Time:Seconds <= engineStart.
+
+    // Stage swing arms etc.
+    if stage:number > launchStage + 1 and stage:ready
+        stage.
 
 	kUniverse:TimeWarp:CancelWarp().
     print TMinusString + " Ignition sequence start.".
@@ -667,47 +674,7 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
 }
 
 // Wait for countdown
-until countdown = 0 or not padFuelling
-{
-    for lc in Ship:ModulesNamed("LaunchClamp")
-    {
-        local tMinus is liftoffTime - Time:Seconds.
-        if LAS_GetPartParam(lc:part, "t=", -1) >= tMinus and lc:HasEvent("Release Clamp")
-        {
-            // Do this before releasing the clamp.
-            if lc:part:HasModule("ModuleAnimateGeneric")
-            {
-                for arm in Ship:ModulesNamed("ModuleAnimateGeneric")
-                {
-                    if arm:part = lc:part
-                    {
-                        if arm:HasEvent("Retract Arm")
-                        {
-                            arm:DoEvent("Retract Arm").
-                            print "Retract Arm".
-                            break.
-                        }
-                        if arm:HasEvent("Retract Arm Left") and lc:part:tag:contains("left")
-                        {
-                            arm:DoEvent("Retract Arm Left").
-                            print "Retract Arm Left".
-                            break.
-                        }
-                        if arm:HasEvent("Retract Arm Right") and not lc:part:tag:contains("left")
-                        {
-                            arm:DoEvent("Retract Arm Right").
-                            print "Retract Arm Right".
-                            break.
-                        }
-                    }
-                }
-            }
-            lc:DoEvent("Release Clamp").
-        }
-    }
-
-    wait 0.
-}
+wait until countdown = 0 or not padFuelling.
 
 // Check for main engine issues just before liftoff.
 local engCount is 1.

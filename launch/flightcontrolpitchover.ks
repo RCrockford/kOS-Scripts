@@ -28,7 +28,7 @@ local maxPitch is 90.
 local lock velocityPitch to max(min(maxPitch, 90 - vang(Ship:up:vector, Ship:Velocity:Surface)), minPitch).
 local lock shipPitch to 90 - vang(Ship:up:vector, Ship:facing:forevector).
 
-if minPitch > 80
+if minPitch > 80 or not Ship:Crew:Empty
     set launchParams:Loft to true.
 
 // Flight phases
@@ -45,7 +45,7 @@ local c_PhaseSuborbCoast    is 8.
 local flightPhase is c_PhaseLiftoff.
 local flightGuidance is V(0,0,0).
 local guidanceThreshold is 0.995.
-local guidanceMinV is choose 100 if defined LAS_TargetAp and LAS_TargetAp < 100 else 900.     // Minimum tangental speed
+local guidanceMinV is choose 100 if defined LAS_TargetAp and LAS_TargetAp < 100 else LAS_GuidanceTargetVTheta() * 0.1.     // Minimum tangental speed
 local lock nextStageIsGuided to LAS_StageIsGuided(Stage:Number-1).
 local compassGuidance is true.
 
@@ -58,14 +58,11 @@ local pitchStatus is readoutGui:AddReadout("Pitch").
 local QReadout is readoutGui:AddReadout("Q").
 local fairingStatus is readoutGui:AddReadout("Fairings").
 local QαReadout is readoutGui:AddReadout("Qα").
-local equipmentStatus is readoutGui:AddReadout("Equipment").
-local frReadout is readoutGui:AddReadout("fr").
 local engineStatus is readoutGui:AddReadout("Engines").
 local DReadout is readoutGui:AddReadout("Downrange").
 
 ReadoutGUI_SetText(flightStatus, "Liftoff", ReadoutGUI_ColourNormal).
 ReadoutGUI_SetText(fairingStatus, "locked", "#ff4000").
-ReadoutGUI_SetText(equipmentStatus, "locked", "#ff4000").
 
 readoutGui:Show().
 
@@ -110,7 +107,6 @@ local function checkAscent
 			set navmode to "surface".
 	
         ReadoutGui_SetText(flightStatus, "Downrange Flight", ReadoutGUI_ColourNormal).
-        ReadoutGui_SetText(frReadout, "", ReadoutGUI_ColourNormal).
         ReadoutGui_SetText(miscStatus, "vT = " + max(launchParams:minSpeed, 0), ReadoutGUI_ColourNormal).
         
         if Ship:Altitude > 80000 and launchParams:minSpeed >= 1000
@@ -129,9 +125,7 @@ local function checkAscent
 		LAS_GuidanceUpdate(guidanceStage).
         
         local guidance is LAS_GetGuidanceAim(guidanceStage).
-		
         local fr is vdot(guidance, Ship:Up:Vector).
-        ReadoutGui_SetText(frReadout, round(90 - arccos(fr), 2) + "°", ReadoutGUI_ColourNormal).
 		
         if guidance:SqrMagnitude > 0.9
         {
@@ -247,7 +241,7 @@ local function checkAscent
                 ReadoutGui_SetText(miscStatus, round(pitchOverAngle, 1) + "° / " + round(launchAzimuth, 1) + "°", ReadoutGUI_ColourNormal).
                 print METString + " Pitch and roll program: " + round(pitchOverAngle, 2) + "° heading " + round(launchAzimuth, 2) + "°".
                 set flightPhase to c_PhasePitchOver.
-                local steerAngle is 90 - pitchOverAngle.
+                local steerAngle is 89.5 - pitchOverAngle.
                 if vang(Ship:SrfPrograde:ForeVector, LAS_ShipPos():Normalized) > pitchOverAngle
                     set steerAngle to 90 - pitchOverAngle / 2.
 				lock Steering to Heading(launchAzimuth, steerAngle, 0).
@@ -361,7 +355,7 @@ local function checkAscent
 					else
 					{
 						until guidanceMinV > vTheta
-							set guidanceMinV to guidanceMinV + 150.
+							set guidanceMinV to guidanceMinV + LAS_GuidanceTargetVTheta() * 0.025.
 					}
 				}
 			}
@@ -369,14 +363,15 @@ local function checkAscent
     }
     
     local pitchColour is "#00ff00".
+    local curPitch is 90 - vang(Ship:up:vector, Ship:Velocity:Surface).
     if flightPhase < c_PhaseGuidanceActive
     {
-        if 90 - vang(Ship:up:vector, Ship:Velocity:Surface) > maxPitch
+        if curPitch > maxPitch
             set pitchColour to "#fff000".
-        else if 90 - vang(Ship:up:vector, Ship:Velocity:Surface) < minPitch
+        else if curPitch < minPitch
             set pitchColour to "#ffa000".
     }
-    ReadoutGui_SetText(pitchStatus, round(minPitch, 2) + " < " + round(90 - vang(Ship:up:vector, Ship:Velocity:Surface), 2) + " < " + round(maxPitch, 2), pitchColour).
+    ReadoutGui_SetText(pitchStatus, round(minPitch, 2) + " < " + round(curPitch, 2) + " < " + round(maxPitch, 2), pitchColour).
     
     if cutoff
     {
@@ -510,7 +505,7 @@ until false
     if flightPhase < c_PhaseSECO
         checkAscent().
     if maxQSet
-        LAS_CheckPayload(fairingStatus, equipmentStatus).
+        LAS_CheckFairings(fairingStatus).
     if flightPhase = c_PhaseSECO
         break.
 
@@ -696,7 +691,7 @@ steeringmanager:resettodefault().
 if defined LAS_TargetSMA
 	print METString + " Final latitude: " + round(Ship:Latitude, 2).
     
-LAS_EnableAllEC().
+LAS_DeployEquipment().
 
 ClearGUIs().
 

@@ -44,7 +44,7 @@ local tStart is 0.   // Time since last guidance update
 
 local orbitalEnergy is 0.   // Current orbital energy
 
-local readoutGui is ReadoutGUI_Create(-560, -380).
+local readoutGui is ReadoutGUI_Create(-560, -420).
 readoutGui:SetColumnCount(60, 4).
 
 local statusReadout is readoutGui:AddReadout("Status").
@@ -217,6 +217,7 @@ local function GetYawSteer
 local function UpdateGuidance
 {
 	parameter startStage.
+    parameter debugSpam is false.
 	
     // Clamp s incase we run off the end (just keep running final stage guidance).
     local s is max(startStage, GuidanceLastStage).
@@ -243,6 +244,8 @@ local function UpdateGuidance
         if kUniverse:TimeWarp:Rate > 1
 			kUniverse:TimeWarp:CancelWarp().
 		set stageChange to true.
+        if debugSpam
+            print "GuidanceUpdate: Abort due to stageT[s] < 10".
         return.
     }
 
@@ -287,6 +290,8 @@ local function UpdateGuidance
             ReadoutGUI_SetText(ispReadout, round(currentThrust / (max(currentMassFlow, 1e-6) * Constant:g0), 1) + " s", ReadoutGUI_ColourNormal).
             ReadoutGUI_SetText(vθReadout, round(omega * r, 0) + " / " + round(omegaT * rT, 0), ReadoutGUI_ColourNormal).
 			set guidanceValid to false.
+            if debugSpam
+                print "GuidanceUpdate: Abort due to no thrust".
 			return.
 		}
 		
@@ -315,6 +320,8 @@ local function UpdateGuidance
 	if (startStage = Stage:Number and s > GuidanceLastStage) or hT <= 0
 	{
 		set stageT[s] to LAS_GetStageBurnTime() + deltaT.
+        if debugSpam
+            print "GuidanceUpdate: set stage T=" + round(stageT[s], 1).
 	}
 
 	if hT <= 0
@@ -369,6 +376,7 @@ local function UpdateGuidance
                 set yawK to (d1*d1*b0 + 2*d1*d2*b1 + d2*d2*b2).
 
 			set fh to hdot * d1 / yawK.
+            set fh to max(-0.1, min(fh, 0.1)).
 			set fdh to fh * d2 / d1.
             
             if s = startStage
@@ -376,6 +384,9 @@ local function UpdateGuidance
                 set newYawK to newYawK + (d1*d1*b0 + 2*d1*d2*b1 + d2*d2*b2).
             }
         }
+        
+        if debugSpam
+            print "GuidanceUpdate: fr=" + round(fr, 4) + " frS=" + round(frS, 4) + " fdr=" + round(fdr, 6) + " fh=" + round(fh, 4) + " fdh=" + round(fdh, 6).
 
         set ftheta to 1 - ((fr * fr) - (fh * fh)) * 0.5.
         set fdtheta to -(fr * fdr + fh * fdh).
@@ -384,6 +395,9 @@ local function UpdateGuidance
 
     until s < lastStage
     {
+        if debugSpam
+            print "GuidanceUpdate: updating stage: " + s + " (last=" + GuidanceLastStage + ")".
+
         // determine next stage (skip anything with no engines)
         local nextStage is s-1.
         until stageExhaustV[nextStage] > 0
@@ -495,6 +509,9 @@ local function UpdateGuidance
 
     if s = GuidanceLastStage
     {
+        if debugSpam
+            print "GuidanceUpdate: updating last stage: " + s + " curStage=" + stage:number.
+
         set stageT[s] to stageT[s] - deltaT.
         local T is max(min(stageT[s], tau - 1), 1).
 		local accelT is accel / (1 - T / tau).
@@ -507,9 +524,15 @@ local function UpdateGuidance
         local TFull is stageTFull[s].
         if s = Stage:Number
             set TFull to LAS_GetStageBurnTime().
+            
+        if debugSpam
+            print "GuidanceUpdate: T=" + round(T, 2) + " dT=" + round(deltaT, 2) + " TFull=" + round(TFull, 2) + " b0=" + round(b0, 2) + " b1=" + round(b1, 1) + " b2=" + round(b2, 2).
 
         if hT <= 0
 		{
+            if debugSpam
+                print "GuidanceUpdate: suborb update".
+
 			// Suborbital guidance
 			local accelS is accel / (1 - T / tau).
 
@@ -552,6 +575,9 @@ local function UpdateGuidance
 		}
         else if not stageGuided[s]
         {
+            if debugSpam
+                print "GuidanceUpdate: unguided update".
+
             // Final stage spin kick
 			set stageA[s] to stageA[s] + stageB[s] * deltaT.
 
@@ -600,12 +626,17 @@ local function UpdateGuidance
         }
         else
 		{
+            if debugSpam
+                print "GuidanceUpdate: guided update".
+
 			// Guidance has diverged, try resetting.
-			if abs(stageA[s]) > 3
+			if abs(stageA[s]) > 5
 			{
 				set stageA[s] to 0.
 				set stageB[s] to 0.
                 set stageT[s] to TFull.
+                if debugSpam
+                    print "GuidanceUpdate: auto reset due to divergence".
 			}
 
 			// Final stage guidance
@@ -616,17 +647,26 @@ local function UpdateGuidance
 			// Calculate required delta V
 			local dh is hT - h.
 			local meanRadius is (r + rT) * 0.5.
+            
+            if debugSpam
+                print "GuidanceUpdate: ftheta=" + round(ftheta, 4) + " fdtheta=" + fdtheta + " fddtheta=" + fddtheta + " tau=" + round(tau, 1) + " T=" + round(T, 2).
 
 			local deltaV is dh / meanRadius.
 			set deltaV to deltaV + exhaustV * T * (fdtheta + fddtheta * tau).
 			set deltaV to deltaV + fddtheta * exhaustV * (T*T) * 0.5.
 			set deltaV to deltaV / (ftheta + (fdtheta + fddtheta * tau) * tau).
 
+            if debugSpam
+                print "GuidanceUpdate: dv1=" + round(dh / meanRadius, 1) + " dv2=" + round(exhaustV * T * (fdtheta + fddtheta * tau), 1) + " dv3=" + round(fddtheta * exhaustV * (T*T) * 0.5, 1) + " dv4=" + round((ftheta + (fdtheta + fddtheta * tau) * tau), 1).
+            
 			// Calculate new estimate for T
 			if deltaV > 0
 			{
 				set T to tau * (1 - constant:e ^ (-deltaV / exhaustV)).
 				set stageT[s] to (stageT[s] + T) * 0.5.
+
+                if debugSpam
+                    print "GuidanceUpdate: deltaV=" + round(deltaV, 1) + " exhaustV=" + round(exhaustV, 1) + " T=" + round(T, 2).
 			}
 
 			// Update A, B with new T estimate
@@ -634,6 +674,9 @@ local function UpdateGuidance
 			set b1 to b0 * tau - exhaustV * T.
 			local c0 is b0 * T - b1.
 			local c1 is c0 * tau - exhaustV * (T*T) * 0.5.
+            
+            if debugSpam
+                print "GuidanceUpdate: b0=" + round(b0, 1) + " b1=" + round(b1, 1) + " c0=" + round(c0, 1) + " c1=" + round(c1, 1).
 
 			local Mx is rvT - rv.
 			local My is rT - r - rv * T.
@@ -646,12 +689,17 @@ local function UpdateGuidance
 				set stageA[s] to (stageA[s] + newA) * 0.5.
 				set stageB[s] to (stageB[s] + newB) * 0.5.
 			}
+            
+            if debugSpam
+                print "GuidanceUpdate: A=" + round(stageA[s], 2) + " B=" + round(stageB[s], 2) + " T=" + round(stageT[s], 2).
 
-			if abs(stageA[s]) > 3
+			if abs(stageA[s]) > 5
 			{
 				set stageA[s] to 0.
 				set stageB[s] to 0.
                 set stageT[s] to TFull.
+                if debugSpam
+                    print "GuidanceUpdate: auto reset due to divergence".
 			}
 			else if startStage > GuidanceLastStage
 			{
@@ -829,17 +877,17 @@ global function LAS_StartGuidance
 
 		// Update estimate for T for active stage
 		set stageT[Stage:Number] to LAS_GetStageBurnTime().
-
+        
         UpdateGuidance(startStage).
 		
 		if abs(stageA[ConvergeStage]) > 50 or stageT[ConvergeStage] <= 0
 			break.
 
-        if abs(stageA[ConvergeStage] - A) < 0.01 and abs(stageA[ConvergeStage]) < 2.5
+        if abs(stageA[ConvergeStage] - A) < 0.01 and abs(stageA[ConvergeStage]) < 2.5 and (stageA[ConvergeStage] <> 0 or stageB[ConvergeStage] <> 0)
             set ConvergeStage to ConvergeStage - 1.
 
         set count to count + 1.
-        if count > 50
+        if count > 40
             break.
     }
 

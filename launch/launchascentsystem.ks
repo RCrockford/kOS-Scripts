@@ -85,7 +85,11 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
         
 		if defined LAS_TargetSMA or LAS_TargetAp > 100
         {
-			runpath("0:/launch/orbitalguidance").
+            local launchStage is Stage:Number.
+            until launchStage < 0 or LAS_GetStageEngines(launchStage):Length > 0
+                set launchStage to launchStage - 1.
+        
+			runpath("0:/launch/orbitalguidance", launchStage).
             if LAS_GuidanceTargetVTheta() > 0
             {
                 if LAS_GuidanceDeltaV() < LAS_GuidanceTargetVTheta() + 1000
@@ -336,8 +340,11 @@ if Ship:Status = "PreLaunch" or core:tag:contains("prelaunchfix")
             launchParams:Add("minSpeed", lanText:Text:ToNumber(0)).
 	
         // Clear tag and boot file So they don't affect ships in flight / orbit.
-        Set Core:Tag to "".
-        Set Core:BootFileName to "".
+        if core:tag:contains("lescover")
+            set Core:Tag to "lescover".
+        else
+            set Core:Tag to "".
+        set Core:BootFileName to "".
     
         // Trigger flight control
         if totalControlled <= 0

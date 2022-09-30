@@ -19,7 +19,6 @@ local engineSpooling is true.
 local deployEngines is false.
 
 local PL_FairingsJettisoned is false.
-local PL_PanelsExtended is false.
 
 local CrossfeedTanks is lexicon().
 local StageTime is 0.
@@ -73,8 +72,8 @@ local function StageFlameout
 			if eng:AllowShutdown
 				set hasThrust to engineSpooling or eng:Thrust >= eng:PossibleThrust * 0.1.
 			else
-			// Solid fuel are considered burned out when TWR is below 1.
-				set hasThrust to eng:Thrust >= (eng:Mass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude).
+			// Solid fuel are considered burned out when TWR is below 0.95.
+				set hasThrust to eng:Thrust >= 0.95 * (eng:Mass * Ship:Body:Mu / LAS_ShipPos():SqrMagnitude).
 			if not eng:Flameout and hasThrust
 			{
 				set allFlamedOut to false.
@@ -754,16 +753,15 @@ global function LAS_EnableAllEC
     }
 }
 
-global function LAS_CheckPayload
+global function LAS_CheckFairings
 {
     parameter fairingStatus is 0.
-    parameter equipmentStatus is 0.
     
     local QPa is Ship:Q * Constant:AtmTokPa * 1000.
 
     if not PL_FairingsJettisoned
     {
-        if QPa <= 100
+        if QPa <= 50
         {
             // Jettison fairings
 			local jettisoned is false.
@@ -790,61 +788,49 @@ global function LAS_CheckPayload
         else
         {
             if fairingStatus:IsType("Label")
-                ReadoutGUI_SetText(fairingStatus, "attached (Q > 100 Pa)", "#fff000").
+                ReadoutGUI_SetText(fairingStatus, "attached (Q > 50 Pa)", "#fff000").
         }
     }
-    else if not PL_PanelsExtended
+}
+
+global function LAS_DeployEquipment
+{
+    for panel in Ship:ModulesNamed("ModuleROSolar")
     {
-        if QPa <= 1
+        if panel:HasAction("extend solar panel") and not panel:part:tag:contains("noextend")
         {
-            for panel in Ship:ModulesNamed("ModuleROSolar")
-            {
-                if panel:HasAction("extend solar panel") and not panel:part:tag:contains("noextend")
-                {
-                    panel:DoAction("extend solar panel", true).
-                }
-            }
-            for panel in Ship:ModulesNamed("ModuleDeployableSolarPanel")
-            {
-                if panel:HasAction("extend solar panel") and not panel:part:tag:contains("noextend")
-                {
-                    panel:DoAction("extend solar panel", true).
-                }
-            }
-
-            for antenna in Ship:ModulesNamed("ModuleDeployableAntenna")
-            {
-                if antenna:HasEvent("extend antenna") and not antenna:part:tag:contains("noextend")
-                {
-                    antenna:DoEvent("extend antenna").
-                }
-            }
-
-            for boom in Ship:ModulesNamed("ModuleAnimateGeneric")
-            {
-                if boom:HasEvent("extend boom") and not boom:part:tag:contains("noextend")
-                {
-                    boom:DoEvent("extend boom").
-                }
-            }
-
-            for exp in Ship:ModulesNamed("Experiment")
-            {
-                if exp:HasAction("start: magnetic scan") and not exp:part:tag:contains("noextend")
-                {
-                    exp:DoAction("start: magnetic scan", true).
-                }
-            }
-
-            if equipmentStatus:IsType("Label")
-                ReadoutGUI_SetText(equipmentStatus, "extended", "#00ff00").
-
-            set PL_PanelsExtended to true.
+            panel:DoAction("extend solar panel", true).
         }
-        else
+    }
+    for panel in Ship:ModulesNamed("ModuleDeployableSolarPanel")
+    {
+        if panel:HasAction("extend solar panel") and not panel:part:tag:contains("noextend")
         {
-            if equipmentStatus:IsType("Label")
-                ReadoutGUI_SetText(equipmentStatus, "retracted (Q > 1 Pa)", "#fff000").
+            panel:DoAction("extend solar panel", true).
+        }
+    }
+
+    for antenna in Ship:ModulesNamed("ModuleDeployableAntenna")
+    {
+        if antenna:HasEvent("extend antenna") and not antenna:part:tag:contains("noextend")
+        {
+            antenna:DoEvent("extend antenna").
+        }
+    }
+
+    for boom in Ship:ModulesNamed("ModuleAnimateGeneric")
+    {
+        if boom:HasEvent("extend boom") and not boom:part:tag:contains("noextend")
+        {
+            boom:DoEvent("extend boom").
+        }
+    }
+
+    for exp in Ship:ModulesNamed("Experiment")
+    {
+        if exp:HasAction("start: magnetic scan") and not exp:part:tag:contains("noextend")
+        {
+            exp:DoAction("start: magnetic scan", true).
         }
     }
 }
