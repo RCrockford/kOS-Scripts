@@ -19,7 +19,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     print "Martian descent system online.".
 
     runoncepath("/mgmt/readoutgui").
-    local readoutGui is ReadoutGUI_Create().
+    local readoutGui is RGUI_Create().
     readoutGui:SetColumnCount(80, 3).
 
     local Readouts is lexicon().
@@ -43,7 +43,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
 	set navmode to "surface".
     
-    ReadoutGUI_SetText(Readouts:status, "Wait Q", ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:status, "Wait Q").
     
     wait until Ship:Q > 1e-6.
    
@@ -64,14 +64,13 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
     if Ship:ModulesNamed("ProceduralFairingDecoupler"):Empty
     {
-        ReadoutGUI_SetText(Readouts:status, "Align", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:status, "Align").
         
         for rc in Ship:ModulesNamed("RealChuteModule")
         {
             if rc:HasEvent("disarm chute")
             {
                 rc:DoEvent("disarm chute").
-                set chutesArmed to true.
             }
         }
 
@@ -87,9 +86,13 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     }
     else
     {
-        ReadoutGUI_SetText(Readouts:status, "Wait Shell", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:status, "Wait Shell").
 
-        wait until Ship:Airspeed <= 1000.
+        until Ship:Airspeed <= 1000
+        {
+            RGUI_SetText(Readouts:fr, round(Ship:Airspeed, 0) + " > 1000").
+            wait 0.05.
+        }
         
         for fairing in Ship:ModulesNamed("ProceduralFairingDecoupler")
         {
@@ -98,10 +101,15 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         }
     }
 
-    ReadoutGUI_SetText(Readouts:status, "Wait Chute", ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:status, "Wait Chute").
+    RGUI_SetText(Readouts:fr, "").
 
-    wait until Ship:Altitude - Ship:GeoPosition:TerrainHeight < 15000.
-
+    until Ship:Altitude - Ship:GeoPosition:TerrainHeight < 15000.
+    {
+        RGUI_SetText(Readouts:height, round(Ship:Altitude - Ship:GeoPosition:TerrainHeight, 0) + " m").
+        wait 0.05.
+    }
+    
     local chutesArmed is false.
     for rc in Ship:ModulesNamed("RealChuteModule")
     {
@@ -120,7 +128,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     if not chutesArmed
         chutes on.
 
-    ReadoutGUI_SetText(Readouts:status, "Stabilising", ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:status, "Stabilising").
 
     local curSpeed is Ship:Velocity:Surface:Mag.
     local curTime is Time:Seconds.
@@ -133,7 +141,8 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         set curSpeed to Ship:Velocity:Surface:Mag.
         set curTime to Time:Seconds.
 
-        ReadoutGUI_SetText(Readouts:acgx, round(curAccel, 3), ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:acgx, round(curAccel, 3)).
+        RGUI_SetText(Readouts:height, round(Ship:Altitude - Ship:GeoPosition:TerrainHeight, 0) + " m").
     }
     
     until stage:number = 0
@@ -143,6 +152,8 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     }
     
     wait 0.1.
+    
+    RGUI_SetText(Readouts:status, "Landing").
     
     rcs on.
     local DescentEngines is list().

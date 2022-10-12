@@ -9,11 +9,12 @@ local prevVelocity is V(0,0,0).
 local prevUpdateTime is 0.
 local pitchLimit is 1.
 
-local AoAPid is pidloop(0.04, 0, 0.08, -5, 5).
+local AoAPid is pidloop(0.04, 0, 0.08, -8, 8).
 local prevAoAUpdateTime is 0.
+local ΔAoA is 0.
 local targetAoA is 0.
 
-local GLimitPID is pidloop(0.022, 0, 0.0018, -0.2, 0.02).
+local GLimitPID is pidloop(0.022, 0, 0.0018, -0.2, 0.016).
 
 local rollPid is PIDloop(0.005, 0.00005, 0.001, -1, 1).
 local maxBankPid is pidloop(0.02, 0, 0.05, -2, 1).
@@ -22,6 +23,7 @@ local bankPid is PIDloop(1.25, 0.0, 1, -60, 60).
 
 local groundYawPid is PIDloop(0.5, 0.05, 0.2, -1, 1).
 local yawPid is PIDloop(0.0025, 0, 0.0025, -1, 1).
+local yawLocked is false.
 
 local wheelPid is PIDLoop(0.15, 0, 0.1, -1, 1).
 
@@ -184,7 +186,7 @@ global function SteeringControl
     local climbRate is ctrlState:ClimbRate.
     if ctrlState:ClimbRate <= -1e6 and not guiButtons["pt"]:Pressed and flightState = fs_Flight and guiButtons["fl"]:Pressed
     {
-        set climbRatePid:kP to 100 / Ship:Airspeed.
+        set climbRatePid:kP to 600 / (Ship:Airspeed^1.4).
         set climbRatePid:kD to climbRatePid:kP * 1.6.
         set climbRatePid:SetPoint to targetflightLevel * 100.
         set ctrlState:ClimbRate to climbRatePid:Update(updateTime, Ship:Altitude).
@@ -260,7 +262,9 @@ global function SteeringControl
         if prevAoAUpdateTime < updateTime - AoARate * kUniverse:TimeWarp:Rate
         {
             set AoAPid:SetPoint to ctrlState:ClimbRate.
-            local ΔAoA is AoAPid:Update(updateTime, Ship:VerticalSpeed).
+            local NewΔAoA is AoAPid:Update(updateTime, Ship:VerticalSpeed).
+            local AoAUpdateFactor is max(0.05, min((180 / Ship:AirSpeed)^3, 1)).
+            set ΔAoA to ΔAoA * (1-AoAUpdateFactor) + NewΔAoA * AoAUpdateFactor.
             set targetAoA to ShipPitch + ΔAoA.
             print "ΔAoA: " + round(ΔAoA, 4) + "          " at (0,2).
             set prevAoAUpdateTime to updateTime.
@@ -282,9 +286,7 @@ global function SteeringControl
         if flightState >= fs_LandFinalApproach
         {
             // Yaw to counter crosswind for straighter landings
-            set yawPid:SetPoint to ctrlState:Heading.
-            local Δyaw is choose yawPID:Update(updateTime, shipHeading) * ctrlDamp * 0.2 if ctrlState:Heading >= 0 else 0.
-            set newYaw to newYaw + Δyaw.
+            set yawPid:SetPoint to choose ctrlState:Heading if ctrlState:Heading >= 0 else shipHeading.
             
             if Ship:VerticalSpeed < ctrlState:ClimbRate * 3
                 set Δpitch to Δpitch + (ctrlState:ClimbRate * 3 - Ship:VerticalSpeed) * 0.1.
@@ -296,7 +298,7 @@ global function SteeringControl
             if ctrlState:Heading < 0 or (angle_off(ctrlState:Heading, shipHeading) < 2 and abs(shipRoll()) < 4)
             {
                 set yawPid:SetPoint to velocityHeading.
-                local Δyaw is yawPID:Update(updateTime, shipHeading) * 0.08.
+                local Δyaw is yawPID:Update(updateTime, shipHeading) * 0.1.
                 set newYaw to newYaw + Δyaw.
             }
             else
@@ -320,7 +322,25 @@ global function SteeringControl
                 set pitchLimit to min(max(-1, pitchLimit), 1).
             }
         }
-        set ship:control:yaw to newYaw.
+        
+        if Ship:Airspeed > 900 or flightState >= fs_LandFinalApproach
+        {
+            if not yawLocked
+            {
+                lock steering to Heading(yawPid:SetPoint, pitchPid:SetPoint, rollPid:SetPoint).
+                set yawLocked to true.
+            }
+            set ship:control:yaw to 0.
+        }
+        else
+        {
+            if yawLocked
+            {
+                unlock steering.
+                set yawLocked to false.
+            }
+            set ship:control:yaw to newYaw.
+        }
 
         if flightState = fs_Takeoff
             set ship:control:pitch to max(ship:control:pitch - 0.01, min(Δpitch, ship:control:pitch + 0.01)).
@@ -399,13 +419,13 @@ global function SteeringControl
         bankPid:Reset().
     }
     
-    local altBoost is max((Ship:Altitude / 22000)^3, 1).
+    local rollBoost is 1.
     if flightState = fs_LandFinalApproach
-        set altBoost to altBoost * 2.
+        set rollBoost to 2.
 
-    set rollPid:kP to PIDSettings:RollKp * ctrlDamp * altBoost.
-    set rollPid:kI to PIDSettings:RollKi * ctrlDamp / kUniverse:TimeWarp:Rate.
-    set rollPid:kD to PIDSettings:RollKd * ctrlDamp * altBoost.
+    set rollPid:kP to PIDSettings:RollKp * rollBoost.
+    set rollPid:kI to PIDSettings:RollKi / kUniverse:TimeWarp:Rate.
+    set rollPid:kD to PIDSettings:RollKd * rollBoost.
     
     set rollPid:SetPoint to reqBank.
     set ship:control:roll to RollTuning(rollPid:Update(time:seconds, shipRoll())).
@@ -479,6 +499,12 @@ global function GroundControl
 
     if Ship:Status = "Landed"
     {
+        if yawLocked
+        {
+            unlock steering.
+            set yawLocked to false.
+        }
+        
         local wheelError is angle_off(groundHeading, shipHeading).
 
         set wheelPid:kP to 0.04 / max(0.5, Ship:GroundSpeed / 18).

@@ -198,7 +198,7 @@ if CheckControl() and massFlow > 0
 		burnParams:Add("dvz", dV:Z).
 	}
 
-	local fileList is list("flight/executeburn.ks", "fcfuncs.ks", "flight/tunesteering.ks").
+	local fileList is list("flight/executeburn.ks", "fcfuncs.ks", "flight/tunesteering.ks", "mgmt/readoutgui.ks").
 	if burnParams:eng > 0
     {
 		fileList:add("flight/enginemgmt.ks").

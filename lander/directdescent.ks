@@ -146,7 +146,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
         set manualTarget to Target.
 
     runoncepath("/mgmt/readoutgui").
-    local readoutGui is ReadoutGUI_Create().
+    local readoutGui is RGUI_Create().
     readoutGui:SetColumnCount(80, 3).
 
     local Readouts is lexicon().
@@ -165,7 +165,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
     
 	readoutGui:Show().
 
-    ReadoutGUI_SetText(Readouts:status, "Ready", ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:status, "Ready", RGUI_ColourNormal).
 
 	if Stage:Number > landStage or Ship:Velocity:Surface:Mag > 300
 	{
@@ -254,14 +254,14 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 					lock steering to LookDirUp(steerVec, Facing:UpVector).
 					until vdot(Facing:Vector, steerVec) > 0.999
 					{
-                        ReadoutGUI_SetText(Readouts:fr, round( vdot(Facing:Vector, steerVec), 3), ReadoutGUI_ColourNormal).
+                        RGUI_SetText(Readouts:fr, round( vdot(Facing:Vector, steerVec), 3), RGUI_ColourNormal).
 						wait 0.
 					}
 					set Ship:Control:Fore to 1.
 					until abs(vdot(targetPos:Position:Normalized, nVec)) < 1e-4 or vdot(Facing:Vector, steerVec) < 0.995
 					{
-                        ReadoutGUI_SetText(Readouts:dist, round(vdot(targetPos:Position:Normalized, nVec), 6), ReadoutGUI_ColourNormal).
-                        ReadoutGUI_SetText(Readouts:fr, round( vdot(Facing:Vector, steerVec), 3), ReadoutGUI_ColourNormal).
+                        RGUI_SetText(Readouts:dist, round(vdot(targetPos:Position:Normalized, nVec), 6), RGUI_ColourNormal).
+                        RGUI_SetText(Readouts:fr, round( vdot(Facing:Vector, steerVec), 3), RGUI_ColourNormal).
 						wait 0.
 					}
 					unlock steering.
@@ -294,13 +294,13 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 				local geoPos is Body:GeoPositionOf(pFinal + Body:Position).
                 set alt to pFinal:Mag - Body:Radius - geoPos:TerrainHeight.
                 
-                ReadoutGUI_SetText(Readouts:height, round(alt * 0.001, 1) + " km", ReadoutGUI_ColourNormal).
-                ReadoutGUI_SetText(Readouts:acgx, round(targetAlt * 0.001, 1) + " km", ReadoutGUI_ColourNormal).
+                RGUI_SetText(Readouts:height, round(alt * 0.001, 1) + " km", RGUI_ColourNormal).
+                RGUI_SetText(Readouts:acgx, round(targetAlt * 0.001, 1) + " km", RGUI_ColourNormal).
                 if targetPos:IsType("GeoCoordinates")
                 {
                     local wpBearing is vang(vxcl(up:vector, TargetPos:Position), vxcl(up:vector, Ship:Velocity:Surface)).
-                    ReadoutGUI_SetText(Readouts:dist, round(targetPos:Distance * 0.001, 1) + " km", ReadoutGUI_ColourNormal).
-                    ReadoutGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", ReadoutGUI_ColourNormal).
+                    RGUI_SetText(Readouts:dist, round(targetPos:Distance * 0.001, 1) + " km", RGUI_ColourNormal).
+                    RGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", RGUI_ColourNormal).
                 }
 
                 local close is alt < targetAlt - Ship:VerticalSpeed * 8.
@@ -324,14 +324,14 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 		}
         
 		// 60 second alignment margin
-        ReadoutGUI_SetText(Readouts:status, "Wait Align", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:status, "Wait Align", RGUI_ColourNormal).
 		WaitBurn(choose 90 if spinBrake else 60, {parameter c.}).
 		set kUniverse:Timewarp:Rate to 1.
 		wait until kUniverse:Timewarp:Rate = 1.
 
 		// Full retrograde burn until vertical velocity is under 30 (or fuel exhaustion).
 		print "Aligning for burn".
-        ReadoutGUI_SetText(Readouts:status, "Aligning", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:status, "Aligning", RGUI_ColourNormal).
 
 		LAS_Avionics("activate").
 		rcs on.
@@ -348,12 +348,12 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
 
 		set navmode to "surface".
 
-        ReadoutGUI_SetText(Readouts:status, "Wait Ignition", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:status, "Wait Ignition", RGUI_ColourNormal).
         WaitBurn(EM_IgDelay(), RC@).
 
         print "Beginning braking burn".
-        ReadoutGUI_SetText(Readouts:status, "Braking", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:throt, "100%", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:status, "Braking", RGUI_ColourNormal).
+        RGUI_SetText(Readouts:throt, "100%", RGUI_ColourNormal).
         
         until DescentEngines[0]:Ignitions = 0 or EM_CheckThrust(0.1)
             EM_Ignition(0.1).
@@ -385,8 +385,8 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
             if targetPos:IsType("GeoCoordinates")
             {
                 local wpBearing is vang(vxcl(up:vector, TargetPos:Position), vxcl(up:vector, Ship:Velocity:Surface)).
-                ReadoutGUI_SetText(Readouts:dist, round(targetPos:Distance * 0.001, 1) + " km", ReadoutGUI_ColourNormal).
-                ReadoutGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", ReadoutGUI_ColourNormal).
+                RGUI_SetText(Readouts:dist, round(targetPos:Distance * 0.001, 1) + " km", RGUI_ColourNormal).
+                RGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", RGUI_ColourNormal).
                 if t < 100
                 {
                     local hDot is 1 - vdot(Up:Vector, Ship:Velocity:Surface:Normalized)^2.
@@ -405,15 +405,15 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Escap
             local acgx is -(targetSpeed^2 - Ship:VerticalSpeed^2) / (2 * h).
             local fr is (acgx + Body:Mu / Body:Position:SqrMagnitude) * Ship:Mass / burnThrust.
             
-            ReadoutGUI_SetText(Readouts:height, round(h) + " m", ReadoutGUI_ColourNormal).
-            ReadoutGUI_SetText(Readouts:acgx, round(acgx, 3), ReadoutGUI_ColourNormal).
-            ReadoutGUI_SetText(Readouts:fr, round(fr, 3), ReadoutGUI_ColourNormal).
+            RGUI_SetText(Readouts:height, round(h) + " m", RGUI_ColourNormal).
+            RGUI_SetText(Readouts:acgx, round(acgx, 3), RGUI_ColourNormal).
+            RGUI_SetText(Readouts:fr, round(fr, 3), RGUI_ColourNormal).
 
             local nomThrust is Ship:AvailableThrust.
-            ReadoutGUI_SetText(Readouts:thrust, round(100 * min(Ship:Thrust / max(Ship:AvailableThrust, 0.001), 2), 2) + "%", 
-                choose ReadoutGUI_ColourGood if Ship:Thrust > nomThrust * 0.75 else (choose ReadoutGUI_ColourNormal if Ship:Thrust > nomThrust * 0.25 else ReadoutGUI_ColourFault)).
+            RGUI_SetText(Readouts:thrust, round(100 * min(Ship:Thrust / max(Ship:AvailableThrust, 0.001), 2), 2) + "%", 
+                choose RGUI_ColourGood if Ship:Thrust > nomThrust * 0.75 else (choose RGUI_ColourNormal if Ship:Thrust > nomThrust * 0.25 else RGUI_ColourFault)).
 
-            ReadoutGUI_SetText(Readouts:eta, round(t, 2) + " s", ReadoutGUI_ColourNormal).
+            RGUI_SetText(Readouts:eta, round(t, 2) + " s", RGUI_ColourNormal).
 
             if spinBrake and vdot(Facing:Vector, SrfRetrograde:Vector) < 0.3
                 break.

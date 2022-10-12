@@ -30,12 +30,18 @@ if scriptpath():ToString[0] = "0"
 
 print "Aligning ship".
 
-local debugGui is GUI(350, 80).
-set debugGui:X to 100.
-set debugGui:Y to debugGui:Y + 300.
-local mainBox is debugGui:AddVBox().
-local debugStat is mainBox:AddLabel("Aligning ship").
-debugGui:Show().
+runoncepath("mgmt/readoutgui").
+local readoutGui is RGUI_Create().
+readoutGui:SetColumnCount(60, list(160)).
+
+local Readouts is lexicon().
+
+Readouts:Add("stat", readoutGui:AddReadout("Status")).
+
+Readouts:Add("ang", readoutGui:AddReadout("Δθ")).
+Readouts:Add("acc", readoutGui:AddReadout("ω")).
+
+readoutGui:Show().
 
 runoncepath("/fcfuncs").
 runpath("flight/tunesteering").
@@ -90,7 +96,7 @@ CheckHeading().
 
 rcs on.
 lock steering to LookDirUp(dV:Normalized, Facing:UpVector).
-local statText is "Aligning ship".
+RGUI_SetText(Readouts:stat, "Aligning").
 
 until burnETA <= ignitionTime
 {
@@ -99,8 +105,21 @@ until burnETA <= ignitionTime
 
     local err is vang(dV:Normalized, Facing:Vector).
     local omega is  vxcl(Facing:Vector, Ship:AngularVel):Mag * 180 / Constant:Pi.
-    set debugStat:Text to statText + ", <color=" + (choose "#ff8000" if err > 0.5 else "#00ff00") + ">Δθ: " + round(err, 2)
-        + "°</color> <color=" + (choose "#ff8000" if err / max(omega, 1e-4) > burnETA - ignitionTime else "#00ff00") + ">ω: " + round(omega, 3) + "°/s</color> roll: " + round(vdot(Facing:Vector, Ship:AngularVel), 6).
+    local col is "#00ff00".
+    if err > 0.5
+        set col to "#ff8000".
+    RGUI_SetText(Readouts:ang, round(err, 2) + "°", col).
+    if err > 0.5 and err / max(omega, 1e-4) < burnETA - ignitionTime
+        set col to "#00ff00".
+    RGUI_SetText(Readouts:acc, round(omega, 2) + "°/s", col).
+    
+    // Auto-unwarp
+    local wr is kUniverse:TimeWarp:Rate.
+    if wr > 1 and burnETA <= ignitionTime + 20
+        kUniverse:Timewarp:CancelWarp().
+
+    if wr = 1 and burnETA >= ignitionTime + 40 and err < 0.5 and omega < 1 / burnETA
+        set kUniverse:TimeWarp:Warp to 1.
 
     // Pre-ullage
     if ignitionTime > 0 and burnETA <= ignitionTime + 8
@@ -115,7 +134,7 @@ until burnETA <= ignitionTime
             if mainEng:FuelStability < 0.98  
                 set Ship:Control:Fore to 1.
         }
-        set statText to "Ullage".
+        RGUI_SetText(Readouts:stat, "Ullage").
     }
     wait 0.
 }
@@ -124,7 +143,7 @@ print "Starting burn T-" + round(ignitionTime, 2).
 
 // If we have engines, ignite them.
 if p:eng > 0
-    runpath("flight/executeburneng", p, debugStat, dV).
+    runpath("flight/executeburneng", p, readoutGui, dV).
 else
-    runpath("flight/executeburnrcs", p, debugStat).
+    runpath("flight/executeburnrcs", p, readoutGui).
 ClearGuis().

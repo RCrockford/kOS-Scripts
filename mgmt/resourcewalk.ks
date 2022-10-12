@@ -73,3 +73,37 @@ global function GetConnectedResources
     
     return ConnectedResourceWalk(eng, lexicon(), uniqueset(), eng).
 }
+
+
+local function ConnectedPartWalk
+{
+    parameter p.
+    parameter partList.
+    parameter seen.
+    parameter partType.
+
+    seen:Add(p).
+	
+	if p:IsType(partType)
+        partList:Add(p).
+	
+    if p:HasParent and not seen:contains(p:parent)
+    {
+        set partList to ConnectedPartWalk(p:parent, partList, seen, partType).
+    }
+    for c in p:children
+    {
+        if not seen:contains(c)
+            set partList to ConnectedPartWalk(c, partList, seen, partType).
+    }
+    
+    return partList.
+}
+
+global function GetConnectedParts
+{
+    parameter root.
+    parameter partType.
+    
+    return ConnectedPartWalk(root, list(), uniqueset(), partType).
+}

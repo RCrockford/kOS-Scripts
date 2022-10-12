@@ -20,7 +20,7 @@ set _6 to _6+eng:MaxMassFlow.
 local _7 is Ship:Mass.
 local _8 is 1.
 local _9 is false.
-local _10 is lexicon("Enabled",false,"Mass",0,"PreStageMass",0,"FuelMass",0,"Thrust",0,"MassFlow",0,"DeltaV",0).
+local _10 is lexicon("Count",0,"Mass",0,"PreStageMass",0,"FuelMass",0,"Thrust",0,"MassFlow",0,"DeltaV",0).
 local function _f0
 {
 parameter _p0 is LAS_ShipPos().
@@ -38,7 +38,7 @@ parameter _p2 is 0.25.
 local _14 is Ship:Velocity:Surface.
 local _15 is _7.
 local _16 is LAS_ShipPos().
-local _17 is _10:Enabled.
+local _17 is _10:Count>0.
 local _18 is _5.
 local _19 is _6.
 local _20 is _6*2.
@@ -69,13 +69,13 @@ local function RC
 parameter _p0.
 local _23 is 0.
 local _24 is vdot(Facing:Vector,Ship:AngularVel).
-if _9
+if _9 or _10:Count>1
 {
 if abs(SteeringManager:AngleError)<1
 {
-if abs(_24)>1.2
+if abs(_24)>1.2+_10:Count*0.5
 {
-set _23 to-0.01.
+set _23 to-0.001.
 }
 else
 {
@@ -109,7 +109,7 @@ print"Direct descent system online.".
 if HasTarget and _3:IsType("Scalar")
 set _3 to Target.
 runoncepath("/mgmt/readoutgui").
-local _25 is ReadoutGUI_Create().
+local _25 is RGUI_Create().
 _25:SetColumnCount(80,3).
 local _26 is lexicon().
 _26:Add("height",_25:AddReadout("Height")).
@@ -122,7 +122,7 @@ _26:Add("dist",_25:AddReadout("Distance")).
 _26:Add("bearing",_25:AddReadout("Bearing")).
 _26:Add("eta",_25:AddReadout("ETA")).
 _25:Show().
-ReadoutGUI_SetText(_26:status,"Ready",ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:status,"Ready",RGUI_ColourNormal).
 if Stage:Number>_0 or Ship:Velocity:Surface:Mag>300
 {
 if _0<Stage:Number-1
@@ -132,14 +132,14 @@ for eng in Ship:Engines
 {
 if(eng:Stage=Stage:Number-1)and(not eng:AllowShutdown)
 {
-set _10:Enabled to true.
+set _10:Count to _10:Count+1.
 set _10:FuelMass to _10:FuelMass+eng:Mass-Eng:DryMass.
 set _10:Thrust to _10:Thrust+eng:PossibleThrust.
 set _10:MassFlow to _10:MassFlow+eng:MaxMassFlow.
 set _27 to max(_27,eng:residuals).
 }
 }
-if _10:Enabled
+if _10:Count>0
 {
 for shipPart in Ship:Parts
 {
@@ -198,14 +198,14 @@ local lock _f3 to(_f2*vdot(_31:Position:Normalized,_f2)):Normalized.
 lock steering to LookDirUp(_f3,Facing:UpVector).
 until vdot(Facing:Vector,_f3)>0.999
 {
-ReadoutGUI_SetText(_26:fr,round(vdot(Facing:Vector,_f3),3),ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:fr,round(vdot(Facing:Vector,_f3),3),RGUI_ColourNormal).
 wait 0.
 }
 set Ship:Control:Fore to 1.
 until abs(vdot(_31:Position:Normalized,_f2))<1e-4 or vdot(Facing:Vector,_f3)<0.995
 {
-ReadoutGUI_SetText(_26:dist,round(vdot(_31:Position:Normalized,_f2),6),ReadoutGUI_ColourNormal).
-ReadoutGUI_SetText(_26:fr,round(vdot(Facing:Vector,_f3),3),ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:dist,round(vdot(_31:Position:Normalized,_f2),6),RGUI_ColourNormal).
+RGUI_SetText(_26:fr,round(vdot(Facing:Vector,_f3),3),RGUI_ColourNormal).
 wait 0.
 }
 unlock steering.
@@ -232,13 +232,13 @@ local _35 is Time:Seconds.
 local _36 is _f1(_33,_p0).
 local _37 is Body:GeoPositionOf(_36+Body:Position).
 set alt to _36:Mag-Body:Radius-_37:TerrainHeight.
-ReadoutGUI_SetText(_26:height,round(alt*0.001,1)+" km",ReadoutGUI_ColourNormal).
-ReadoutGUI_SetText(_26:acgx,round(_f5*0.001,1)+" km",ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:height,round(alt*0.001,1)+" km",RGUI_ColourNormal).
+RGUI_SetText(_26:acgx,round(_f5*0.001,1)+" km",RGUI_ColourNormal).
 if _31:IsType("GeoCoordinates")
 {
 local _38 is vang(vxcl(up:vector,_31:Position),vxcl(up:vector,Ship:Velocity:Surface)).
-ReadoutGUI_SetText(_26:dist,round(_31:Distance*0.001,1)+" km",ReadoutGUI_ColourNormal).
-ReadoutGUI_SetText(_26:bearing,round(_38,3)+"°",ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:dist,round(_31:Distance*0.001,1)+" km",RGUI_ColourNormal).
+RGUI_SetText(_26:bearing,round(_38,3)+"°",RGUI_ColourNormal).
 }
 local _39 is alt<_f5-Ship:VerticalSpeed*8.
 if _39
@@ -257,12 +257,12 @@ _p1(_39).
 set _34 to _37.
 }
 }
-ReadoutGUI_SetText(_26:status,"Wait Align",ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:status,"Wait Align",RGUI_ColourNormal).
 _f4(choose 90 if _9 else 60,{parameter c.}).
 set kUniverse:Timewarp:Rate to 1.
 wait until kUniverse:Timewarp:Rate=1.
 print"Aligning for burn".
-ReadoutGUI_SetText(_26:status,"Aligning",ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:status,"Aligning",RGUI_ColourNormal).
 LAS_Avionics("activate").
 rcs on.
 if _9
@@ -274,14 +274,17 @@ set _8 to Ship:VerticalSpeed/(Ship:VerticalSpeed+_42*0.8*(Body:Mu/LAS_ShipPos():
 }
 lock steering to LookDirUp(_f0(),Facing:UpVector).
 set navmode to"surface".
-ReadoutGUI_SetText(_26:status,"Wait Ignition",ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:status,"Wait Ignition",RGUI_ColourNormal).
 _f4(EM_IgDelay(),RC@).
 print"Beginning braking burn".
-ReadoutGUI_SetText(_26:status,"Braking",ReadoutGUI_ColourNormal).
-ReadoutGUI_SetText(_26:throt,"100%",ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:status,"Braking",RGUI_ColourNormal).
+RGUI_SetText(_26:throt,"100%",RGUI_ColourNormal).
 until _4[0]:Ignitions=0 or EM_CheckThrust(0.1)
 EM_Ignition(0.1).
+if _10:Count<=1
 set ship:control:roll to 0.
+else
+set ship:control:roll to-0.001.
 if _9
 {
 wait until Stage:Ready.
@@ -294,15 +297,15 @@ if _31:IsType("GeoCoordinates")
 local _43 is vdot(_31:Position-_34:Position,vxcl(Up:Vector,Ship:Velocity:Surface):Normalized).
 set _8 to 1+max(-0.02,min((_43-2500)/20000,0.02)).
 }
-local _44 is _10:Enabled.
+local _44 is _10:Count>0.
 until(Ship:VerticalSpeed>=_33 and Ship:Velocity:Surface:Mag<-_33)or not EM_CheckThrust(0.1)
 {
 local t is Ship:Velocity:Surface:Mag*Ship:Mass/_5.
 if _31:IsType("GeoCoordinates")
 {
 local _45 is vang(vxcl(up:vector,_31:Position),vxcl(up:vector,Ship:Velocity:Surface)).
-ReadoutGUI_SetText(_26:dist,round(_31:Distance*0.001,1)+" km",ReadoutGUI_ColourNormal).
-ReadoutGUI_SetText(_26:bearing,round(_45,3)+"°",ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:dist,round(_31:Distance*0.001,1)+" km",RGUI_ColourNormal).
+RGUI_SetText(_26:bearing,round(_45,3)+"°",RGUI_ColourNormal).
 if t<100
 {
 local _46 is 1-vdot(Up:Vector,Ship:Velocity:Surface:Normalized)^2.
@@ -318,13 +321,13 @@ set _8 to 1+max(-0.1,min((_49-1500)/10000,0.1)).
 local h is Ship:Altitude-Ship:GeoPosition:TerrainHeight.
 local _50 is-(_33^2-Ship:VerticalSpeed^2)/(2*h).
 local fr is(_50+Body:Mu/Body:Position:SqrMagnitude)*Ship:Mass/_5.
-ReadoutGUI_SetText(_26:height,round(h)+" m",ReadoutGUI_ColourNormal).
-ReadoutGUI_SetText(_26:acgx,round(_50,3),ReadoutGUI_ColourNormal).
-ReadoutGUI_SetText(_26:fr,round(fr,3),ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:height,round(h)+" m",RGUI_ColourNormal).
+RGUI_SetText(_26:acgx,round(_50,3),RGUI_ColourNormal).
+RGUI_SetText(_26:fr,round(fr,3),RGUI_ColourNormal).
 local _51 is Ship:AvailableThrust.
-ReadoutGUI_SetText(_26:thrust,round(100*min(Ship:Thrust/max(Ship:AvailableThrust,0.001),2),2)+"%",
-choose ReadoutGUI_ColourGood if Ship:Thrust>_51*0.75 else(choose ReadoutGUI_ColourNormal if Ship:Thrust>_51*0.25 else ReadoutGUI_ColourFault)).
-ReadoutGUI_SetText(_26:eta,round(t,2)+" s",ReadoutGUI_ColourNormal).
+RGUI_SetText(_26:thrust,round(100*min(Ship:Thrust/max(Ship:AvailableThrust,0.001),2),2)+"%",
+choose RGUI_ColourGood if Ship:Thrust>_51*0.75 else(choose RGUI_ColourNormal if Ship:Thrust>_51*0.25 else RGUI_ColourFault)).
+RGUI_SetText(_26:eta,round(t,2)+" s",RGUI_ColourNormal).
 if _9 and vdot(Facing:Vector,SrfRetrograde:Vector)<0.3
 break.
 if stage:number=_0 and fr<0.8 and Ship:VerticalSpeed>=_33*2
@@ -343,6 +346,7 @@ set _44 to false.
 if stage:number>_0
 {
 set Ship:Control:PilotMainThrottle to 0.
+set ship:control:roll to 0.
 wait until(Ship:VerticalSpeed<=_33*2).
 stage.
 }

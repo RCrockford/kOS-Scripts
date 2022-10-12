@@ -8,7 +8,7 @@ local KnownRunways is lexicon(
 	"KSC", lexicon("end1", latlng(28.612852, -80.6179), "end2", latlng(28.612852, -80.5925), "alt", 78.5, "hdg", 90),
 	"Mahia", lexicon("end1", latlng(-39.255965, 177.8504), "end2", latlng(-39.255965, 177.87954), "alt", 165, "hdg", 90),
 	"Plesetsk", lexicon("end1", latlng(62.96169, 40.6695), "end2", latlng(62.96169, 40.7185), "alt", 300, "hdg", 90),
-	"Churchill", lexicon("end1", latlng(58.738635, -93.8434), "end2", latlng(58.738635, -93.8002), "alt", 86, "hdg", 90)
+	"Churchill", lexicon("end1", latlng(58.738635, -93.8434), "end2", latlng(58.738635, -93.8002), "alt", 79, "hdg", 90)
 ).
 
 // Wait for unpack
@@ -473,7 +473,7 @@ else
     print "Using default PID settings".
 }
 
-global AoAkPTweak is 0.2.
+global AoAkPTweak is 0.16.
 
 createGuiControls("akp", "AoA kP/kD (Hard Turn)", AoAkPTweak, { parameter s. set AoAkPTweak to s:ToNumber(AoAkPTweak). }, "").
 createGuiControls("pkp", "Pitch kP (Tune)",  round(PIDSettings:PitchKp, 6), { parameter s. set PIDSettings:PitchKp to s:ToNumber(PIDSettings:PitchKp). }, "").
@@ -895,7 +895,7 @@ until exitButton:TakePress
             
             if Ship:VerticalSpeed < 0
             {
-                if highAlt and Ship:Altitude < 24000 and Ship:VerticalSpeed > -150 and Ship:AirSpeed < 1100
+                if highAlt and Ship:Altitude < 24000 and Ship:VerticalSpeed > -250 and Ship:AirSpeed < 1400
                     set highAlt to false.
 
                 if highAlt

@@ -19,7 +19,7 @@ global function FlightControl
             set ctrlState:ClimbRate to targetClimbRate.
         }
 
-        if guiButtons["hdg"]:pressed
+        if guiButtons["hdg"]:pressed and Ship:Airspeed < 900
         {
             set ctrlState:Heading to targetHeading.
         }

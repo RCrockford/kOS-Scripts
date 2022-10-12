@@ -158,24 +158,24 @@ local function ControlUpdate
         print "Bingo Fuel".
     }
     
-    ReadoutGUI_SetText(Readouts:vspeed, round(speedPID:SetPoint, 2), ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:vaccel, round(speedAccel, 2), ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:throt, round(100 * targetAccel / maxAccel, 1) + "%", ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:vspeed, round(speedPID:SetPoint, 2), RGUI_ColourNormal).
+    RGUI_SetText(Readouts:vaccel, round(speedAccel, 2), RGUI_ColourNormal).
+    RGUI_SetText(Readouts:throt, round(100 * targetAccel / maxAccel, 1) + "%", RGUI_ColourNormal).
 
-    ReadoutGUI_SetText(Readouts:hspeed, round(targetSpeed, 2) + " m", ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:haccel, round(hAccel, 3), ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:limit, round(hSpeedPID:MaxOutput, 2), ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:hspeed, round(targetSpeed, 2) + " m", RGUI_ColourNormal).
+    RGUI_SetText(Readouts:haccel, round(hAccel, 3), RGUI_ColourNormal).
+    RGUI_SetText(Readouts:limit, round(hSpeedPID:MaxOutput, 2), RGUI_ColourNormal).
 
-    ReadoutGUI_SetText(Readouts:Δv, round(fuelStatus[1], 1) + " m/s", ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:margin, round(fuelStatus[1]  - (Ship:Velocity:Surface:Mag + ΔVmargin), 3) + " m/s", ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:Δv, round(fuelStatus[1], 1) + " m/s", RGUI_ColourNormal).
+    RGUI_SetText(Readouts:margin, round(fuelStatus[1]  - (Ship:Velocity:Surface:Mag + ΔVmargin), 3) + " m/s", RGUI_ColourNormal).
     if bingoFuel
-        ReadoutGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "% Bingo", ReadoutGUI_ColourFault).
+        RGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "% Bingo", RGUI_ColourFault).
     else
-        ReadoutGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "%", ReadoutGUI_ColourGood).
+        RGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "%", RGUI_ColourGood).
         
-    ReadoutGUI_SetText(Readouts:dist, round(targetVec:Mag, 1) + " m", ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:alt, round(HeightPID:SetPoint, 1) + " m", ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:height, round(radarHeight, 2) + " m", ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:dist, round(targetVec:Mag, 1) + " m", RGUI_ColourNormal).
+    RGUI_SetText(Readouts:alt, round(HeightPID:SetPoint, 1) + " m", RGUI_ColourNormal).
+    RGUI_SetText(Readouts:height, round(radarHeight, 2) + " m", RGUI_ColourNormal).
         
     return targetVec:Mag.
 }

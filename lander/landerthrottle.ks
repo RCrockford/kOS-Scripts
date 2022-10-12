@@ -2,12 +2,13 @@
 
 parameter DescentEngines.
 parameter enginesActive is false.
+parameter preventShutdown is false.
 
 if exists("/mgmt/diffthrottle.ks")
     runoncepath("/mgmt/diffthrottle").
 
 local minThrottle is 0.
-local throttleClamp is 0.
+local throttleClamp is choose 0.001 if preventShutdown else 0.
 
 local minThrust is 0.
 local maxThrust is 0.
@@ -116,7 +117,7 @@ global function LanderCalcThrust
         if e:HasSuffix("Thrust")
             set curThrust to curThrust + e:Thrust.
         else
-            set curThrust to curThrust + e:AvailableThrust.
+            set curThrust to curThrust + e:AvailableThrust * Ship:Control:PilotMainThrottle.
     }
     
     return lexicon("nominal", nomThrust, "current", curThrust).

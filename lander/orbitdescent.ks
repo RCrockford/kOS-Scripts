@@ -11,11 +11,13 @@ wait until Ship:Unpacked.
 switch to scriptpath():volume.
 Core:Part:ControlFrom().
 
-parameter targetAlt is 0.
-parameter distanceFactor is 0.92.
-parameter angleGate is 0.1.
-parameter heightGate is 8000.
-parameter manualTarget is 0.
+parameter params is lexicon().
+
+local targetAlt is choose params:targetAlt if params:HasKey("TargetAlt") else 0.
+local distanceFactor is choose params:distFact if params:HasKey("distFact") else 0.92.
+local angleGate is choose params:angleGate if params:HasKey("angleGate") else 0.1.
+local heightGate is choose params:heightGate if params:HasKey("heightGate") else 6000.
+local manualTarget is choose params:target if params:HasKey("target") else 0.
 
 set angleGate to max(0.001, min(angleGate, 0.5)).
 set heightGate to max(heightGate, 1000).
@@ -34,7 +36,7 @@ local enginesIgnited is false.
 local abortMode is false.
 local hasGimbal is false.
 
-local FuelEngines is DescentEngines.
+local FuelEngines is DescentEngines:Copy.
 if DescentEngines:Length > 0
 {
     if not DescentEngines[0]:Ullage and DescentEngines[0]:PressureFed
@@ -42,14 +44,11 @@ if DescentEngines:Length > 0
     else
         set enginesIgnited to DescentEngines[0]:Ignition.
 }
-else
+
+for eng in Ship:RCS
 {
-    set FuelEngines to list().
-    for eng in Ship:RCS
-    {
-        if eng:ForeByThrottle
-            FuelEngines:Add(eng).
-    }
+    if eng:ForeByThrottle
+        FuelEngines:Add(eng).
 }
 
 local function GetConnectedTanks
@@ -89,6 +88,7 @@ local function GetConnectedTanks
 local monitorFuel is 0.
 local engMassflow is 0.
 local burnThrust is 0.
+local onTarget is false.
 
 global function GatherFuelStatus
 {
@@ -197,9 +197,8 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
     local targetPos is LanderTargetPos().
     
     // Target height and vertical velocity at approach terminus
-    local rT is 200.
-    // Target vel is speed at 45° angle for full throttle descent, safety margin provided by increasing TWR.
-    local vT is -5.
+    local rT0 is 80.
+    local vT is choose -4 if targetPos:IsType("GeoCoordinates") else -8.
     
     {
         local fuelStatus is CurrentFuelStatus(FuelEngines).
@@ -213,7 +212,7 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
     local steeringControl is -2.
     
     local bingoFuel is false.
-    local ΔVmargin is 2 * sqrt(2 * rT / (Body:Mu / Body:Position:SqrMagnitude)) * (Body:Mu / Body:Position:SqrMagnitude).
+    local ΔVmargin is 2 * sqrt(2 * rT0 / (Body:Mu / Body:Position:SqrMagnitude)) * (Body:Mu / Body:Position:SqrMagnitude).
     
     runpath("/lander/landerthrottle", DescentEngines).
     
@@ -221,14 +220,14 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         LanderEnginesOn().
 
     runoncepath("/mgmt/readoutgui").
-    local readoutGui is ReadoutGUI_Create().
+    local readoutGui is RGUI_Create().
     readoutGui:SetColumnCount(80, 3).
 
     local Readouts is lexicon().
 
     Readouts:Add("height", readoutGui:AddReadout("Height")).
-    Readouts:Add("clearh", readoutGui:AddReadout("Clearance")).
     Readouts:Add("acgx", readoutGui:AddReadout("Acgx")).
+    Readouts:Add("eta", readoutGui:AddReadout("ETA")).
 
     Readouts:Add("acgz", readoutGui:AddReadout("Acgz")).
     Readouts:Add("accz", readoutGui:AddReadout("Accz")).
@@ -262,15 +261,16 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
     until Ship:GroundSpeed < -vT * (2 - vdot(Facing:Vector, Up:Vector))
     {
         local accel is GetCurrentAccel(f).
+        local fuelStatus is CurrentFuelStatus(FuelEngines).
 
         // Commanded acceleration.
-        local acgx is 0.
         local acgz is accel:z.
         local unclampedacgz is acgz.
 
         // Predicted terminal time
-        local t is -Ship:GroundSpeed / acgz.
+        local t is max(-Ship:GroundSpeed / acgz, -fuelStatus[2]).
         local h is Ship:Altitude - Ship:GeoPosition:TerrainHeight.
+        local rT is rT0 + Velocity:Surface:Mag * 2.
         
         if targetPos:IsType("GeoCoordinates")
         {
@@ -279,35 +279,43 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
             set unclampedacgz to Ship:GroundSpeed^2 / (2 * targetDist).
             if not (maintainH:Pressed or maintainAlt:Pressed or ignoreTarget:Pressed or bingoFuel)
             {
-                if abs(wpBearing) < 3 and enginesIgnited
-                    set acgz to min(unclampedacgz, accel:z).
                 if h > 1000
                     set h to Ship:Altitude - TargetPos:TerrainHeight.
                 else
                     set h to min(h, Ship:Altitude - TargetPos:TerrainHeight).
+                if abs(wpBearing) < 3 and enginesIgnited
+                {
+                    set acgz to min(unclampedacgz, accel:z).
+                    set rT to rT0 + max(0, min(targetDist, 100000)) ^ 0.65.
+                }
             }
         }
         set h to min(h, Ship:Altitude - targetAlt).
 
         local acgxH is 0.
+        local acgxV is 0.
 
         if maintainAlt:Pressed and not bingoFuel
         {
             local responseT is -16.
-            set acgx to 12 * (prevAlt - Ship:Altitude) / (responseT*responseT) + 6 * Ship:VerticalSpeed / responseT.
+            set acgxH to 12 * (prevAlt - Ship:Altitude) / (responseT*responseT).
+            set acgxV to 6 * Ship:VerticalSpeed / responseT.
         }
         else if maintainH:Pressed and not bingoFuel
         {
             local responseT is -8.
-            set acgxH to 12 * (prevH - h) / (responseT*responseT) + 6 * Ship:VerticalSpeed / responseT.
-            set acgx to acgxH.
+            set acgxH to 12 * (prevH - h) / (responseT*responseT).
+            set acgxV to 6 * Ship:VerticalSpeed / responseT.
         }
         else
         {
-            set acgx to 12 * (rT - h) / (t*t) + 6 * (-vT + Ship:VerticalSpeed) / t.
+            set acgxH to 12 * (rT - h) / (t*t).
+            set acgxV to 6 * (Ship:VerticalSpeed - vT) / t.
         }
+
+        local acgx is acgxH + acgxV.
         
-        if not bingoFuel
+        if not bingoFuel and Ship:Velocity:Surface:Mag > 50
         {
             local clearHeight is Ship:GeoPosition:TerrainHeight.
             from {local x is 0.25. } until x > 2.5 step { set x to x + 0.25. } do
@@ -318,7 +326,6 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
             // Maintain clearance from terrain
             local responseT is -12.
             set acgxH to 12 * (minHeight - h) / (responseT^2) + 6 * Ship:VerticalSpeed / responseT.
-            ReadoutGUI_SetText(Readouts:clearh, round(minHeight, 1) + " m", choose ReadoutGUI_ColourGood if acgxH < acgx else ReadoutGUI_ColourFault).
         }
         
         if not maintainH:Pressed
@@ -332,9 +339,14 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
             set maintainAlt:Text to "Maintain Altitude: " + round(prevAlt, 0).
         }
         
+        if abs(wpBearing) < 0.01 and targetDist < 10000
+            set onTarget to true.
+        
         local steerMul is max(0.05, min(25 / sqrt(targetDist), 0.6)).
         if bingoFuel or abs(wpBearing) > 20 or targetDist < 500
             set steerMul to 0.
+        else if onTarget
+            set steerMul to steerMul / 8.
         local steerData is LanderSteering(-Body:Position, Ship:Velocity:Surface, steerMul).
         local steerVec is steerData:vec.
 
@@ -360,17 +372,17 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
                 LanderSetThrottle(acg / accel:y).
         }
         
-        ReadoutGUI_SetText(Readouts:height, round(h, 1) + " m", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:acgx, round(acgx, 4), ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:height, round(h, 1) + " m", choose RGUI_ColourGood if acgxH < acgx else RGUI_ColourFault).
+        RGUI_SetText(Readouts:acgx, round(acgx, 4), RGUI_ColourNormal).
+        RGUI_SetText(Readouts:eta, round(-t, 1) + "s", RGUI_ColourNormal).
 
-        ReadoutGUI_SetText(Readouts:acgz, round(unclampedacgz, 3), ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:accz, round(accel:z, 3), ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:fr, round(fr, 3), ReadoutGUI_ColourNormal).
+        
+        RGUI_SetText(Readouts:acgz, round(unclampedacgz, 3), RGUI_ColourNormal).
+        RGUI_SetText(Readouts:accz, round(accel:z, 3), RGUI_ColourNormal).
+        RGUI_SetText(Readouts:fr, round(fr, 3), RGUI_ColourNormal).
 
-        local fuelStatus is CurrentFuelStatus(FuelEngines).
-
-        ReadoutGUI_SetText(Readouts:Δv, round(fuelStatus[1], 1) + " m/s", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:margin, round(fuelStatus[1]  - (Ship:Velocity:Surface:Mag + ΔVmargin), 1) + " m/s", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:Δv, round(fuelStatus[1], 1) + " m/s", RGUI_ColourNormal).
+        RGUI_SetText(Readouts:margin, round(fuelStatus[1]  - (Ship:Velocity:Surface:Mag + ΔVmargin), 1) + " m/s", RGUI_ColourNormal).
 
         if not bingoFuel and fuelStatus[1] < Ship:Velocity:Surface:Mag + ΔVmargin
         {
@@ -381,23 +393,20 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
             set ignoreTarget:enabled to false. set ignoreTarget:pressed to true.
         }
         
-        if bingoFuel
-            ReadoutGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "% Bingo", ReadoutGUI_ColourFault).
-        else
-            ReadoutGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "%", ReadoutGUI_ColourGood).
+        RGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "% " + round(fuelStatus[2], 1) + "s", choose RGUI_ColourFault if bingoFuel else RGUI_ColourGood).
 
-        ReadoutGUI_SetText(Readouts:throt, round(100 * acg / accel:y, 1) + "%", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:throt, round(100 * acg / accel:y, 1) + "%", RGUI_ColourNormal).
         
         local thrustData is LanderCalcThrust(FuelEngines).        
-        ReadoutGUI_SetText(Readouts:thrust, round(100 * min(thrustData:current / max(LanderMaxThrust(), 0.001), 2), 2) + "%", 
-            choose ReadoutGUI_ColourGood if thrustData:current > thrustData:nominal * 0.75 else
-            (choose ReadoutGUI_ColourNormal if thrustData:current > thrustData:nominal * 0.25 else ReadoutGUI_ColourFault)).
+        RGUI_SetText(Readouts:thrust, round(100 * min(thrustData:current / max(LanderMaxThrust(), 0.001), 2), 2) + "%", 
+            choose RGUI_ColourGood if thrustData:current > thrustData:nominal * 0.75 else
+            (choose RGUI_ColourNormal if thrustData:current > thrustData:nominal * 0.25 else RGUI_ColourFault)).
         
         if enginesIgnited and thrustData:current < thrustData:nominal * 0.25
         {
             if Time:Seconds - engFailTime > 1
             {
-                ReadoutGUI_SetText(Readouts:status, "Failed", ReadoutGUI_ColourFault).
+                RGUI_SetText(Readouts:status, "Failed", RGUI_ColourFault).
                 if stage:number > 0
                 {
                     set abortMode to true.
@@ -408,20 +417,20 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
         }
         else if enginesIgnited
         {
-            ReadoutGUI_SetText(Readouts:status, "Nominal", ReadoutGUI_ColourGood).
+            RGUI_SetText(Readouts:status, "Nominal", RGUI_ColourGood).
             set engFailTime to Time:Seconds.
         }
         else
         {
-            ReadoutGUI_SetText(Readouts:status, "Inactive", ReadoutGUI_ColourNormal).
+            RGUI_SetText(Readouts:status, "Inactive", RGUI_ColourNormal).
         }
 
         if targetPos:IsType("GeoCoordinates")
         {
             set targetDist to targetPos:AltitudePosition(Ship:Altitude):Mag.
-            ReadoutGUI_SetText(Readouts:dist, round(targetDist * 0.001, 2) + " km", ReadoutGUI_ColourNormal).
-            ReadoutGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", choose ReadoutGUI_ColourNormal if wpBearing < 2.5 else ReadoutGUI_ColourFault).
-            ReadoutGUI_SetText(Readouts:steermul, round(steerData:f, 4), ReadoutGUI_ColourNormal).
+            RGUI_SetText(Readouts:dist, round(targetDist * 0.001, 2) + " km", RGUI_ColourNormal).
+            RGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", choose RGUI_ColourNormal if wpBearing < 2.5 else RGUI_ColourFault).
+            RGUI_SetText(Readouts:steermul, round(steerData:f, 4), RGUI_ColourNormal).
         }
         
         local distanceGate is false.
@@ -434,14 +443,14 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
                 if steeringControl > 0
                     set distanceGate to unclampedacgz > accel:z / distanceFactor.
                 else
-                    set distanceGate to unclampedacgz > accel:z / (distanceFactor * 1.1).
+                    set distanceGate to unclampedacgz > accel:z / (distanceFactor * 1.2).
             }
             else
             {
                 if steeringControl > 0
                     set periapsisGate to eta:Periapsis < -t * 0.5.
                 else
-                    set periapsisGate to eta:Periapsis < -t * 0.6.
+                    set periapsisGate to eta:Periapsis < -t * 0.65.
             }
         }
         
@@ -490,6 +499,15 @@ if Ship:Status = "Flying" or Ship:Status = "Sub_Orbital" or Ship:Status = "Orbit
     
     print "Ground Speed: " + round(ship:GroundSpeed, 3).
     print "Vertical Speed: " + round(ship:VerticalSpeed, 3).
+    
+    if DescentEngines:Length > 0 and DescentEngines[0]:Ignitions > 10 or DescentEngines[0]:Ignitions < 0
+    {
+        LanderEnginesOff().
+    }
+    else
+    {
+        LanderSetThrottle(0).
+    }
     
     if core:tag:contains("skycrane")
     {

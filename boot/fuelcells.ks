@@ -3,7 +3,7 @@
 // Wait for unpack
 wait until Ship:Unpacked.
 
-local cellType is "apollo fuel cell".
+local cellType is "gemini fuel cell".
 
 // Toggle cells off then back on to make sure they have correct config
 from {local i is 0.} until i = 2 step {set i to i + 1.} do

@@ -4,7 +4,7 @@ switch to scriptpath():volume.
 
 runoncepath("/mgmt/readoutgui").
 
-local readoutGui is ReadoutGUI_Create(800, -180).
+local readoutGui is RGUI_Create(800, -180).
 readoutGui:SetColumnCount(100, 2).
 
 local Readouts is lexicon().
@@ -63,10 +63,10 @@ global function Rdvz_TargetApproach
         local correctSpeed is movePID:Update(Time:Seconds, -correctVel:Mag).
         set ship:control:translation to Facing:Inverse * (correctVel:Normalized * correctSpeed).
 
-        ReadoutGUI_SetText(Readouts:dist, round(tVec:Mag, 1) + " m", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:relv, round(relV:Mag, 3) + " m/s", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:tarv, round(targetSpeed, 3) + " m/s", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:ang, round(vang(tVec, relV), 2) + "°", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:dist, round(tVec:Mag, 1) + " m", RGUI_ColourNormal).
+        RGUI_SetText(Readouts:relv, round(relV:Mag, 3) + " m/s", RGUI_ColourNormal).
+        RGUI_SetText(Readouts:tarv, round(targetSpeed, 3) + " m/s", RGUI_ColourNormal).
+        RGUI_SetText(Readouts:ang, round(vang(tVec, relV), 2) + "°", RGUI_ColourNormal).
     }
     
     set ship:control:translation to v(0,0,0).
@@ -84,10 +84,10 @@ global function Rdvz_UpdateReadouts
     set prevT to Time:Seconds.
     set prevTVec to tVec.
     
-    ReadoutGUI_SetText(Readouts:dist, round(tVec:Mag, 1) + " m", ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:relv, round(relV:Mag, 3) + " m/s", ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:tarv, round(targetSpeed, 3) + " m/s", ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:ang, round(vang(tVec, Facing:Vector), 2) + "°", ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:dist, round(tVec:Mag, 1) + " m", RGUI_ColourNormal).
+    RGUI_SetText(Readouts:relv, round(relV:Mag, 3) + " m/s", RGUI_ColourNormal).
+    RGUI_SetText(Readouts:tarv, round(targetSpeed, 3) + " m/s", RGUI_ColourNormal).
+    RGUI_SetText(Readouts:ang, round(vang(tVec, Facing:Vector), 2) + "°", RGUI_ColourNormal).
     
     return relV.
 }
@@ -95,7 +95,7 @@ global function Rdvz_UpdateReadouts
 global function Rdvz_SetStatus
 {
     parameter status.
-    ReadoutGUI_SetText(Readouts:status, status, ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:status, status, RGUI_ColourNormal).
 }
 
 global function Rdvz_GetMaxAccel

@@ -28,11 +28,11 @@ local maxFlow is 0.
 for k in activeEngines[0]:ConsumedResources:keys
 {
     local res is activeEngines[0]:ConsumedResources[k].
-    if res:Density > 0 and activeResources:HasKey(res:Name) and res:Name = k
+    if res:Density > 0 and activeResources:HasKey(res:Name)
     {
         if res:MaxFuelFlow > maxFlow
         {
-            set fuelName to res:Name.
+            set fuelName to k.
             set fuelTotal to activeResources[res:Name]:Amount.
             set fuelCapacity to activeResources[res:Name]:Capacity.
             set maxFlow to res:MaxFuelFlow.

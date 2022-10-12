@@ -14,7 +14,7 @@ runoncepath("0:/launch/lambert").
 
 runpath("0:/launch/launchgui").
 
-set Terminal:Height to max(Terminal:Height, 70).
+set Terminal:Height to max(Terminal:Height, 50).
 
 local calcButton is LGUI_GetButton().
 set calcButton:Text to "Calculate".
@@ -149,6 +149,7 @@ local function FindBestFlightTime
 
     local bestSolveVInf is 1e6.
     local bestSolveVIns is 1e6.
+    local bestSolveEjΔV is 1e6.
     local bestSolveFT is 0.
 
     from { local timeStep to max((maxFlightTime - minFlightTime) / 10, 0.1). } until timeStep < 0.1 step { set timeStep to timeStep / 2. } do
@@ -176,7 +177,7 @@ local function FindBestFlightTime
                     else
                         set newSolution to ft < bestSolveFT.
 
-                    if newSolution and maxEjectionΔV > 0
+                    if maxEjectionΔV > 0
                     {
                         local ejectV is reqV:Normalized * sqrt(reqV:SqrMagnitude + (2 * Body:Mu / planningSMA)).
                         local ejectInc is (90 - vang(ejectV:Normalized, Body:AngularVel:Normalized)).
@@ -184,8 +185,18 @@ local function FindBestFlightTime
                             set ejectInc to -ejectInc.
 
                         local BestLAN is FindBestLaunchLAN(max(ejectInc, abs(Ship:Latitude)), ejectV).
-                        if BestLAN[1] > maxEjectionΔV
-                            set newSolution to false.
+                        
+                        if bestSolveEjΔV > maxEjectionΔV and BestLAN[1] < bestSolveEjΔV
+                        {
+                            set newSolution to true.
+                        }
+                        else if newSolution
+                        {
+                            if BestLAN[1] > maxEjectionΔV and bestSolveEjΔV <= maxEjectionΔV
+                                set newSolution to false.
+                        }
+                        if newSolution
+                            set bestSolveEjΔV to BestLAN[1].
                     }
                 }
                 else

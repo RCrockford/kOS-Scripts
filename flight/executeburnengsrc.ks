@@ -1,10 +1,17 @@
 @lazyglobal off.
 
 parameter p.
-parameter debugStat.
+parameter readoutGui.
 parameter dV.
 
-set debugStat:Text to "Ignition".
+readoutGui:ClearAll().
+local Readouts is lexicon().
+
+Readouts:Add("stat", readoutGui:AddReadout("Status")).
+Readouts:Add("m", readoutGui:AddReadout("Mass")).
+Readouts:Add("t", readoutGui:AddReadout("Time")).
+
+RGUI_SetText(Readouts:stat, "Ignition").
 
 local massRatio is constant:e ^ (dV:Mag * p:mFlow / p:thr).
 local startMass is Ship:Mass.
@@ -43,7 +50,8 @@ until not EM_CheckThrust(0.1)
     local prevVel is Velocity:Orbit.
     CheckHeading().
     RollControl().
-    set debugStat:Text to "Burning, Mass: " + round(Ship:Mass * 1000, 1) + " / " + round(finalMass * 1000, 1) + " [" + round(burnMass / p:mFlow, 2) + "s]".
+    RGUI_SetText(Readouts:m, round(Ship:Mass * 1000, 1) + " / " + round(finalMass * 1000, 1)).
+    RGUI_SetText(Readouts:t, round(burnMass / p:mFlow, 2) + "s").
     wait 0.
     set burnMass to Ship:Mass - finalMass.
     local accel is (Velocity:Orbit - prevVel):Mag.

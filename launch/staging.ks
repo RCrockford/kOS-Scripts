@@ -781,14 +781,14 @@ global function LAS_CheckFairings
                 print METString + " Fairings jettisoned".
 
             if fairingStatus:IsType("Label")
-                ReadoutGUI_SetText(fairingStatus, "jettisoned", "#00ff00").
+                RGUI_SetText(fairingStatus, "jettisoned", "#00ff00").
 
             set PL_FairingsJettisoned to true.
         }
         else
         {
             if fairingStatus:IsType("Label")
-                ReadoutGUI_SetText(fairingStatus, "attached (Q > 50 Pa)", "#fff000").
+                RGUI_SetText(fairingStatus, "attached (Q > 50 Pa)", "#fff000").
         }
     }
 }

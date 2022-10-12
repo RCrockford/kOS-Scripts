@@ -26,7 +26,7 @@ global function METString
 // Setup functions
 runoncepath("/launch/lasfunctions").
 
-if Ship:Status = "Landed" or Ship:Status = "Splashed"
+if (Ship:Status = "Landed" or Ship:Status = "Splashed") or (Alt:Radar < 20 and Ship:AirSpeed < 1)
 {
     if stage:number > ascentStage + 1
 	{

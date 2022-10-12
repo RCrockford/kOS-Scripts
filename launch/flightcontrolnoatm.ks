@@ -13,6 +13,9 @@ runoncepath("/mgmt/readoutgui").
 local pitchOverSpeed is 12.
 local pitchOverAngle is 10 * Ship:MaxThrust / (Ship:Mass * Ship:Body:Mu / Body:Position:SqrMagnitude).
 
+if core:tag:contains("softpitch")
+    set pitchOverAngle to 10.
+
 local pitchOverCosine is cos(pitchOverAngle).
 
 local lock velocityPitch to 90 - vang(Ship:up:vector, Ship:Velocity:Surface).
@@ -32,7 +35,7 @@ local guidance is v(0,0,0).
 
 lock Steering to LookDirUp(Ship:Up:Vector, Ship:Facing:TopVector).
 
-local readoutGui is ReadoutGUI_Create(-320, -500).
+local readoutGui is RGUI_Create(-320, -500).
 readoutGui:SetColumnCount(80, list(160, 100)).
 
 local flightStatus is readoutGui:AddReadout("Flight").
@@ -40,7 +43,7 @@ local twrStatus is readoutGui:AddReadout("TWR").
 local pitchStatus is readoutGui:AddReadout("Pitch").
 local vThReadout is readoutGui:AddReadout("vTh").
 
-ReadoutGUI_SetText(flightStatus, "Liftoff", ReadoutGUI_ColourNormal).
+RGUI_SetText(flightStatus, "Liftoff", RGUI_ColourNormal).
 
 readoutGui:Show().
 
@@ -70,7 +73,7 @@ local function checkAscent
 			if flightPhase = c_PhaseGuidanceReady
 			{
 				set flightPhase to c_PhaseGuidanceActive.
-                ReadoutGui_SetText(flightStatus, "Guidance Active", ReadoutGUI_ColourGood).
+                RGUI_SetText(flightStatus, "Guidance Active", RGUI_ColourGood).
 				lock Steering to guidance.
 				set Ship:Control:PilotMainThrottle to 1.
 				print "Orbital guidance mode active".
@@ -99,7 +102,7 @@ local function checkAscent
         if Ship:VerticalSpeed >= pitchOverSpeed
         {
             set flightPhase to c_PhasePitchOver.
-            ReadoutGui_SetText(flightStatus, "Pitch and roll", ReadoutGui_ColourNormal).
+            RGUI_SetText(flightStatus, "Pitch and roll", RGUI_ColourNormal).
 			lock Steering to Heading(launchAzimuth, max(minPitch, min(90 - pitchOverAngle, velocityPitch + pitchAdj))).
         }
 	}
@@ -116,7 +119,7 @@ local function checkAscent
 				if LAS_StartGuidance(Stage:Number, targetInclination, targetOrbitable, launchAzimuth)
                 {
 					set flightPhase to c_PhaseGuidanceReady.
-                    ReadoutGui_SetText(flightStatus, "Guidance Ready", ReadoutGUI_ColourNormal).
+                    RGUI_SetText(flightStatus, "Guidance Ready", RGUI_ColourNormal).
                 }
 				else
                 {
@@ -138,9 +141,9 @@ local function checkAscent
 		set minPitch to arcsin(invTWR) * 1.1.
         set pitchAdj to max(2.5 - 0.5 / invTWR, -0.5).
 
-        ReadoutGui_SetText(pitchStatus, round(minPitch, 2) + " < " + round(velocityPitch, 2), choose ReadoutGUI_ColourGood if velocityPitch > minPitch else ReadoutGUI_ColourNormal).
-        ReadoutGui_SetText(twrStatus, round(1 / invTWR, 2):ToString(), ReadoutGUI_ColourNormal).
-        ReadoutGui_SetText(vThReadout, round(h / Body:Position:Mag, 1) + " / " + round(guidanceMinV, 1), ReadoutGUI_ColourNormal).
+        RGUI_SetText(pitchStatus, round(minPitch, 2) + " < " + round(velocityPitch, 2), choose RGUI_ColourGood if velocityPitch > minPitch else RGUI_ColourNormal).
+        RGUI_SetText(twrStatus, round(1 / invTWR, 2):ToString(), RGUI_ColourNormal).
+        RGUI_SetText(vThReadout, round(h / Body:Position:Mag, 1) + " / " + round(guidanceMinV, 1), RGUI_ColourNormal).
 	}
 }
 

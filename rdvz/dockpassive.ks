@@ -7,8 +7,9 @@ if not HasTarget
     wait until hastarget.
 }
 
-parameter minDist is 100.
 parameter portIdx is -1.
+parameter minDist is 100.
+
 local tShip is target.
 
 // Wait for unpack

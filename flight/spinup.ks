@@ -21,16 +21,26 @@ local mainBox is debugGui:AddVBox().
 local debugStat is mainBox:AddLabel("").
 debugGui:Show().
 
+wait 0.5.
+
+local startRoll is false.
 local rollRate is 0.
 until rollRate >= maxRoll
 {
     set debugStat:Text to "a = " + round(abs(SteeringManager:AngleError), 2) + "   ω = " + round(rollRate, 2) + " / " + round(maxRoll, 2).
     wait 0.
     set rollRate to vdot(Facing:Vector, Ship:AngularVel).
-    if abs(SteeringManager:AngleError) > 0.1
-        set ship:control:roll to 0.
-    else
+    if startRoll
+    {
         set ship:control:roll to -maxRoll / abs(maxRoll).
+    }
+    else
+    {
+        if abs(SteeringManager:AngleError) > 0.1 or vxcl(Facing:Vector, Ship:AngularVel):Mag > 0.01
+            set ship:control:roll to 0.
+        else
+            set startRoll to true.
+    }
 }
 
 set ship:control:neutralize to true.

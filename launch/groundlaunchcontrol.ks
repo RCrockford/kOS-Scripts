@@ -600,10 +600,6 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
 {
     wait until liftoffTime - Time:Seconds <= engineStart.
 
-    // Stage swing arms etc.
-    if stage:number > launchStage + 1 and stage:ready
-        stage.
-
 	kUniverse:TimeWarp:CancelWarp().
     print TMinusString + " Ignition sequence start.".
     set infoText to "Ignition sequence start".
@@ -661,6 +657,10 @@ if engineStart > 0.5 and not mainEnginesLF:empty()
     {
         GLCAbort("Main engines failed to reach commanded thrust.").
     }
+
+    // Stage swing arms etc.
+    if stage:number > launchStage + 1 and stage:ready
+        stage.
 
     for eng in mainEnginesLF
     {

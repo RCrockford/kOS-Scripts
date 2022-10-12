@@ -49,7 +49,7 @@ local guidanceMinV is choose 100 if defined LAS_TargetAp and LAS_TargetAp < 100 
 local lock nextStageIsGuided to LAS_StageIsGuided(Stage:Number-1).
 local compassGuidance is true.
 
-local readoutGui is ReadoutGUI_Create(-320, -550).
+local readoutGui is RGUI_Create(-320, -550).
 readoutGui:SetColumnCount(80, list(160, 100)).
 
 local flightStatus is readoutGui:AddReadout("Flight").
@@ -61,8 +61,8 @@ local QαReadout is readoutGui:AddReadout("Qα").
 local engineStatus is readoutGui:AddReadout("Engines").
 local DReadout is readoutGui:AddReadout("Downrange").
 
-ReadoutGUI_SetText(flightStatus, "Liftoff", ReadoutGUI_ColourNormal).
-ReadoutGUI_SetText(fairingStatus, "locked", "#ff4000").
+RGUI_SetText(flightStatus, "Liftoff", RGUI_ColourNormal).
+RGUI_SetText(fairingStatus, "locked", "#ff4000").
 
 readoutGui:Show().
 
@@ -106,8 +106,8 @@ local function checkAscent
 		if navmode <> "surface"
 			set navmode to "surface".
 	
-        ReadoutGui_SetText(flightStatus, "Downrange Flight", ReadoutGUI_ColourNormal).
-        ReadoutGui_SetText(miscStatus, "vT = " + max(launchParams:minSpeed, 0), ReadoutGUI_ColourNormal).
+        RGUI_SetText(flightStatus, "Downrange Flight", RGUI_ColourNormal).
+        RGUI_SetText(miscStatus, "vT = " + max(launchParams:minSpeed, 0), RGUI_ColourNormal).
         
         if Ship:Altitude > 80000 and launchParams:minSpeed >= 1000
         {
@@ -150,8 +150,8 @@ local function checkAscent
         // Make sure dynamic pressure is low enough to start manoeuvres
         if flightPhase = c_PhaseGuidanceReady
         {
-            ReadoutGui_SetText(flightStatus, "Guidance Ready", ReadoutGUI_ColourNormal).
-            ReadoutGui_SetText(miscStatus, choose "Coasting" if coastSteer else "", ReadoutGUI_ColourNormal).
+            RGUI_SetText(flightStatus, "Guidance Ready", RGUI_ColourNormal).
+            RGUI_SetText(miscStatus, choose "Coasting" if coastSteer else "", RGUI_ColourNormal).
 
             if guidance:SqrMagnitude > 0.9 and Ship:Q < 0.1
             {
@@ -178,8 +178,8 @@ local function checkAscent
         {
             if guidance:SqrMagnitude > 0.9
             {
-                ReadoutGui_SetText(flightStatus, "Guidance Active", ReadoutGUI_ColourGood).
-                ReadoutGui_SetText(miscStatus, choose "Compass" if compassGuidance else "Orbital", ReadoutGUI_ColourNormal).
+                RGUI_SetText(flightStatus, "Guidance Active", RGUI_ColourGood).
+                RGUI_SetText(miscStatus, choose "Compass" if compassGuidance else "Orbital", RGUI_ColourNormal).
                 // Ignore guidance if it's commanding a large change.
                 if vdot(guidance, flightGuidance) > guidanceThreshold
                 {
@@ -200,11 +200,11 @@ local function checkAscent
 			else 
 			{
 				local stageEngines is LAS_GetStageEngines().
-                ReadoutGui_SetText(flightStatus, "Guidance Inactive", ReadoutGUI_ColourFault).
+                RGUI_SetText(flightStatus, "Guidance Inactive", RGUI_ColourFault).
 				if stageEngines:Length >= 1
-                    ReadoutGui_SetText(miscStatus, "F=" + stageEngines[0]:FlameOut, ReadoutGUI_ColourFault).
+                    RGUI_SetText(miscStatus, "F=" + stageEngines[0]:FlameOut, RGUI_ColourFault).
 				else
-                    ReadoutGui_SetText(miscStatus, "No engine", ReadoutGUI_ColourFault).
+                    RGUI_SetText(miscStatus, "No engine", RGUI_ColourFault).
 
 				if not nextStageIsGuided and stageEngines:Length >= 1 and stageEngines[0]:FlameOut
 				{
@@ -215,8 +215,8 @@ local function checkAscent
 						set flightPhase to c_PhaseGuidanceKick.
 						local kickPitch is LAS_GetPartParam(LAS_GetStageEngines(Stage:Number-1)[0], "p=", 0).
 						lock Steering to Heading(mod(360 - latlng(90,0):bearing, 360), kickPitch, 0).
-						ReadoutGui_SetText(flightStatus, "Guidance Kick", ReadoutGui_ColourNormal).
-                        ReadoutGui_SetText(miscStatus, "h=" + round(mod(360 - latlng(90,0):bearing, 360), 2) + " p=" + round(kickPitch, 1), ReadoutGUI_ColourNormal).
+						RGUI_SetText(flightStatus, "Guidance Kick", RGUI_ColourNormal).
+                        RGUI_SetText(miscStatus, "h=" + round(mod(360 - latlng(90,0):bearing, 360), 2) + " p=" + round(kickPitch, 1), RGUI_ColourNormal).
 					}
 					else
 					{
@@ -237,8 +237,8 @@ local function checkAscent
             if flightPhase < c_PhasePitchOver
             {
 				set kUniverse:TimeWarp:Rate to 1.
-                ReadoutGui_SetText(flightStatus, "Pitch and roll", ReadoutGui_ColourNormal).
-                ReadoutGui_SetText(miscStatus, round(pitchOverAngle, 1) + "° / " + round(launchAzimuth, 1) + "°", ReadoutGUI_ColourNormal).
+                RGUI_SetText(flightStatus, "Pitch and roll", RGUI_ColourNormal).
+                RGUI_SetText(miscStatus, round(pitchOverAngle, 1) + "° / " + round(launchAzimuth, 1) + "°", RGUI_ColourNormal).
                 print METString + " Pitch and roll program: " + round(pitchOverAngle, 2) + "° heading " + round(launchAzimuth, 2) + "°".
                 set flightPhase to c_PhasePitchOver.
                 local steerAngle is 89.5 - pitchOverAngle.
@@ -290,8 +290,8 @@ local function checkAscent
 
 			if coastMode
 			{
-				ReadoutGui_SetText(flightStatus, "Coast Flight", ReadoutGui_ColourNormal).
-                ReadoutGui_SetText(miscStatus, "aT=" + LAS_TargetPe * 0.9 + "km vT=" + round(vTheta, 0) + "/" + round(guidanceMinV, 0), ReadoutGUI_ColourNormal).
+				RGUI_SetText(flightStatus, "Coast Flight", RGUI_ColourNormal).
+                RGUI_SetText(miscStatus, "aT=" + LAS_TargetPe * 0.9 + "km vT=" + round(vTheta, 0) + "/" + round(guidanceMinV, 0), RGUI_ColourNormal).
 				for e in ship:engines
 				{
 					if e:flameout and e:ignition
@@ -300,8 +300,8 @@ local function checkAscent
 			}
 			else
 			{
-				ReadoutGui_SetText(flightStatus, "Zero Lift", ReadoutGui_ColourNormal).
-                ReadoutGui_SetText(miscStatus, "vT=" + round(vTheta, 0) + "/" + round(guidanceMinV, 0), ReadoutGUI_ColourNormal).
+				RGUI_SetText(flightStatus, "Zero Lift", RGUI_ColourNormal).
+                RGUI_SetText(miscStatus, "vT=" + round(vTheta, 0) + "/" + round(guidanceMinV, 0), RGUI_ColourNormal).
 			}
             
 			local startGuidance is vTheta >= guidanceMinV.
@@ -371,7 +371,7 @@ local function checkAscent
         else if curPitch < minPitch
             set pitchColour to "#ffa000".
     }
-    ReadoutGui_SetText(pitchStatus, round(minPitch, 2) + " < " + round(curPitch, 2) + " < " + round(maxPitch, 2), pitchColour).
+    RGUI_SetText(pitchStatus, round(minPitch, 2) + " < " + round(curPitch, 2) + " < " + round(maxPitch, 2), pitchColour).
     
     if cutoff
     {
@@ -438,7 +438,7 @@ local function CheckRollTorque
                 set SteeringManager:RollTorqueFactor to SteeringManager:RollTorqueFactor * 1.4.
                 set RollTqInstabCount to 0.
                 if flightPhase = c_PhaseLiftoff
-                    ReadoutGui_SetText(miscStatus, round(SteeringManager:RollTorqueFactor, 2), ReadoutGUI_ColourNormal).
+                    RGUI_SetText(miscStatus, round(SteeringManager:RollTorqueFactor, 2), RGUI_ColourNormal).
             }
         }
     }
@@ -448,7 +448,7 @@ local symmetryEngines is list().
 
 local function BalanceThrust
 {
-    ReadoutGui_SetText(engineStatus, (choose "Spooling" if LAS_StageSpooling() else "Burning") + ", E=" + round(abs(SteeringManager:AngleError), 2), ReadoutGUI_ColourNormal).
+    RGUI_SetText(engineStatus, (choose "Spooling" if LAS_StageSpooling() else "Burning") + ", E=" + round(abs(SteeringManager:AngleError), 2), RGUI_ColourNormal).
 
     if LAS_StageSpooling() or mod(symmetryEngines:Length, 2) = 1
         return.
@@ -518,12 +518,12 @@ until false
         BalanceThrust().
 
     if Ship:Q * constant:AtmToKPa >= 1
-        ReadoutGUI_SetText(QReadout, round(Ship:Q * constant:AtmToKPa, 3) + " kPa", choose ReadoutGUI_ColourGood if Ship:Q < 0.1 else ReadoutGUI_ColourNormal).
+        RGUI_SetText(QReadout, round(Ship:Q * constant:AtmToKPa, 3) + " kPa", choose RGUI_ColourGood if Ship:Q < 0.1 else RGUI_ColourNormal).
     else
-        ReadoutGUI_SetText(QReadout, round(1000 * Ship:Q * constant:AtmToKPa, 2) + " Pa", ReadoutGUI_ColourGood).
+        RGUI_SetText(QReadout, round(1000 * Ship:Q * constant:AtmToKPa, 2) + " Pa", RGUI_ColourGood).
     local Qα is Ship:Q * vang(Facing:Vector, SrfPrograde:Vector).
-    ReadoutGUI_SetText(QαReadout, round(Qα, 3), choose ReadoutGUI_ColourGood if Qα < 1 else (choose ReadoutGUI_ColourNormal if Qα < 2 else ReadoutGUI_ColourFault)).
-    ReadoutGUI_SetText(DReadout, round((Ship:GeoPosition:Position - kscPos:Position):Mag * 0.001, 1) + " km", ReadoutGUI_ColourNormal).
+    RGUI_SetText(QαReadout, round(Qα, 3), choose RGUI_ColourGood if Qα < 1 else (choose RGUI_ColourNormal if Qα < 2 else RGUI_ColourFault)).
+    RGUI_SetText(DReadout, round((Ship:GeoPosition:Position - kscPos:Position):Mag * 0.001, 1) + " km", RGUI_ColourNormal).
 
 	if (not coastMode or Ship:Altitude > LAS_TargetPe * 900 or Eta:Apoapsis < 60) and LAS_CheckStaging()
     {
@@ -673,8 +673,8 @@ until false
     // Reduce power consumption when coasting
     if flightPhase = c_PhaseSuborbCoast
     {
-        ReadoutGui_SetText(flightStatus, "Suborbital coast", ReadoutGui_ColourNormal).
-        ReadoutGui_SetText(miscStatus, "", ReadoutGUI_ColourNormal).
+        RGUI_SetText(flightStatus, "Suborbital coast", RGUI_ColourNormal).
+        RGUI_SetText(miscStatus, "", RGUI_ColourNormal).
         wait 0.5.
     }
     else

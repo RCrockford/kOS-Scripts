@@ -42,7 +42,7 @@ LAS_Avionics("activate").
 rcs on.
 
 Rdvz_SetStatus("Lining up").
-Rdvz_TargetApproach({ return tPort:Position + tPort:Facing:Vector * clearDist. }, { return tPort:Position. }).
+Rdvz_TargetApproach({ return tPort:Position + tPort:Facing:Vector * clearDist. }, { return tPort:Position. }, 0.1, Rdvz_GetMaxAccel() * 8).
 
 local lock TargetPos to tPort:Position + tPort:Facing:Vector * portDist.
 

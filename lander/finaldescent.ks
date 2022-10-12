@@ -38,7 +38,12 @@ if DescentEngines:Length = 0
     }
 }
 
-    
+local ullageTime is 0.
+if needUllage and not enginesOn
+{
+    set ullageTime to EM_IgDelay().
+}
+
 local burnThrust is LanderMaxThrust().
 
 print "Descent mode active".
@@ -65,9 +70,8 @@ if LanderMinThrottle() < 0.9
     set ignThrottle to 0.85 + LanderMinThrottle() * 0.15.
 }
 
-local hSpeedPID is PIDLoop(0.5, 0.1, 0.5, -5, 5).
-local steerPID is PIDLoop(1, 0, 0.5, -1, 1).
-local steerHeight is min(radarHeight, 100).
+local hSpeedPID is PIDLoop(0.25, 0, 0.2, -2, 2).
+local steerPID is PIDLoop(1, 0.05, 0.6, -1, 1).
 
 until radarHeight < 2
 {
@@ -80,7 +84,9 @@ until radarHeight < 2
     set h to max(h, 0.1).
 
     // Commanded vertical acceleration is accel needed to reach vT in the height available
-    local acgx is -(vT^2 - Ship:VerticalSpeed^2) / (2 * h).
+    local vSpeed is Ship:VerticalSpeed - localGrav * ullageTime.
+    local nextH is h - vSpeed * ullageTime.
+    local acgx is -(vT^2 - vSpeed^2) / (2 * nextH).
     
     local targetDist is -1.
     if targetPos:IsType("GeoCoordinates")
@@ -89,19 +95,18 @@ until radarHeight < 2
     }
 
     // Prevent too much tip over in final descent
-    set steerVec to Up:Vector * max(0, 2 * (0.71 - vdot(SrfRetrograde:Vector, Up:Vector))) + SrfRetrograde:Vector.
+    local tiltMul is max(0.999 - min(Ship:GroundSpeed * 0.1, 0.25), vdot(SrfRetrograde:Vector, Up:Vector)).
+    set steerVec to Up:Vector * tiltMul + vxcl(Up:Vector, SrfRetrograde:Vector) * sqrt(1 - tiltMul).
+    local steerMode is false.
     
-    if not bingoFuel and targetDist <= 100 and targetDist >= 1 and h > 5 and not ignoreTarget:pressed
+    if not bingoFuel and targetDist <= 100 and (targetDist >= 5 or Ship:GroundSpeed > 0.5) and h > 5 and not ignoreTarget:pressed and vdot(Facing:Vector, Up:Vector) > 0.9
     {
-        // Slow descent while steering
-        if targetDist >= 5
+        if targetDist >= 10
         {
+            // Slow descent while steering
             local responseT is -8.
-            set acgx to 12 * (steerHeight - h) / (responseT*responseT) + 6 * Ship:VerticalSpeed / responseT.
-        }
-        else
-        {
-            set steerHeight to min(h, 100).
+            set acgx to 6 * Ship:VerticalSpeed / responseT.
+            set steerMode to true.
         }
 
         local targetVec is vxcl(Up:Vector, targetPos:Position).
@@ -112,7 +117,7 @@ until radarHeight < 2
         local hAccel is steerPID:Update(Time:Seconds, (horizVel - targetVel):Mag).
         
         if Readouts:HasKey("steermul")
-            ReadoutGUI_SetText(Readouts:steermul, round(targetSpeed, 2) + "m/s", ReadoutGUI_ColourNormal).
+            RGUI_SetText(Readouts:steermul, round(targetSpeed, 2) + "m/s", RGUI_ColourNormal).
             
         if abs(horizVel:Mag) < hSpeedPID:MaxOutput * 1.05
         {
@@ -124,25 +129,28 @@ until radarHeight < 2
     }
     else
     {
+        set ship:control:starboard to 0.
+        set ship:control:top to 0.
     }
 
     local fr is (acgx + localGrav) / maxAccel.
 
-    if fr > ignThrottle * 0.8
+    if fr > ignThrottle * 0.8 or steerMode
         set killThrott to false.
     else if Ship:VerticalSpeed > -(vT * (vdot(SrfRetrograde:Vector, Up:Vector) + 0.5))
         set killThrott to true.
     if killThrott
         set fr to 0.
 
-    local f is fr / vdot(Facing:Vector, Up:Vector).
+    local f is fr / max(vdot(Facing:Vector, Up:Vector), 0.7).
     local reqThrottle is max(0, min(f, 1)).
-    if not enginesOn and reqThrottle >= ignThrottle and vdot(Facing:Vector, SrfRetrograde:Vector) > 0.8 and (Ship:VerticalSpeed < -10 or h < 50)
+    if not enginesOn and ((reqThrottle >= ignThrottle and vdot(Facing:Vector, SrfRetrograde:Vector) > 0.8 and (Ship:VerticalSpeed < -10 or h < 50)) or (steerMode and vdot(Facing:Vector, Up:Vector) > 0.99))
     {
         if needUllage
             EM_Ignition().
         LanderEnginesOn().
         set enginesOn to true.
+        set ullageTime to 0.
     }
     else if multiIgnition and enginesOn and reqThrottle < cutThrott
     {
@@ -151,35 +159,35 @@ until radarHeight < 2
     }
     LanderSetThrottle(reqThrottle).
 
-    ReadoutGUI_SetText(Readouts:height, round(h, 1) + " m", ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:acgx, round(acgx, 3), ReadoutGUI_ColourNormal).
-    ReadoutGUI_SetText(Readouts:fr, round(fr, 3), ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:height, round(h, 1) + " m", RGUI_ColourNormal).
+    RGUI_SetText(Readouts:acgx, round(acgx, 3), RGUI_ColourNormal).
+    RGUI_SetText(Readouts:fr, round(fr, 3), RGUI_ColourNormal).
     
     if targetPos:IsType("GeoCoordinates")
     {
         local wpBearing is vang(vxcl(up:vector, TargetPos:Position), vxcl(up:vector, Ship:Velocity:Surface)).
-        ReadoutGUI_SetText(Readouts:dist, round(targetDist, 1) + " m", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:dist, round(targetDist, 1) + " m", RGUI_ColourNormal).
+        RGUI_SetText(Readouts:bearing, round(wpBearing, 3) + "°", RGUI_ColourNormal).
     }
 
     if Readouts:HasKey("fuel")
     {
         local fuelStatus is CurrentFuelStatus(FuelEngines).
-        ReadoutGUI_SetText(Readouts:Δv, round(fuelStatus[1], 1) + " m/s", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:margin, round(fuelStatus[1]  - Ship:Velocity:Surface:Mag, 1) + " m/s", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "%", ReadoutGUI_ColourGood).
+        RGUI_SetText(Readouts:Δv, round(fuelStatus[1], 1) + " m/s", RGUI_ColourNormal).
+        RGUI_SetText(Readouts:margin, round(fuelStatus[1]  - Ship:Velocity:Surface:Mag, 1) + " m/s", RGUI_ColourNormal).
+        RGUI_SetText(Readouts:fuel, round(fuelStatus[0] * 100, 1) + "%", RGUI_ColourGood).
         
         local ΔVmargin is 2 * sqrt(2 * h / (Body:Mu / Body:Position:SqrMagnitude)) * (Body:Mu / Body:Position:SqrMagnitude).
         if not bingoFuel and fuelStatus[1] < Ship:Velocity:Surface:Mag + ΔVmargin
             set bingoFuel to true.
     }
     
-    ReadoutGUI_SetText(Readouts:throt, round(100 * reqThrottle, 1) + "%", ReadoutGUI_ColourNormal).
+    RGUI_SetText(Readouts:throt, round(100 * reqThrottle, 1) + "%", RGUI_ColourNormal).
 
     local thrustData is LanderCalcThrust(FuelEngines).
-    ReadoutGUI_SetText(Readouts:thrust, round(100 * min(thrustData:current / max(LanderMaxThrust(), 0.001), 2), 2) + "%", 
-        choose ReadoutGUI_ColourGood if thrustData:current > thrustData:nominal * 0.75 else
-        (choose ReadoutGUI_ColourNormal if thrustData:current > thrustData:nominal * 0.25 else ReadoutGUI_ColourFault)).
+    RGUI_SetText(Readouts:thrust, round(100 * min(thrustData:current / max(LanderMaxThrust(), 0.001), 2), 2) + "%", 
+        choose RGUI_ColourGood if thrustData:current > thrustData:nominal * 0.75 else
+        (choose RGUI_ColourNormal if thrustData:current > thrustData:nominal * 0.25 else RGUI_ColourFault)).
 
     if canAbort and Ship:VerticalSpeed < -8
     {
@@ -213,7 +221,31 @@ until radarHeight < 2
     wait 0.
 }
 
-if not abortMode
+if core:tag:contains("hoverdock")
+{
+    print "Waiting for docking target".
+    lock steering to LookDirUp(Up:Vector, Facing:UpVector).
+    
+    until HasTarget and target:IsType("DockingPort")
+    {
+        local maxAccel is burnThrust / Ship:Mass.
+        local localGrav is Ship:Body:Mu / LAS_ShipPos():SqrMagnitude.
+        LanderSetThrottle(localGrav / maxAccel).
+        
+        RGUI_SetText(Readouts:throt, round(100 * (-vT - Ship:VerticalSpeed), 1) + "%", RGUI_ColourNormal).
+        
+        RGUI_SetText(Readouts:height, round(shipBounds:BottomAltRadar, 1) + " m", RGUI_ColourNormal).
+        RGUI_SetText(Readouts:fr, round(-vT - Ship:VerticalSpeed, 3), RGUI_ColourNormal).
+        
+        if targetPos:IsType("GeoCoordinates")
+            RGUI_SetText(Readouts:dist, round(targetPos:Distance) + " m", RGUI_ColourNormal).
+
+        wait 0.
+    }
+    
+    runpath("/bases/dockside").
+}
+else if not abortMode
 {
     lock steering to LookDirUp(Up:Vector, Facing:UpVector).
     set shipBounds to Ship:Bounds.
@@ -222,13 +254,13 @@ if not abortMode
     {
         LanderSetThrottle(-vT - Ship:VerticalSpeed).
         
-        ReadoutGUI_SetText(Readouts:throt, round(100 * (-vT - Ship:VerticalSpeed), 1) + "%", ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:throt, round(100 * (-vT - Ship:VerticalSpeed), 1) + "%", RGUI_ColourNormal).
         
-        ReadoutGUI_SetText(Readouts:height, round(shipBounds:BottomAltRadar, 1) + " m", ReadoutGUI_ColourNormal).
-        ReadoutGUI_SetText(Readouts:fr, round(-vT - Ship:VerticalSpeed, 3), ReadoutGUI_ColourNormal).
+        RGUI_SetText(Readouts:height, round(shipBounds:BottomAltRadar, 1) + " m", RGUI_ColourNormal).
+        RGUI_SetText(Readouts:fr, round(-vT - Ship:VerticalSpeed, 3), RGUI_ColourNormal).
         
         if targetPos:IsType("GeoCoordinates")
-            ReadoutGUI_SetText(Readouts:dist, round(targetPos:Distance) + " m", ReadoutGUI_ColourNormal).
+            RGUI_SetText(Readouts:dist, round(targetPos:Distance) + " m", RGUI_ColourNormal).
 
         wait 0.
     }
